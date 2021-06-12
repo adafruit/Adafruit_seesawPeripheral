@@ -9,6 +9,10 @@
 #include <Wire.h>
 #include "Adafruit_seesaw.h"
 
+#if CONFIG_NEOPIXEL && defined(MEGATINYCORE)
+  #include "Adafruit_seesawPeripheral_tinyneopixel.h"
+#endif
+
 /*************** UART debugging */
 #if !defined(CONFIG_UART_DEBUG)
   #define CONFIG_UART_DEBUG 0
@@ -121,6 +125,11 @@ volatile uint8_t i2c_buffer[32];
 #if CONFIG_PWM
   volatile uint8_t g_pwmStatus = 0;
 #endif
+#if CONFIG_NEOPIXEL 
+  volatile uint8_t g_neopixel_buf[CONFIG_NEOPIXEL_BUF_MAX];
+  volatile uint8_t g_neopixel_bufsize = 0;
+  volatile uint8_t g_neopixel_pin = 0;
+#endif
 
 /****************************************************** code */
 
@@ -185,6 +194,12 @@ void Adafruit_seesawPeripheral_reset(void) {
 #endif
 #if CONFIG_PWM
   g_pwmStatus = 0;
+#endif
+#if CONFIG_NEOPIXEL
+  for (uint16_t i=0; i<CONFIG_NEOPIXEL_BUF_MAX; i++) {
+    g_neopixel_buf[i] = 0;
+  }
+  g_neopixel_bufsize = 0;
 #endif
 }
 
