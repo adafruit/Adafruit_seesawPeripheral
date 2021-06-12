@@ -83,9 +83,27 @@
 
 
 
-/****************************************************** code */
+
 void Adafruit_seesawPeripheral_reset(void) ;
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins);
+void receiveEvent(int howMany);
+void requestEvent(void);
+
+
+/****************************************************** global state */
+
+volatile uint8_t i2c_buffer[32];
+volatile uint8_t base_cmd;
+volatile uint8_t module_cmd;
+
+#if CONFIG_INTERRUPT
+  volatile uint32_t g_irqGPIO = 0;
+  volatile uint32_t g_irqFlags = 0;
+  #define IRQ_PULSE_TICKS 2
+#endif
+
+
+/****************************************************** code */
 
 // global address
 uint8_t _i2c_addr = CONFIG_I2C_PERIPH_ADDR;
@@ -124,7 +142,8 @@ bool Adafruit_seesawPeripheral_begin(void) {
   Adafruit_seesawPeripheral_reset();
 
   Wire.begin(_i2c_addr);
-
+  Wire.onReceive(receiveEvent);
+  Wire.onRequest(requestEvent);
   return true;
 }
 
@@ -151,5 +170,18 @@ uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins=VALID_GPIO) {
   return temp;
 }
 
+void Adafruit_seesawPeripheral_write32(uint32_t value) {
+  uint8_t buff[4];
+  buff[0] = value >> 24;
+  buff[1] = value >> 16;
+  buff[2] = value >> 8;
+  buff[3] = value;
+  Wire.write(buff, 4);
+  return;
+}
+
+
+#include "Adafruit_seesawPeripheral_receive.h"
+#include "Adafruit_seesawPeripheral_request.h"
 
 #endif
