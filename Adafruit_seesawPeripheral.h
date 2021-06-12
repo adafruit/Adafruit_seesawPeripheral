@@ -90,6 +90,7 @@ void Adafruit_seesawPeripheral_reset(void) ;
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins);
 void receiveEvent(int howMany);
 void requestEvent(void);
+void Adafruit_seesawPeripheral_run(void);
 
 
 /****************************************************** global state */
@@ -164,7 +165,11 @@ void Adafruit_seesawPeripheral_reset(void) {
   g_irqGPIO = 0;
   g_irqFlags = 0;
 #endif
+#if CONFIG_ADC
+  g_adcStatus = 0;
+#endif
 }
+
 
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins=VALID_GPIO) {
   uint32_t temp = 0;
@@ -192,5 +197,5 @@ void Adafruit_seesawPeripheral_write32(uint32_t value) {
 
 #include "Adafruit_seesawPeripheral_receive.h"
 #include "Adafruit_seesawPeripheral_request.h"
-
+#include "Adafruit_seesawPeripheral_main.h"
 #endif
