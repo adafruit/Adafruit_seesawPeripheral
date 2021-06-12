@@ -84,8 +84,10 @@
 
 
 /****************************************************** code */
+void Adafruit_seesawPeripheral_reset(void) ;
+uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins);
 
-
+// global address
 uint8_t _i2c_addr = CONFIG_I2C_PERIPH_ADDR;
 
 bool Adafruit_seesawPeripheral_begin(void) {
@@ -119,10 +121,34 @@ bool Adafruit_seesawPeripheral_begin(void) {
     _i2c_addr += 4;
 #endif
 
+  Adafruit_seesawPeripheral_reset();
 
   Wire.begin(_i2c_addr);
 
   return true;
+}
+
+void Adafruit_seesawPeripheral_reset(void) {
+  uint32_t pins = VALID_GPIO;
+  for (uint8_t pin=0; pin<32; pin++) {
+    if ((pins >> pin) & 0x1) {
+      pinMode(pin, INPUT);
+      digitalWrite(pin, 0);
+    }
+  }
+}
+
+uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins=VALID_GPIO) {
+  uint32_t temp = 0;
+
+  for (uint8_t pin=0; pin<32; pin++) {
+    if ((validpins >> pin) & 0x1) {
+      if (digitalRead(pin)) {
+        temp |= 1UL << pin;
+      }
+    }
+  }
+  return temp;
 }
 
 
