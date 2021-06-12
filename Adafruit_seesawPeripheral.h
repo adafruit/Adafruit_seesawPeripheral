@@ -39,9 +39,13 @@
 
 /********************** Hardcoded chip configration */
 
-#ifdef ARDUINO_AVR_ATtiny817
+#if defined(ARDUINO_AVR_ATtiny817)
   #define UART_DEBUG_RXD 8
   #define UART_DEBUG_TXD 9
+#endif
+#if defined(ARDUINO_AVR_ATtiny816)
+  #define UART_DEBUG_RXD 6
+  #define UART_DEBUG_TXD 7
 #endif
 
 #ifdef CONFIG_ADDR_0_PIN
@@ -67,8 +71,13 @@
 /********************** Available/taken GPIO configuration macros */
 
 #ifdef ARDUINO_AVR_ATtiny817
-  #define ALL_GPIO 0x0FFFFFUL       // this is chip dependant, for 817 we have 20 GPIO avail
+  #define ALL_GPIO 0x0FFFFFUL  // this is chip dependant, for 817 we have 20 GPIO avail
   #define ALL_ADC  0b1111000000110011001111 // pins that have ADC capability
+#endif
+
+#ifdef ARDUINO_AVR_ATtiny816
+  #define ALL_GPIO 0x01FFFFUL  // this is chip dependant, for 816 we have 17 GPIO avail
+  #define ALL_ADC  0b11100001100111111 // pins that have ADC capability
 #endif
 
 #define INVALID_GPIO ((1UL << SDA) | (1UL << SCL) | \
