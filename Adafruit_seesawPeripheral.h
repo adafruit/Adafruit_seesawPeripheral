@@ -68,6 +68,7 @@
 
 #ifdef ARDUINO_AVR_ATtiny817
   #define ALL_GPIO 0x0FFFFFUL       // this is chip dependant, for 817 we have 20 GPIO avail
+  #define ALL_ADC  0b1111000000110011001111 // pins that have ADC capability
 #endif
 
 #define INVALID_GPIO ((1UL << SDA) | (1UL << SCL) | \
@@ -80,6 +81,7 @@
                       0)
 
 #define VALID_GPIO ( ALL_GPIO & ~ INVALID_GPIO )
+#define VALID_ADC ( ALL_GPIO & ~ INVALID_GPIO )
 
 
 
@@ -93,8 +95,6 @@ void requestEvent(void);
 /****************************************************** global state */
 
 volatile uint8_t i2c_buffer[32];
-volatile uint8_t base_cmd;
-volatile uint8_t module_cmd;
 
 #if CONFIG_INTERRUPT
   volatile uint32_t g_irqGPIO = 0;
@@ -102,6 +102,9 @@ volatile uint8_t module_cmd;
   #define IRQ_PULSE_TICKS 2
 #endif
 
+#if CONFIG_ADC
+  volatile uint8_t g_adcStatus = 0;
+#endif
 
 /****************************************************** code */
 
@@ -141,6 +144,8 @@ bool Adafruit_seesawPeripheral_begin(void) {
 
   Adafruit_seesawPeripheral_reset();
 
+  SEESAW_DEBUG(F("I2C 0x"));
+  SEESAW_DEBUGLN(_i2c_addr, HEX);
   Wire.begin(_i2c_addr);
   Wire.onReceive(receiveEvent);
   Wire.onRequest(requestEvent);
@@ -155,6 +160,10 @@ void Adafruit_seesawPeripheral_reset(void) {
       digitalWrite(pin, 0);
     }
   }
+#if CONFIG_INTERRUPT
+  g_irqGPIO = 0;
+  g_irqFlags = 0;
+#endif
 }
 
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins=VALID_GPIO) {

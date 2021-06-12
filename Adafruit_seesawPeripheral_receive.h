@@ -17,8 +17,8 @@ void receiveEvent(int howMany) {
   }
   SEESAW_DEBUG("\n");
 
-  base_cmd = i2c_buffer[0];
-  module_cmd = i2c_buffer[1];
+  uint8_t base_cmd = i2c_buffer[0];
+  uint8_t module_cmd = i2c_buffer[1];
   
   if (base_cmd == SEESAW_STATUS_BASE) {
     if (module_cmd == SEESAW_STATUS_SWRST) {
