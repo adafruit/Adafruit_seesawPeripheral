@@ -1,8 +1,6 @@
 
 /***************************** data read */
-void requestEvent(void) {
-  uint32_t temp = 0;
-  
+void requestEvent(void) {  
   SEESAW_DEBUGLN(F("Requesting data"));
 
   uint8_t base_cmd = i2c_buffer[0];
@@ -17,7 +15,6 @@ void requestEvent(void) {
     }
   }
   else if (base_cmd == SEESAW_GPIO_BASE) {
-    temp = 0x0;
     if (module_cmd == SEESAW_GPIO_BULK) {
        Adafruit_seesawPeripheral_write32(Adafruit_seesawPeripheral_readBulk(VALID_GPIO));
     }
@@ -28,12 +25,13 @@ void requestEvent(void) {
     }
 #endif
   }
+
 #if CONFIG_ADC
   else if (base_cmd == SEESAW_ADC_BASE) {
-    temp = 0xFFFF;
+    uint32_t temp = 0xFFFF;
     if (module_cmd >= SEESAW_ADC_CHANNEL_OFFSET) {
       uint8_t adcpin = module_cmd - SEESAW_ADC_CHANNEL_OFFSET;
-      if (! ((VALID_GPIO & ALL_ADC) & (1UL << adcpin))) {
+      if (! ((VALID_ADC) & (1UL << adcpin))) {
         g_adcStatus = 0x1; // error, invalid pin!
       } else {
         // its valid!
@@ -52,4 +50,8 @@ void requestEvent(void) {
     }
   }
 #endif
+  else {
+    SEESAW_DEBUG(F("Unhandled cmd 0x"));
+    SEESAW_DEBUGLN(base_cmd, HEX);
+  }
 }

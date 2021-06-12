@@ -87,4 +87,35 @@ void receiveEvent(int howMany) {
           }
     }
   }
+
+#if CONFIG_PWM
+  else if (base_cmd == SEESAW_TIMER_BASE) {
+    uint8_t pin = i2c_buffer[2];
+    uint16_t value = i2c_buffer[3];
+    value <<= 8;
+    value |= i2c_buffer[4];
+    if (! (VALID_PWM & (1UL << pin))) {
+      g_pwmStatus = 0x1; // error, invalid pin!
+    } else if (module_cmd == SEESAW_TIMER_PWM) {
+      // its valid!
+      value >>= 8;  // we only support 8 bit analogwrites
+      SEESAW_DEBUG(F("PWM "));
+      SEESAW_DEBUG(pin);
+      SEESAW_DEBUG(F(": "));
+      SEESAW_DEBUGLN(value);
+      
+      pinMode(pin, OUTPUT);
+      analogWrite(pin, value);
+      g_pwmStatus = 0x0;
+    }
+    else if (module_cmd == SEESAW_TIMER_FREQ) {
+      SEESAW_DEBUG(F("Freq "));
+      SEESAW_DEBUG(pin);
+      SEESAW_DEBUG(F(": "));
+      SEESAW_DEBUGLN(value);
+      tone(pin, value);
+      g_pwmStatus = 0x0;
+    }
+  }
+#endif
 }
