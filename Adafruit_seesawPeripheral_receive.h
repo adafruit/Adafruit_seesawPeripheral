@@ -152,7 +152,7 @@ void receiveEvent(int howMany) {
     if (module_cmd == SEESAW_NEOPIXEL_SHOW) {
       SEESAW_DEBUGLN(F("Neo show!"));
       pinMode(g_neopixel_pin, OUTPUT);
-      tinyNeoPixel_show(g_neopixel_pin, g_neopixel_bufsize, g_neopixel_buf);
+      tinyNeoPixel_show(g_neopixel_pin, g_neopixel_bufsize, (uint8_t *)g_neopixel_buf);
     }
   }
 #endif
