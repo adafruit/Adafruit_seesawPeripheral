@@ -13,6 +13,16 @@
   #include "Adafruit_seesawPeripheral_tinyneopixel.h"
 #endif
 
+#if !defined(CONFIG_EEPROM)
+  #define CONFIG_EEPROM  1
+#endif
+
+#if CONFIG_EEPROM
+  #include <EEPROM.h>
+  #define EEPROM_I2C_ADDR (EEPROM.length()-1)
+  bool _i2c_started = false;
+#endif
+
 /*************** UART debugging */
 #if !defined(CONFIG_UART_DEBUG)
   #define CONFIG_UART_DEBUG 0
@@ -138,11 +148,11 @@ uint8_t _i2c_addr = CONFIG_I2C_PERIPH_ADDR;
 
 bool Adafruit_seesawPeripheral_begin(void) {
   
-  SEESAW_DEBUG("All GPIO: "); 
+  SEESAW_DEBUG(F("All GPIO: ")); 
   SEESAW_DEBUGLN(ALL_GPIO, HEX);
-  SEESAW_DEBUG("Invalid: "); 
+  SEESAW_DEBUG(F("Invalid: ")); 
   SEESAW_DEBUGLN(INVALID_GPIO, HEX);
-  SEESAW_DEBUG("Valid: "); 
+  SEESAW_DEBUG(F("Valid: ")); 
   SEESAW_DEBUGLN(VALID_GPIO, HEX);
 
 
@@ -150,6 +160,26 @@ bool Adafruit_seesawPeripheral_begin(void) {
   pinMode(CONFIG_INTERRUPT_PIN, OUTPUT);
   digitalWrite(CONFIG_INTERRUPT_PIN, LOW); 
 #endif
+
+  Adafruit_seesawPeripheral_reset();
+
+  Wire.onReceive(receiveEvent);
+  Wire.onRequest(requestEvent);
+  return true;
+}
+
+void Adafruit_seesawPeripheral_reset(void) {
+  cli();
+
+  SEESAW_DEBUGLN(F("Wire end"));
+  Wire.end();
+
+  _i2c_addr = EEPROM.read(EEPROM_I2C_ADDR);
+  SEESAW_DEBUG(F("EEaddr: 0x"));
+  SEESAW_DEBUGLN(_i2c_addr, HEX);
+  if (_i2c_addr > 0x7F) {
+    _i2c_addr = CONFIG_I2C_PERIPH_ADDR;
+  }
 
 #ifdef CONFIG_ADDR_0
   pinMode(CONFIG_ADDR_0_PIN, INPUT_PULLUP);
@@ -167,17 +197,9 @@ bool Adafruit_seesawPeripheral_begin(void) {
     _i2c_addr += 4;
 #endif
 
-  Adafruit_seesawPeripheral_reset();
-
   SEESAW_DEBUG(F("I2C 0x"));
   SEESAW_DEBUGLN(_i2c_addr, HEX);
-  Wire.begin(_i2c_addr);
-  Wire.onReceive(receiveEvent);
-  Wire.onRequest(requestEvent);
-  return true;
-}
 
-void Adafruit_seesawPeripheral_reset(void) {
   uint32_t pins = VALID_GPIO;
   for (uint8_t pin=0; pin<32; pin++) {
     if ((pins >> pin) & 0x1) {
@@ -201,6 +223,10 @@ void Adafruit_seesawPeripheral_reset(void) {
   }
   g_neopixel_bufsize = 0;
 #endif
+
+  Wire.begin(_i2c_addr);
+  _i2c_started = true;
+  sei();
 }
 
 

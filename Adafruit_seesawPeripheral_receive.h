@@ -4,6 +4,9 @@ void receiveEvent(int howMany) {
   SEESAW_DEBUG(F("Received "));
   SEESAW_DEBUG(howMany);
   SEESAW_DEBUG(F(" bytes:"));
+  for (uint8_t i=howMany; i<sizeof(i2c_buffer); i++) {
+    i2c_buffer[i] = 0;
+  }
 
   if ((uint32_t)howMany > sizeof(i2c_buffer)) {
     SEESAW_DEBUGLN();
@@ -23,7 +26,7 @@ void receiveEvent(int howMany) {
   if (base_cmd == SEESAW_STATUS_BASE) {
     if (module_cmd == SEESAW_STATUS_SWRST) {
       Adafruit_seesawPeripheral_reset();
-      SEESAW_DEBUG(F("Resetting"));
+      SEESAW_DEBUGLN(F("Resetting"));
     }
   }
   else if (base_cmd == SEESAW_GPIO_BASE) {
@@ -154,6 +157,27 @@ void receiveEvent(int howMany) {
       pinMode(g_neopixel_pin, OUTPUT);
       tinyNeoPixel_show(g_neopixel_pin, g_neopixel_bufsize, (uint8_t *)g_neopixel_buf);
     }
+  }
+#endif
+
+#if CONFIG_EEPROM
+  else if (base_cmd == SEESAW_EEPROM_BASE) {
+    // special case for 1 byte at -1 (i2c addr)
+    if ((module_cmd == 0xFF) && (howMany == 3)) {
+      EEPROM.write(EEPROM.length()-1, i2c_buffer[2]);
+    } else {
+      // write the data
+      for (uint8_t i=0; i<howMany-2; i++) {
+        if ((module_cmd+i) < EEPROM.length()) {
+          EEPROM.write(module_cmd+i, i2c_buffer[2+i]);
+          SEESAW_DEBUG(F("EEP $"));
+          SEESAW_DEBUG(module_cmd+i, HEX);
+          SEESAW_DEBUG(F(" <- 0x"));
+          SEESAW_DEBUGLN(i2c_buffer[2+i], HEX);
+        }
+      }
+    }
+   
   }
 #endif
 }

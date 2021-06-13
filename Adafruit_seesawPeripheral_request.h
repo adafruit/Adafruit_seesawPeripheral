@@ -50,6 +50,12 @@ void requestEvent(void) {
     }
   }
 #endif
+
+#if CONFIG_EEPROM
+  else if (base_cmd == SEESAW_EEPROM_BASE) {
+    Wire.write(EEPROM.read(module_cmd % EEPROM.length()));
+  }
+#endif
   else {
     SEESAW_DEBUG(F("Unhandled cmd 0x"));
     SEESAW_DEBUGLN(base_cmd, HEX);
