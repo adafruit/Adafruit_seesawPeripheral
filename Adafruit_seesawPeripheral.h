@@ -9,6 +9,8 @@
 #include <Wire.h>
 #include "Adafruit_seesaw.h"
 
+void foo(void);
+
 #if CONFIG_NEOPIXEL && defined(MEGATINYCORE)
   #include "Adafruit_seesawPeripheral_tinyneopixel.h"
 #endif
@@ -45,7 +47,11 @@
   #define CONFIG_INTERRUPT 0
   #define CONFIG_INTERRUPT_PIN 0
 #endif
-
+#if defined(USE_PINCHANGE_INTERRUPT)
+  #define USE_PINCHANGE_INTERRUPT 1
+#else
+  #define USE_PINCHANGE_INTERRUPT 0
+#endif
 
 #define DATE_CODE 1234 // FIXME
 
@@ -85,7 +91,7 @@
 /********************** Available/taken GPIO configuration macros */
 
 #if defined(ARDUINO_AVR_ATtiny817) || defined(ARDUINO_AVR_ATtiny807)
-  #define ALL_GPIO 0x0FFFFFUL  // this is chip dependant, for 817 we have 20 GPIO avail
+  #define ALL_GPIO 0x1FFFFFUL  // this is chip dependant, for 817 we have 21 GPIO avail (0~20 inc)
   #define ALL_ADC  0b1111000000110011001111 // pins that have ADC capability
   #define ALL_PWM  ((1UL << 0) | (1UL << 1) | (1UL << 9) | (1UL << 10) | \
                     (1UL << 11) | (1UL << 12) | (1UL << 13) | (1UL << 10))
@@ -117,7 +123,7 @@ uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins);
 void receiveEvent(int howMany);
 void requestEvent(void);
 void Adafruit_seesawPeripheral_run(void);
-
+void Adafruit_seesawPeripheral_changedGPIO(void);
 
 /****************************************************** global state */
 
@@ -126,7 +132,8 @@ volatile uint8_t i2c_buffer[32];
 #if CONFIG_INTERRUPT
   volatile uint32_t g_irqGPIO = 0;
   volatile uint32_t g_irqFlags = 0;
-  #define IRQ_PULSE_TICKS 2
+  volatile uint8_t IRQ_pulse_cntr = 0;
+  #define IRQ_PULSE_TICKS 10 // in millis
 #endif
 
 #if CONFIG_ADC
@@ -157,8 +164,7 @@ bool Adafruit_seesawPeripheral_begin(void) {
 
 
 #ifdef CONFIG_INTERRUPT
-  pinMode(CONFIG_INTERRUPT_PIN, OUTPUT);
-  digitalWrite(CONFIG_INTERRUPT_PIN, LOW); 
+  pinMode(CONFIG_INTERRUPT_PIN, INPUT_PULLUP); // open-drainish
 #endif
 
   Adafruit_seesawPeripheral_reset();
@@ -174,24 +180,26 @@ void Adafruit_seesawPeripheral_reset(void) {
   SEESAW_DEBUGLN(F("Wire end"));
   Wire.end();
 
+#if CONFIG_EEPROM
   _i2c_addr = EEPROM.read(EEPROM_I2C_ADDR);
   SEESAW_DEBUG(F("EEaddr: 0x"));
   SEESAW_DEBUGLN(_i2c_addr, HEX);
   if (_i2c_addr > 0x7F) {
     _i2c_addr = CONFIG_I2C_PERIPH_ADDR;
   }
+#endif
 
-#ifdef CONFIG_ADDR_0
+#if CONFIG_ADDR_0
   pinMode(CONFIG_ADDR_0_PIN, INPUT_PULLUP);
   if (!digitalRead(CONFIG_ADDR_0_PIN))
     _i2c_addr += 1;
 #endif
-#ifdef CONFIG_ADDR_1
+#if CONFIG_ADDR_1
   pinMode(CONFIG_ADDR_1_PIN, INPUT_PULLUP);
   if (!digitalRead(CONFIG_ADDR_1_PIN))
     _i2c_addr += 2;
 #endif
-#ifdef CONFIG_ADDR_2
+#if CONFIG_ADDR_2
   pinMode(CONFIG_ADDR_2_PIN, INPUT_PULLUP);
   if (!digitalRead(CONFIG_ADDR_2_PIN))
     _i2c_addr += 4;
@@ -205,6 +213,9 @@ void Adafruit_seesawPeripheral_reset(void) {
     if ((pins >> pin) & 0x1) {
       pinMode(pin, INPUT);
       digitalWrite(pin, 0);
+#if USE_PINCHANGE_INTERRUPT
+      detachInterrupt(digitalPinToInterrupt(pin));
+#endif
     }
   }
 #if CONFIG_INTERRUPT

@@ -1,7 +1,7 @@
 
 /***************************** data read */
 void requestEvent(void) {  
-  SEESAW_DEBUGLN(F("Requesting data"));
+  //SEESAW_DEBUGLN(F("Requesting data"));
 
   uint8_t base_cmd = i2c_buffer[0];
   uint8_t module_cmd = i2c_buffer[1];

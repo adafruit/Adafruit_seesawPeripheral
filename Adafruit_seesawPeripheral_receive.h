@@ -1,9 +1,9 @@
 /***************************** data write */
 
 void receiveEvent(int howMany) {
-  SEESAW_DEBUG(F("Received "));
-  SEESAW_DEBUG(howMany);
-  SEESAW_DEBUG(F(" bytes:"));
+  //EESAW_DEBUG(F("Received "));
+  //SEESAW_DEBUG(howMany);
+  //SEESAW_DEBUG(F(" bytes:"));
   for (uint8_t i=howMany; i<sizeof(i2c_buffer); i++) {
     i2c_buffer[i] = 0;
   }
@@ -14,11 +14,11 @@ void receiveEvent(int howMany) {
   }
   for (uint8_t i=0; i<howMany; i++) {
     i2c_buffer[i] = Wire.read();
-    SEESAW_DEBUG(F("0x"));
-    SEESAW_DEBUG(i2c_buffer[i], HEX);
-    SEESAW_DEBUG(F(" "));
+    //SEESAW_DEBUG(F("0x"));
+    //SEESAW_DEBUG(i2c_buffer[i], HEX);
+    //SEESAW_DEBUG(F(" "));
   }
-  SEESAW_DEBUG("\n");
+  //SEESAW_DEBUG("\n");
 
   uint8_t base_cmd = i2c_buffer[0];
   uint8_t module_cmd = i2c_buffer[1];
@@ -80,10 +80,16 @@ void receiveEvent(int howMany) {
               else if (module_cmd == SEESAW_GPIO_INTENSET) {
                 g_irqGPIO |= 1UL << pin;
                 SEESAW_DEBUGLN(F(" INTEN"));
+#if USE_PINCHANGE_INTERRUPT
+                attachInterrupt(digitalPinToInterrupt(pin), Adafruit_seesawPeripheral_changedGPIO, CHANGE);
+#endif
               }
               else if (module_cmd == SEESAW_GPIO_INTENCLR) {
                 g_irqGPIO &= ~(1UL << pin);
                 SEESAW_DEBUGLN(F(" INTCLR"));
+#if USE_PINCHANGE_INTERRUPT
+                detachInterrupt(digitalPinToInterrupt(pin));
+#endif
               }
 #endif
             }
@@ -153,7 +159,7 @@ void receiveEvent(int howMany) {
       }
     }
     if (module_cmd == SEESAW_NEOPIXEL_SHOW) {
-      SEESAW_DEBUGLN(F("Neo show!"));
+      //SEESAW_DEBUGLN(F("Neo show!"));
       pinMode(g_neopixel_pin, OUTPUT);
       tinyNeoPixel_show(g_neopixel_pin, g_neopixel_bufsize, (uint8_t *)g_neopixel_buf);
     }
