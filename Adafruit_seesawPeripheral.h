@@ -153,13 +153,25 @@ volatile uint8_t i2c_buffer[32];
 // global address
 uint8_t _i2c_addr = CONFIG_I2C_PERIPH_ADDR;
 
-bool Adafruit_seesawPeripheral_begin(void) {
-  char s_month[5];
-  int month, day, year;
+void Adafruit_seesawPeripheral_setDatecode(void) {
 
-  sscanf(__DATE__, "%s %d %d", s_month, &day, &year);
+  char buf[12];
+  char *bufp = buf;
+  int month = 0, day = 0, year = 2000;
   static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
-  month = (strstr(month_names, s_month)-month_names)/3 + 1;
+
+  strncpy(buf, __DATE__, 11);
+  buf[11] = 0;
+
+  bufp[3] = 0;
+  month = (strstr(month_names, bufp)-month_names)/3 + 1;
+
+  bufp += 4;
+  bufp[2] = 0;
+  day = atoi(bufp);
+
+  bufp += 3;
+  year = atoi(bufp);
 
   DATE_CODE = day & 0x1F; // top 5 bits are day of month
 
@@ -168,7 +180,10 @@ bool Adafruit_seesawPeripheral_begin(void) {
 
   DATE_CODE <<= 7;
   DATE_CODE |= (year - 2000) & 0x3F; // bottom 7 bits are year
+}
 
+
+bool Adafruit_seesawPeripheral_begin(void) {
   SEESAW_DEBUG(F("All GPIO: ")); 
   SEESAW_DEBUGLN(ALL_GPIO, HEX);
   SEESAW_DEBUG(F("Invalid: ")); 
@@ -189,6 +204,8 @@ bool Adafruit_seesawPeripheral_begin(void) {
 }
 
 void Adafruit_seesawPeripheral_reset(void) {
+  Adafruit_seesawPeripheral_setDatecode();
+
   cli();
 
   SEESAW_DEBUGLN(F("Wire end"));
