@@ -12,6 +12,7 @@ void requestEvent(void) {
        Wire.write(SEESAW_HW_ID_CODE_TINY8x7);
     }
     if (module_cmd == SEESAW_STATUS_VERSION) {
+      Adafruit_seesawPeripheral_setDatecode();
       Adafruit_seesawPeripheral_write32(CONFIG_VERSION | DATE_CODE);
     }
   }
