@@ -204,6 +204,8 @@ bool Adafruit_seesawPeripheral_begin(void) {
 }
 
 void Adafruit_seesawPeripheral_reset(void) {
+  Adafruit_seesawPeripheral_setDatecode();
+
   cli();
 
   SEESAW_DEBUGLN(F("Wire end"));
