@@ -53,7 +53,7 @@ void foo(void);
   #define USE_PINCHANGE_INTERRUPT 0
 #endif
 
-#define DATE_CODE 1234 // FIXME
+uint16_t DATE_CODE = 0;
 
 #define CONFIG_VERSION (uint32_t)( ( (uint32_t)PRODUCT_CODE << 16 ) | ( (uint16_t)DATE_CODE & 0x0000FFFF) )
 
@@ -154,7 +154,21 @@ volatile uint8_t i2c_buffer[32];
 uint8_t _i2c_addr = CONFIG_I2C_PERIPH_ADDR;
 
 bool Adafruit_seesawPeripheral_begin(void) {
-  
+  char s_month[5];
+  int month, day, year;
+
+  sscanf(__DATE__, "%s %d %d", s_month, &day, &year);
+  static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+  month = (strstr(month_names, s_month)-month_names)/3 + 1;
+
+  DATE_CODE = day & 0x1F; // top 5 bits are day of month
+
+  DATE_CODE <<= 4;
+  DATE_CODE |= month & 0xF; // middle 4 bits are month
+
+  DATE_CODE <<= 7;
+  DATE_CODE |= (year - 2000) & 0x3F; // bottom 7 bits are year
+
   SEESAW_DEBUG(F("All GPIO: ")); 
   SEESAW_DEBUGLN(ALL_GPIO, HEX);
   SEESAW_DEBUG(F("Invalid: ")); 
