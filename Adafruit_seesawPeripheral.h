@@ -68,6 +68,13 @@ uint16_t DATE_CODE = 0;
   #define UART_DEBUG_TXD 7
 #endif
 
+#ifdef CONFIG_ADDR_INVERTED
+  #undef CONFIG_ADDR_INVERTED
+  #define CONFIG_ADDR_INVERTED 1
+#else
+  #define CONFIG_ADDR_INVERTED 0
+#endif
+
 #ifdef CONFIG_ADDR_0_PIN
   #define CONFIG_ADDR_0 1
 #else
@@ -86,7 +93,12 @@ uint16_t DATE_CODE = 0;
   #define CONFIG_ADDR_2 0
   #define CONFIG_ADDR_2_PIN 0
 #endif
-
+#ifdef CONFIG_ADDR_3_PIN
+  #define CONFIG_ADDR_3 1
+#else
+  #define CONFIG_ADDR_3 0
+  #define CONFIG_ADDR_3_PIN 0
+#endif
 
 /********************** Available/taken GPIO configuration macros */
 
@@ -111,6 +123,7 @@ uint16_t DATE_CODE = 0;
                       ((uint32_t)CONFIG_ADDR_0 << CONFIG_ADDR_0_PIN) | \
                       ((uint32_t)CONFIG_ADDR_1 << CONFIG_ADDR_1_PIN) | \
                       ((uint32_t)CONFIG_ADDR_2 << CONFIG_ADDR_2_PIN) | \
+                      ((uint32_t)CONFIG_ADDR_3 << CONFIG_ADDR_3_PIN) | \
                       0)
 
 #define VALID_GPIO ( ALL_GPIO & ~ INVALID_GPIO )
@@ -222,18 +235,23 @@ void Adafruit_seesawPeripheral_reset(void) {
 
 #if CONFIG_ADDR_0
   pinMode(CONFIG_ADDR_0_PIN, INPUT_PULLUP);
-  if (!digitalRead(CONFIG_ADDR_0_PIN))
+  if (digitalRead(CONFIG_ADDR_0_PIN) == CONFIG_ADDR_INVERTED)
     _i2c_addr += 1;
 #endif
 #if CONFIG_ADDR_1
   pinMode(CONFIG_ADDR_1_PIN, INPUT_PULLUP);
-  if (!digitalRead(CONFIG_ADDR_1_PIN))
+  if (digitalRead(CONFIG_ADDR_1_PIN) == CONFIG_ADDR_INVERTED)
     _i2c_addr += 2;
 #endif
 #if CONFIG_ADDR_2
   pinMode(CONFIG_ADDR_2_PIN, INPUT_PULLUP);
-  if (!digitalRead(CONFIG_ADDR_2_PIN))
+  if (digitalRead(CONFIG_ADDR_2_PIN) == CONFIG_ADDR_INVERTED)
     _i2c_addr += 4;
+#endif
+#if CONFIG_ADDR_3
+  pinMode(CONFIG_ADDR_3_PIN, INPUT_PULLUP);
+  if (digitalRead(CONFIG_ADDR_3_PIN) == CONFIG_ADDR_INVERTED)
+    _i2c_addr += 8;
 #endif
 
   SEESAW_DEBUG(F("I2C 0x"));
