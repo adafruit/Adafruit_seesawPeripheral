@@ -53,6 +53,15 @@ void foo(void);
   #define USE_PINCHANGE_INTERRUPT 0
 #endif
 
+/******** FHT (audio spectrum) */
+// FHT is ONLY supported on megaTinyCore (AVR), and will only fit if NO OTHER
+// seesaw variants are enabled (i.e. no GPIO or ADC at same time). Mostly due
+// to flash space and/or RAM, but also because ADC for audio-in requires
+// free-run mode which takes exclusive use of the ADC MUX.
+#if CONFIG_FHT && defined(MEGATINYCORE)
+  #include "Adafruit_seesawPeripheral_fht.h"
+#endif
+
 #define DATE_CODE 1234 // FIXME
 
 #define CONFIG_VERSION (uint32_t)( ( (uint32_t)PRODUCT_CODE << 16 ) | ( (uint16_t)DATE_CODE & 0x0000FFFF) )
@@ -127,7 +136,11 @@ void Adafruit_seesawPeripheral_changedGPIO(void);
 
 /****************************************************** global state */
 
+#if CONFIG_FHT && defined(MEGATINYCORE)
+volatile uint8_t i2c_buffer[2];
+#else
 volatile uint8_t i2c_buffer[32];
+#endif
 
 #if CONFIG_INTERRUPT
   volatile uint32_t g_irqGPIO = 0;
