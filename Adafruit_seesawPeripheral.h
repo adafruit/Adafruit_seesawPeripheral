@@ -142,7 +142,7 @@ void Adafruit_seesawPeripheral_changedGPIO(void);
 /****************************************************** global state */
 
 #if CONFIG_FHT && defined(MEGATINYCORE)
-volatile uint8_t i2c_buffer[2];
+volatile uint8_t i2c_buffer[3]; // Minimal I2C buffer w/FHT because RAM
 volatile uint8_t fht_counter = 0; // For filling FHT input buffer
 #else
 volatile uint8_t i2c_buffer[32];

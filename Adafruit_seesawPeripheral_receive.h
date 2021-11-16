@@ -183,7 +183,25 @@ void receiveEvent(int howMany) {
         }
       }
     }
-   
+  }
+#endif
+
+#if CONFIG_FHT && defined(MEGATINYCORE)
+  else if (base_cmd == SEESAW_EEPROM_BASE) {
+    if ((module_cmd == SEESAW_SPECTRUM_RATE) && (howMany == 3)) {
+      ADC0.INTCTRL &= ~ADC_RESRDY_bm;          // Disable result-ready IRQ
+      uint8_t rate = i2c_buffer[2];            // Requested rate index
+      if (rate > 31) rate = 31;                // Clip rate between 0-31
+      ADC0.SAMPCTRL = rate & 31;               // Set ADC sample control
+      for(uint8_t i=0; i<3; i++) {             // Discard initial readings
+        while(!ADC0.INTFLAGS & ADC_RESRDY_bm); // In the INTFLAG register,
+        ADC0.INTFLAGS |= ADC_RESRDY_bm;        // setting bit clears flag!
+        // (ADC is still free-running and will set RESRDY bit,
+        // it's just not triggering interrupts right now.)
+      }
+      fht_counter = 0;                         // Restart at beginning of buf
+      ADC0.INTCTRL |= ADC_RESRDY_bm;           // Enable result-ready IRQ
+    }
   }
 #endif
 }
