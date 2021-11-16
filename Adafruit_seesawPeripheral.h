@@ -22,7 +22,6 @@ void foo(void);
 #if CONFIG_EEPROM
   #include <EEPROM.h>
   #define EEPROM_I2C_ADDR (EEPROM.length()-1)
-  bool _i2c_started = false;
 #endif
 
 /*************** UART debugging */
@@ -62,7 +61,6 @@ void foo(void);
   #define FHT_N 128
   #define LOG_OUT 1
   #include <FHT.h>
-  //#include "tables.h"
   // TO DO: CHANGE THIS TO PIN (use lookup on init)
   #define ANALOG_MUX 4  // AIN# to use (not always same as Arduino analog pin #)
 #endif
@@ -169,9 +167,6 @@ volatile uint8_t i2c_buffer[32];
 
 /****************************************************** code */
 
-// global address
-uint8_t _i2c_addr = CONFIG_I2C_PERIPH_ADDR;
-
 bool Adafruit_seesawPeripheral_begin(void) {
   
   SEESAW_DEBUG(F("All GPIO: ")); 
@@ -198,6 +193,9 @@ void Adafruit_seesawPeripheral_reset(void) {
 
   SEESAW_DEBUGLN(F("Wire end"));
   Wire.end();
+
+  // Not referenced after Wire.begin(), so this is now local
+  uint8_t _i2c_addr = CONFIG_I2C_PERIPH_ADDR;
 
 #if CONFIG_EEPROM
   _i2c_addr = EEPROM.read(EEPROM_I2C_ADDR);
@@ -306,7 +304,6 @@ void Adafruit_seesawPeripheral_reset(void) {
 #endif
 
   Wire.begin(_i2c_addr);
-  _i2c_started = true;
   sei();
 }
 
