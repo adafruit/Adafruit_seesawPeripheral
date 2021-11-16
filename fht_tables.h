@@ -1,3 +1,8 @@
+// Used by the audio spectrum code to remove noise from the input signal
+// and amplify remainder to compensate.
+
+#if CONFIG_FHT && defined(MEGATINYCORE)
+
 static uint8_t noise[64] = {
   // These figures came from recording "silence" but might be
   // thrown off by ambient noise during recording (computer fans, etc.)
@@ -21,3 +26,5 @@ static uint16_t scale[64] = {
   352, 350, 348, 348, 348, 348, 348, 350, 350, 350, 352, 370, 354, 352, 354, 358,
   360, 362, 360, 383, 404, 385, 364, 364, 368, 399, 374, 381, 407, 428, 436, 412,
   412, 402, 412, 422, 434, 431, 431, 428, 399, 376, 368, 383, 372, 368, 368, 383 };
+
+#endif // end CONFIG_FHT
