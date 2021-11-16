@@ -1,27 +1,10 @@
 #if CONFIG_FHT && defined(MEGATINYCORE)
 
-#define FHT_N 128
-#define LOG_OUT 1
-
-#include <FHT.h>
-//#include "tables.h"
-
-//#define DISABLE_MILLIS // Avail in megaTinyCore Tools menu, but backup here
-
-volatile uint8_t counter = 0; // For filling FHT input buffer
-
-#endif // end CONFIG_FHT
-
 
 #if 0
-#define ANALOG_MUX 4  // AIN# to use (not always same as Arduino analog pin #)
-// AIN4 is PA4 on ATtiny817
-
-// PB1/PB0 is SDA/SCL on Xplained board, but depending on core config,
-// might be PA1/PA2 for SDA/SCL elsewhere. Analog input has been moved
-// to AIN4 (PA4) just in case (previously PA1).
 
 
+#ifdef STEMMA
 
 
 // These are virtual device registers when accessing this as an
@@ -80,69 +63,6 @@ static void receiveEvent(int howMany) {
 }
 
 #endif // end STEMMA
-
-void setup() {
-  pinMode(7, OUTPUT); // PB4 = LED0 on XPlained board
-  digitalWrite(7, HIGH); // HIGH = LED off on XPlained board
-
-#ifdef DISABLE_MILLIS
-#if defined(MILLIS_USE_TIMERA0)
-  TCA0.SPLIT.INTCTRL &= ~TCA_SPLIT_HUNF_bm;
-#elif defined(MILLIS_USE_TIMERA1)
-  TCA1.SPLIT.INTCTRL &= ~TCA_SPLIT_HUNF_bm;
-#elif defined(MILLIS_USE_TIMERB0)
-  TCB0.INTCTRL &= ~TCB_CAPT_bm;
-#elif defined(MILLIS_USE_TIMERB1)
-  TCB1.INTCTRL &= ~TCB_CAPT_bm;
-#elif defined(MILLIS_USE_TIMERD0)
-  TCD0.INTCTRL &= ~TCD_OVF_bm;
-#endif
-#endif // end DISABLE_MILLIS
-
-  // ADC is configured for free-run mode with result-ready interrupt. 10-bit
-  // w/4X accumulation for 12-bit result (0-4092, NOT 4095, because it's the
-  // sum of four 10-bit values, not "true" 12-bit ADC reading).
-  // 1.25 MHz / 4X samples / 25 ADC cycles/sample -> 12500 Hz sample rate.
-  // Highest frequency is 1/2 sampling rate, or 6250 Hz (just under G8 at
-  // 6272 Hz). That’s a default that looks nice, but there's some adjustability
-  // if needed, with the following top frequency range:
-  // 1.25 MHz / 4X / (13+0)  = 24038 sample rate = 12019 peak freq
-  // 1.25 MHz / 4X / (13+31) = 7102 sample rate = 3551 peak freq
-  // 32 possible values, see notes at bottom for corresponding frequencies.
-  // This also affects the "frame rate" or how frequently we can record
-  // 128 samples and perform the FHT.
-  // In very rough, colloquial and layman-ish terms, it would be reasonable
-  // enough to call this "3.5 to 12 KHz adjustable peak frequency," there's
-  // going to be some oscillator variance and so forth anyway.
-  // ALSO: depending on what mic is used, might want to change AREF to
-  // another source. Right now it's the default VDD.
-
-  ADC0.CTRLA = ADC_FREERUN_bm | ADC_ENABLE_bm; // 10-bit, free-run, enable ADC
-  ADC0.CTRLB = ADC_SAMPNUM_ACC4_gc;   // Accumulate 4X (0-4092 (sic.) result)
-  ADC0.CTRLC = ADC_SAMPCAP_bm |       // Reduced capacitance for >1V AREF
-               ADC_REFSEL_VDDREF_gc | // VDD as AREF
-#if F_CPU > 12000000
-               ADC_PRESC_DIV16_gc;    // 16:1 timer prescale (20->1.25 MHz)
-#else
-               ADC_PRESC_DIV8_gc;     // 8:1 timer prescale (10->1.25 MHz)
-#endif
-  ADC0.CTRLD = 0;           // No init or sample delay
-  ADC0.MUXPOS = ANALOG_MUX; // Select pin for analog input
-  ADC0.SAMPCTRL = 12;       // Add to usu. 13 ADC cycles for 25 cycles/sample
-  ADC0.INTCTRL |= ADC_RESRDY_bm; // Enable result-ready interrupt
-  ADC0.COMMAND |= ADC_STCONV_bm; // Start free-run conversion
-}
-
-ISR(ADC0_RESRDY_vect) { // ADC conversion complete
-  // Convert 12-bit ADC reading to signed value (+/-2K) and scale to 16-bit
-  // space (scaling up isn't strictly required but the FHT results look much
-  // cleaner). 2046 (not 2048) is intentional, see ADC notes above, don't "fix."
-  fht_input[counter] = (ADC0.RES - 2046) * 4;
-  if (++counter >= FHT_N) {         // FHT input buffer full?
-    ADC0.INTCTRL &= ~ADC_RESRDY_bm; // Disable result-ready interrupt
-  }
-  // Interrupt flag is cleared automatically when reading ADC0.RES
-}
 
 void loop() {
   while (ADC0.INTCTRL & ADC_RESRDY_bm); // Wait for sampling to finish

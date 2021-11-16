@@ -1,6 +1,6 @@
-
+#if CONFIG_INTERRUPT
 volatile uint32_t g_currentGPIO = 0, g_lastGPIO = 0;
-
+#endif
 
 #if USE_PINCHANGE_INTERRUPT
 void Adafruit_seesawPeripheral_changedGPIO(void) {
