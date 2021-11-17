@@ -54,15 +54,23 @@ void foo(void);
 
 /******** FHT (audio spectrum) */
 // FHT is ONLY supported on megaTinyCore (AVR), and will only fit if NO OTHER
-// seesaw variants are enabled (i.e. no GPIO or ADC at same time). Mostly due
-// to flash space and/or RAM, but also because ADC for audio-in requires
-// free-run mode which takes exclusive use of the ADC MUX.
+// seesaw variants are enabled (i.e. NO GPIO or ADC at same time). Mostly due
+// to flash space and/or RAM (literally zero overhead on ATtiny816/817), but
+// also because ADC for audio-in requires free-run mode which takes exclusive
+// use of the ADC MUX anyway. Input pin is currently #defined here, not
+// passed over via Seesaw lib. That might be possible if needed, but since
+// there's zero RAM remaining, might have to rely on dirty pool like using
+// one of the other ADC registers not in use (TEMP or CTRLE) as a temporary
+// holding spot to get that value into Adafruit_seesawPeripheral_reset().
 #if CONFIG_FHT && defined(MEGATINYCORE)
+  #if CONFIG_ADC
+    #error("Cannot enable both CONFIG_ADC and CONFIG_FHT")
+  #endif
   #define FHT_N 128
   #define LOG_OUT 1
   #include <FHT.h>
-  // TO DO: CHANGE THIS TO PIN (use lookup on init)
-  #define ANALOG_MUX 4  // AIN# to use (not always same as Arduino analog pin #)
+  #define FHT_PIN 0      // Arduino pin # to use for input
+  #define DISABLE_MILLIS // FHT is exclusive (no GPIO, etc.), can do this
 #endif
 
 #define DATE_CODE 1234 // FIXME
@@ -270,20 +278,16 @@ void Adafruit_seesawPeripheral_reset(void) {
   // ADC is configured for free-run mode with result-ready interrupt. 10-bit
   // w/4X accumulation for 12-bit result (0-4092, NOT 4095, because it's the
   // sum of four 10-bit values, not "true" 12-bit ADC reading).
+  // Assuming 10 MHz or 20 MHz F_CPU, possible sampling rates are:
   // 1.25 MHz / 4X samples / 25 ADC cycles/sample -> 12500 Hz sample rate.
   // Highest frequency is 1/2 sampling rate, or 6250 Hz (just under G8 at
   // 6272 Hz). That’s a default that looks nice, but there's some adjustability
   // if needed, with the following top frequency range:
   // 1.25 MHz / 4X / (13+0)  = 24038 sample rate = 12019 peak freq
   // 1.25 MHz / 4X / (13+31) = 7102 sample rate = 3551 peak freq
-  // 32 possible values, see notes at bottom for corresponding frequencies.
-  // This also affects the "frame rate" or how frequently we can record
-  // 128 samples and perform the FHT.
-  // In very rough, colloquial and layman-ish terms, it would be reasonable
-  // enough to call this "3.5 to 12 KHz adjustable peak frequency," there's
-  // going to be some oscillator variance and so forth anyway.
-  // ALSO: depending on what mic is used, might want to change AREF to
-  // another source. Right now it's the default VDD.
+  // Other F_CPU values (8, 12, 16) will result in different ranges.
+  // Depending on what mic is used and its outpot voltage range, might want
+  // to change AREF to another source. Right now it's the default VDD.
 
   fht_counter = 0; // For filling FHT input buffer
 
@@ -297,7 +301,7 @@ void Adafruit_seesawPeripheral_reset(void) {
                ADC_PRESC_DIV8_gc;     // 8:1 timer prescale (10->1.25 MHz)
 #endif
   ADC0.CTRLD = 0;           // No init or sample delay
-  ADC0.MUXPOS = ANALOG_MUX; // Select pin for analog input
+  ADC0.MUXPOS = digitalPinToAnalogInput(FHT_PIN); // Select analog channel
   ADC0.SAMPCTRL = 12;       // Add to usu. 13 ADC cycles for 25 cycles/sample
   ADC0.INTCTRL |= ADC_RESRDY_bm; // Enable result-ready interrupt
   ADC0.COMMAND |= ADC_STCONV_bm; // Start free-run conversion
@@ -310,8 +314,8 @@ void Adafruit_seesawPeripheral_reset(void) {
 #if CONFIG_FHT && defined(MEGATINYCORE)
 ISR(ADC0_RESRDY_vect) { // ADC conversion complete
   // Convert 12-bit ADC reading to signed value (+/-2K) and scale to 16-bit
-  // space (scaling up isn't strictly required but the FHT results look much
-  // cleaner). 2046 (not 2048) is intentional, see ADC notes above, don't "fix."
+  // space (scaling up isn't strictly required but FHT results look cleaner).
+  // 2046 (not 2048) is intentional, see ADC notes above, don't "fix."
   fht_input[fht_counter] = (ADC0.RES - 2046) * 4;
   if (++fht_counter >= FHT_N) {     // FHT input buffer full?
     ADC0.INTCTRL &= ~ADC_RESRDY_bm; // Disable result-ready interrupt
