@@ -57,6 +57,19 @@ void requestEvent(void) {
     Wire.write(EEPROM.read(module_cmd % EEPROM.length()));
   }
 #endif
+
+#if CONFIG_FHT && defined(MEGATINYCORE)
+  else if (base_cmd == SEESAW_SPECTRUM_BASE) {
+    if (module_cmd == SEESAW_SPECTRUM_RESULTS_LOWER) {
+      Wire.write(fht_log_out, 32);
+    } else if (module_cmd == SEESAW_SPECTRUM_RESULTS_UPPER) {
+      Wire.write(&fht_log_out[32], 32);
+    } else if (module_cmd == SEESAW_SPECTRUM_RATE) {
+      Wire.write(ADC0.SAMPCTRL); // Return current sample rate index
+    }
+  }
+#endif
+
   else {
     SEESAW_DEBUG(F("Unhandled cmd 0x"));
     SEESAW_DEBUGLN(base_cmd, HEX);
