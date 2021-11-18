@@ -81,11 +81,11 @@ void foo(void);
 
 /********************** Hardcoded chip configration */
 
-#if defined(ARDUINO_AVR_ATtiny817) || defined(ARDUINO_AVR_ATtiny807)
+#if defined(ARDUINO_AVR_ATtiny817) || defined(ARDUINO_AVR_ATtiny807) || defined(ARDUINO_AVR_ATtiny1617) || defined(ARDUINO_AVR_ATtiny1607)
   #define UART_DEBUG_RXD 8
   #define UART_DEBUG_TXD 9
 #endif
-#if defined(ARDUINO_AVR_ATtiny816) || defined(ARDUINO_AVR_ATtiny806)
+#if defined(ARDUINO_AVR_ATtiny816) || defined(ARDUINO_AVR_ATtiny806) || defined(ARDUINO_AVR_ATtiny1616) || defined(ARDUINO_AVR_ATtiny1606)
   #define UART_DEBUG_RXD 6
   #define UART_DEBUG_TXD 7
 #endif
@@ -112,14 +112,14 @@ void foo(void);
 
 /********************** Available/taken GPIO configuration macros */
 
-#if defined(ARDUINO_AVR_ATtiny817) || defined(ARDUINO_AVR_ATtiny807)
+#if defined(ARDUINO_AVR_ATtiny817) || defined(ARDUINO_AVR_ATtiny807) || defined(ARDUINO_AVR_ATtiny1617) || defined(ARDUINO_AVR_ATtiny1607)
   #define ALL_GPIO 0x1FFFFFUL  // this is chip dependant, for 817 we have 21 GPIO avail (0~20 inc)
   #define ALL_ADC  0b1111000000110011001111 // pins that have ADC capability
   #define ALL_PWM  ((1UL << 0) | (1UL << 1) | (1UL << 9) | (1UL << 10) | \
                     (1UL << 11) | (1UL << 12) | (1UL << 13) | (1UL << 10))
 #endif
 
-#if defined(ARDUINO_AVR_ATtiny816) || defined(ARDUINO_AVR_ATtiny806)
+#if defined(ARDUINO_AVR_ATtiny816) || defined(ARDUINO_AVR_ATtiny806) || defined(ARDUINO_AVR_ATtiny1616) || defined(ARDUINO_AVR_ATtiny1606)
   #define ALL_GPIO 0x01FFFFUL  // this is chip dependant, for 816 we have 17 GPIO avail
   #define ALL_ADC  0b11100001100111111 // pins that have ADC capability
   #define ALL_PWM  ((1UL << 0) | (1UL << 1) | (1UL << 7) | (1UL << 8) | \
