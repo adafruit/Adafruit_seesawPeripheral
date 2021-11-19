@@ -64,6 +64,12 @@ void requestEvent(void) {
       Wire.write(fht_log_out, 32);
     } else if (module_cmd == SEESAW_SPECTRUM_RESULTS_UPPER) {
       Wire.write(&fht_log_out[32], 32);
+    } else if (module_cmd == SEESAW_SPECTRUM_CHANNEL) {
+      // TO DO: this should re-map the current MUXPOS setting to the same
+      // channel mapping as is used in Adafruit_seesawPeripheral_receive.h --
+      // see notes over there. Prob just two values. For now though, for the
+      // sake of initial testing, this just returns the raw MUXPOS setting.
+      Wire.write(ADC0.MUXPOS); // Return current ADC channel
     } else if (module_cmd == SEESAW_SPECTRUM_RATE) {
       Wire.write(ADC0.SAMPCTRL); // Return current sample rate index
     }

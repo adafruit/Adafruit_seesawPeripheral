@@ -71,8 +71,8 @@ void foo(void);
   #define FHT_N 128
   #define LOG_OUT 1
   #include <FHT.h>
-  #define FHT_PIN 0      // Arduino pin # to use for input
-  #define DISABLE_MILLIS // FHT is exclusive (no GPIO, etc.), can do this
+  #define FHT_DEFAULT_PIN 0 // Arduino pin # for input (if no channel select)
+  #define DISABLE_MILLIS    // FHT is exclusive (no GPIO, etc.), can do this
 #endif
 
 #define DATE_CODE 1234 // FIXME
@@ -81,11 +81,11 @@ void foo(void);
 
 /********************** Hardcoded chip configration */
 
-#if defined(ARDUINO_AVR_ATtiny817) || defined(ARDUINO_AVR_ATtiny807) || defined(ARDUINO_AVR_ATtiny1617) || defined(ARDUINO_AVR_ATtiny1607)
+#if defined(ARDUINO_AVR_ATtiny817) || defined(ARDUINO_AVR_ATtiny807) || defined(ARDUINO_AVR_ATtiny1617) || defined(ARDUINO_AVR_ATtiny1607) || defined(ARDUINO_AVR_ATtiny3217)
   #define UART_DEBUG_RXD 8
   #define UART_DEBUG_TXD 9
 #endif
-#if defined(ARDUINO_AVR_ATtiny816) || defined(ARDUINO_AVR_ATtiny806) || defined(ARDUINO_AVR_ATtiny1616) || defined(ARDUINO_AVR_ATtiny1606)
+#if defined(ARDUINO_AVR_ATtiny816) || defined(ARDUINO_AVR_ATtiny806) || defined(ARDUINO_AVR_ATtiny1616) || defined(ARDUINO_AVR_ATtiny1606) || defined(ARDUINO_AVR_ATtiny3216)
   #define UART_DEBUG_RXD 6
   #define UART_DEBUG_TXD 7
 #endif
@@ -112,14 +112,14 @@ void foo(void);
 
 /********************** Available/taken GPIO configuration macros */
 
-#if defined(ARDUINO_AVR_ATtiny817) || defined(ARDUINO_AVR_ATtiny807) || defined(ARDUINO_AVR_ATtiny1617) || defined(ARDUINO_AVR_ATtiny1607)
+#if defined(ARDUINO_AVR_ATtiny817) || defined(ARDUINO_AVR_ATtiny807) || defined(ARDUINO_AVR_ATtiny1617) || defined(ARDUINO_AVR_ATtiny1607) || defined(ARDUINO_AVR_ATtiny3217)
   #define ALL_GPIO 0x1FFFFFUL  // this is chip dependant, for 817 we have 21 GPIO avail (0~20 inc)
   #define ALL_ADC  0b1111000000110011001111 // pins that have ADC capability
   #define ALL_PWM  ((1UL << 0) | (1UL << 1) | (1UL << 9) | (1UL << 10) | \
                     (1UL << 11) | (1UL << 12) | (1UL << 13) | (1UL << 10))
 #endif
 
-#if defined(ARDUINO_AVR_ATtiny816) || defined(ARDUINO_AVR_ATtiny806) || defined(ARDUINO_AVR_ATtiny1616) || defined(ARDUINO_AVR_ATtiny1606)
+#if defined(ARDUINO_AVR_ATtiny816) || defined(ARDUINO_AVR_ATtiny806) || defined(ARDUINO_AVR_ATtiny1616) || defined(ARDUINO_AVR_ATtiny1606) || defined(ARDUINO_AVR_ATtiny3216)
   #define ALL_GPIO 0x01FFFFUL  // this is chip dependant, for 816 we have 17 GPIO avail
   #define ALL_ADC  0b11100001100111111 // pins that have ADC capability
   #define ALL_PWM  ((1UL << 0) | (1UL << 1) | (1UL << 7) | (1UL << 8) | \
@@ -303,7 +303,7 @@ void Adafruit_seesawPeripheral_reset(void) {
                ADC_PRESC_DIV8_gc;     // 8:1 timer prescale (10->1.25 MHz)
 #endif
   ADC0.CTRLD = 0;           // No init or sample delay
-  ADC0.MUXPOS = digitalPinToAnalogInput(FHT_PIN); // Select analog channel
+  ADC0.MUXPOS = digitalPinToAnalogInput(FHT_DEFAULT_PIN);
   ADC0.SAMPCTRL = 12;       // Add to usu. 13 ADC cycles for 25 cycles/sample
   ADC0.INTCTRL |= ADC_RESRDY_bm; // Enable result-ready interrupt
   ADC0.COMMAND |= ADC_STCONV_bm; // Start free-run conversion
