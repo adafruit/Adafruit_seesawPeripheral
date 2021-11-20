@@ -21,7 +21,7 @@ void Adafruit_seesawPeripheral_pinChangeDetect(void) {
   if (changedGPIO) {
     SEESAW_DEBUGLN(F("IRQ"));
     IRQ_pulse_cntr = IRQ_PULSE_TICKS;
-    g_irqFlags |= (changedGPIO & g_irqGPIO);  // flag the irq that changed
+    g_irqFlags |= (changedGPIO & g_irqGPIO); // flag the irq that changed
     digitalWrite(CONFIG_INTERRUPT_PIN, LOW);
     pinMode(CONFIG_INTERRUPT_PIN, OUTPUT);
   }
@@ -31,9 +31,9 @@ void Adafruit_seesawPeripheral_pinChangeDetect(void) {
 #endif
 
 void Adafruit_seesawPeripheral_run(void) {
-#if CONFIG_INTERRUPT && ! USE_PINCHANGE_INTERRUPT
-  // we dont .need. to use the IRQ system which takes a lot of flash and doesn't uniquely
-  // identify pins anyways
+#if CONFIG_INTERRUPT && !USE_PINCHANGE_INTERRUPT
+  // we dont .need. to use the IRQ system which takes a lot of flash and
+  // doesn't uniquely identify pins anyways
   cli();
   Adafruit_seesawPeripheral_pinChangeDetect();
   sei();
@@ -46,7 +46,7 @@ void Adafruit_seesawPeripheral_run(void) {
     // one ms tick
 
     // tick down the pulse width
-    if (IRQ_pulse_cntr) 
+    if (IRQ_pulse_cntr)
       IRQ_pulse_cntr--;
     // time to turn off the IRQ pin?
     if (!IRQ_pulse_cntr) {
@@ -57,7 +57,8 @@ void Adafruit_seesawPeripheral_run(void) {
 #endif
 
 #if CONFIG_FHT && defined(MEGATINYCORE)
-  while (ADC0.INTCTRL & ADC_RESRDY_bm); // Wait for sampling to finish
+  while (ADC0.INTCTRL & ADC_RESRDY_bm)
+    ; // Wait for sampling to finish
 
   fht_window();
   fht_reorder();
@@ -78,7 +79,7 @@ void Adafruit_seesawPeripheral_run(void) {
   ADC0.INTCTRL |= ADC_RESRDY_bm; // Enable result-ready interrupt
 
   // Process and/or dump FHT output
-  for (uint8_t i = 0; i < 64; i++) {
+  for (uint8_t i = 0; i < FHT_N / 2; i++) {
     if (fht_log_out[i] > noise[i]) {
       fht_log_out[i] -= noise[i];
       if (fht_log_out[i] < peak[i]) {
@@ -108,5 +109,5 @@ void Adafruit_seesawPeripheral_run(void) {
   TWI0.SCTRLA |= TWI_DIEN_bm | TWI_APIEN_bm | TWI_PIEN_bm;
 #endif // end CONFIG_FHT
 
-  //delay(10);
+  // delay(10);
 }
