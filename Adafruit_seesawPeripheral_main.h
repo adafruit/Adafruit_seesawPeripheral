@@ -7,9 +7,11 @@ volatile uint32_t g_currentGPIO = 0, g_lastGPIO = 0;
 #endif
 
 #if USE_PINCHANGE_INTERRUPT
+void Adafruit_seesawPeripheral_pinChangeDetect(void);
+
 void Adafruit_seesawPeripheral_changedGPIO(void) {
   SEESAW_DEBUG(F("Change IRQ"));
-  Adafruit_seesawPeripheral_pinChangeDetect()
+  Adafruit_seesawPeripheral_pinChangeDetect();
 }
 #endif
 
