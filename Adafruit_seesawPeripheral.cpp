@@ -3,5 +3,5 @@
 #include <Arduino.h>
 
 void foo(void) {
-  Serial.print("hello");
+//  Serial.print("hello");
 }
