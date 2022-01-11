@@ -17,6 +17,7 @@ void Adafruit_seesawPeripheral_changedGPIO(void) {
 
 #if CONFIG_INTERRUPT
 void Adafruit_seesawPeripheral_pinChangeDetect(void) {
+#if CONFIG_INTERRUPT
   g_currentGPIO = Adafruit_seesawPeripheral_readBulk();
   uint32_t changedGPIO = (g_currentGPIO ^ g_lastGPIO) & g_irqGPIO;
 
@@ -29,13 +30,14 @@ void Adafruit_seesawPeripheral_pinChangeDetect(void) {
   }
 
   g_lastGPIO = g_currentGPIO;
+#endif
 }
 #endif
 
 void Adafruit_seesawPeripheral_run(void) {
-#if CONFIG_INTERRUPT && !USE_PINCHANGE_INTERRUPT
-  // we dont .need. to use the IRQ system which takes a lot of flash and
-  // doesn't uniquely identify pins anyways
+#if CONFIG_INTERRUPT && ! USE_PINCHANGE_INTERRUPT
+  // we dont .need. to use the IRQ system which takes a lot of flash and doesn't uniquely
+  // identify pins anyways
   cli();
   Adafruit_seesawPeripheral_pinChangeDetect();
   sei();

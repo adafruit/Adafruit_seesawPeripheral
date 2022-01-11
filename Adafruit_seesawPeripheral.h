@@ -78,7 +78,7 @@ void foo(void);
 #define DISABLE_MILLIS    // FHT is exclusive (no GPIO, etc.), can do this
 #endif
 
-#define DATE_CODE 1234 // FIXME
+uint16_t DATE_CODE = 0;
 
 #define CONFIG_VERSION                                                         \
   (uint32_t)(((uint32_t)PRODUCT_CODE << 16) |                                  \
@@ -100,6 +100,13 @@ void foo(void);
 #define UART_DEBUG_TXD 7
 #endif
 
+#ifdef CONFIG_ADDR_INVERTED
+  #undef CONFIG_ADDR_INVERTED
+  #define CONFIG_ADDR_INVERTED 1
+#else
+  #define CONFIG_ADDR_INVERTED 0
+#endif
+
 #ifdef CONFIG_ADDR_0_PIN
 #define CONFIG_ADDR_0 1
 #else
@@ -117,6 +124,12 @@ void foo(void);
 #else
 #define CONFIG_ADDR_2 0
 #define CONFIG_ADDR_2_PIN 0
+#endif
+#ifdef CONFIG_ADDR_3_PIN
+  #define CONFIG_ADDR_3 1
+#else
+  #define CONFIG_ADDR_3 0
+  #define CONFIG_ADDR_3_PIN 0
 #endif
 
 /********************** Available/taken GPIO configuration macros */
@@ -144,14 +157,15 @@ void foo(void);
    (1UL << 10) | (1UL << 11) | (1UL << 16))
 #endif
 
-#define INVALID_GPIO                                                           \
-  ((1UL << SDA) | (1UL << SCL) |                                               \
-   ((uint32_t)CONFIG_UART_DEBUG << UART_DEBUG_RXD) |                           \
-   ((uint32_t)CONFIG_UART_DEBUG << UART_DEBUG_TXD) |                           \
-   ((uint32_t)CONFIG_INTERRUPT << CONFIG_INTERRUPT_PIN) |                      \
-   ((uint32_t)CONFIG_ADDR_0 << CONFIG_ADDR_0_PIN) |                            \
-   ((uint32_t)CONFIG_ADDR_1 << CONFIG_ADDR_1_PIN) |                            \
-   ((uint32_t)CONFIG_ADDR_2 << CONFIG_ADDR_2_PIN) | 0)
+#define INVALID_GPIO ((1UL << SDA) | (1UL << SCL) | \
+                      ((uint32_t)CONFIG_UART_DEBUG << UART_DEBUG_RXD) | \
+                      ((uint32_t)CONFIG_UART_DEBUG << UART_DEBUG_TXD)   |   \
+                      ((uint32_t)CONFIG_INTERRUPT << CONFIG_INTERRUPT_PIN) | \
+                      ((uint32_t)CONFIG_ADDR_0 << CONFIG_ADDR_0_PIN) | \
+                      ((uint32_t)CONFIG_ADDR_1 << CONFIG_ADDR_1_PIN) | \
+                      ((uint32_t)CONFIG_ADDR_2 << CONFIG_ADDR_2_PIN) | \
+                      ((uint32_t)CONFIG_ADDR_3 << CONFIG_ADDR_3_PIN) | \
+                      0)
 
 #define VALID_GPIO (ALL_GPIO & ~INVALID_GPIO)
 #define VALID_ADC (ALL_ADC & VALID_GPIO)
@@ -194,9 +208,41 @@ volatile uint8_t g_neopixel_pin = 0;
 
 /****************************************************** code */
 
-bool Adafruit_seesawPeripheral_begin(void) {
+// global address
+uint8_t _i2c_addr = CONFIG_I2C_PERIPH_ADDR;
 
-  SEESAW_DEBUG(F("All GPIO: "));
+void Adafruit_seesawPeripheral_setDatecode(void) {
+
+  char buf[12];
+  char *bufp = buf;
+  int month = 0, day = 0, year = 2000;
+  static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+
+  strncpy(buf, __DATE__, 11);
+  buf[11] = 0;
+
+  bufp[3] = 0;
+  month = (strstr(month_names, bufp)-month_names)/3 + 1;
+
+  bufp += 4;
+  bufp[2] = 0;
+  day = atoi(bufp);
+
+  bufp += 3;
+  year = atoi(bufp);
+
+  DATE_CODE = day & 0x1F; // top 5 bits are day of month
+
+  DATE_CODE <<= 4;
+  DATE_CODE |= month & 0xF; // middle 4 bits are month
+
+  DATE_CODE <<= 7;
+  DATE_CODE |= (year - 2000) & 0x3F; // bottom 7 bits are year
+}
+
+
+bool Adafruit_seesawPeripheral_begin(void) {
+  SEESAW_DEBUG(F("All GPIO: ")); 
   SEESAW_DEBUGLN(ALL_GPIO, HEX);
   SEESAW_DEBUG(F("Invalid: "));
   SEESAW_DEBUGLN(INVALID_GPIO, HEX);
@@ -215,6 +261,8 @@ bool Adafruit_seesawPeripheral_begin(void) {
 }
 
 void Adafruit_seesawPeripheral_reset(void) {
+  Adafruit_seesawPeripheral_setDatecode();
+
   cli();
 
   SEESAW_DEBUGLN(F("Wire end"));
@@ -234,18 +282,23 @@ void Adafruit_seesawPeripheral_reset(void) {
 
 #if CONFIG_ADDR_0
   pinMode(CONFIG_ADDR_0_PIN, INPUT_PULLUP);
-  if (!digitalRead(CONFIG_ADDR_0_PIN))
+  if (digitalRead(CONFIG_ADDR_0_PIN) == CONFIG_ADDR_INVERTED)
     _i2c_addr += 1;
 #endif
 #if CONFIG_ADDR_1
   pinMode(CONFIG_ADDR_1_PIN, INPUT_PULLUP);
-  if (!digitalRead(CONFIG_ADDR_1_PIN))
+  if (digitalRead(CONFIG_ADDR_1_PIN) == CONFIG_ADDR_INVERTED)
     _i2c_addr += 2;
 #endif
 #if CONFIG_ADDR_2
   pinMode(CONFIG_ADDR_2_PIN, INPUT_PULLUP);
-  if (!digitalRead(CONFIG_ADDR_2_PIN))
+  if (digitalRead(CONFIG_ADDR_2_PIN) == CONFIG_ADDR_INVERTED)
     _i2c_addr += 4;
+#endif
+#if CONFIG_ADDR_3
+  pinMode(CONFIG_ADDR_3_PIN, INPUT_PULLUP);
+  if (digitalRead(CONFIG_ADDR_3_PIN) == CONFIG_ADDR_INVERTED)
+    _i2c_addr += 8;
 #endif
 
   SEESAW_DEBUG(F("I2C 0x"));
