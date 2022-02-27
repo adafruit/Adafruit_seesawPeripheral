@@ -195,7 +195,7 @@ volatile uint32_t g_irqFlags = 0;
 volatile uint8_t IRQ_debounce_cntr = 0;
 volatile uint8_t IRQ_pulse_cntr = 0;
 #define IRQ_PULSE_TICKS 10 // in millis
-#define IRQ_DEBOUNCE_TICKS 5 // in millis
+#define IRQ_DEBOUNCE_TICKS 3 // in millis
 #endif
 
 #if CONFIG_ADC
