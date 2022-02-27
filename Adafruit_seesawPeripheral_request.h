@@ -17,11 +17,14 @@ void requestEvent(void) {
   } else if (base_cmd == SEESAW_GPIO_BASE) {
     if (module_cmd == SEESAW_GPIO_BULK) {
       Adafruit_seesawPeripheral_write32(g_bufferedBulkGPIORead); // instant reply because we did the write before
+      g_irqFlags = 0; // reading the gpio pins clears them
+      Adafruit_seesawPeripheral_clearIRQ();
     }
 #if CONFIG_INTERRUPT
     else if (module_cmd == SEESAW_GPIO_INTFLAG) {
       Adafruit_seesawPeripheral_write32(g_irqFlags);
       g_irqFlags = 0; // reading the flags clears them
+      Adafruit_seesawPeripheral_clearIRQ();
     }
 #endif
   }

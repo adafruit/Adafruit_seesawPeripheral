@@ -22,10 +22,8 @@ void Adafruit_seesawPeripheral_pinChangeDetect(void) {
 
   if (changedGPIO) {
     SEESAW_DEBUGLN(F("IRQ"));
-    IRQ_pulse_cntr = IRQ_PULSE_TICKS;
     g_irqFlags |= (changedGPIO & g_irqGPIO); // flag the irq that changed
-    digitalWrite(CONFIG_INTERRUPT_PIN, LOW);
-    pinMode(CONFIG_INTERRUPT_PIN, OUTPUT);
+    Adafruit_seesawPeripheral_setIRQ();
   }
 
   g_lastGPIO = g_currentGPIO;
@@ -47,15 +45,6 @@ void Adafruit_seesawPeripheral_run(void) {
   uint32_t now = millis();
   if (last_millis != now) {
     // one ms tick
-
-    // tick down the pulse width
-    if (IRQ_pulse_cntr)
-      IRQ_pulse_cntr--;
-    // time to turn off the IRQ pin?
-    if (!IRQ_pulse_cntr) {
-      pinMode(CONFIG_INTERRUPT_PIN, INPUT_PULLUP); // open-drainish
-    }
-
     // tick down the gpio irq cheker
     if (IRQ_debounce_cntr)
       IRQ_debounce_cntr--;

@@ -193,8 +193,6 @@ volatile uint8_t i2c_buffer[32];
 volatile uint32_t g_irqGPIO = 0;
 volatile uint32_t g_irqFlags = 0;
 volatile uint8_t IRQ_debounce_cntr = 0;
-volatile uint8_t IRQ_pulse_cntr = 0;
-#define IRQ_PULSE_TICKS 10 // in millis
 #define IRQ_DEBOUNCE_TICKS 3 // in millis
 #endif
 
@@ -245,6 +243,16 @@ void Adafruit_seesawPeripheral_setDatecode(void) {
 }
 
 
+void Adafruit_seesawPeripheral_setIRQ(void) {
+  digitalWrite(CONFIG_INTERRUPT_PIN, LOW);
+  pinMode(CONFIG_INTERRUPT_PIN, OUTPUT);
+}
+
+void Adafruit_seesawPeripheral_clearIRQ(void) {
+  // time to turn off the IRQ pin?
+  pinMode(CONFIG_INTERRUPT_PIN, INPUT_PULLUP); // open-drainish
+}
+
 bool Adafruit_seesawPeripheral_begin(void) {
   SEESAW_DEBUG(F("All GPIO: ")); 
   SEESAW_DEBUGLN(ALL_GPIO, HEX);
@@ -254,7 +262,7 @@ bool Adafruit_seesawPeripheral_begin(void) {
   SEESAW_DEBUGLN(VALID_GPIO, HEX);
 
 #ifdef CONFIG_INTERRUPT
-  pinMode(CONFIG_INTERRUPT_PIN, INPUT_PULLUP); // open-drainish
+  Adafruit_seesawPeripheral_clearIRQ();
 #endif
 
   Adafruit_seesawPeripheral_reset();
