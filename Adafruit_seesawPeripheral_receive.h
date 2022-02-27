@@ -21,9 +21,9 @@ static void restart_sampling(void) {
 /***************************** data write */
 
 void receiveEvent(int howMany) {
-  //SEESAW_DEBUG(F("Received "));
-  //SEESAW_DEBUG(howMany);
-  //SEESAW_DEBUG(F(" bytes:"));
+  SEESAW_DEBUG(F("Received "));
+  SEESAW_DEBUG(howMany);
+  SEESAW_DEBUG(F(" bytes:"));
   for (uint8_t i=howMany; i<sizeof(i2c_buffer); i++) {
     i2c_buffer[i] = 0;
   }
@@ -61,9 +61,23 @@ void receiveEvent(int howMany) {
 
     switch (module_cmd) {
       case SEESAW_GPIO_BULK:
-        g_bufferedBulkGPIORead = Adafruit_seesawPeripheral_readBulk(VALID_GPIO);
+        if (howMany == 2) {
+          // we're about to request the data next so we'll do the read now
+          g_bufferedBulkGPIORead = Adafruit_seesawPeripheral_readBulk(VALID_GPIO);
+          break;
+        }
+  pinMode(1, OUTPUT);
+  digitalWriteFast(1, HIGH);
+        // otherwise, we are writing bulk data!
+        uint32_t pinmask = 0x1;
+        for (uint8_t pin=0; pin<32; pin++) {
+          if (VALID_GPIO & pinmask) {
+            digitalWrite(pin, (temp >> pin) & 0x1);
+          }
+          pinmask <<= 1;
+        }
+  digitalWriteFast(1, LOW);
         break;
-
       case SEESAW_GPIO_DIRSET_BULK:
       case SEESAW_GPIO_DIRCLR_BULK:
       case SEESAW_GPIO_BULK_SET:
@@ -76,6 +90,7 @@ void receiveEvent(int howMany) {
             if ((temp >> pin) & 0x1) {
               SEESAW_DEBUG(F("Set pin "));
               SEESAW_DEBUG(pin);
+
               if (module_cmd == SEESAW_GPIO_DIRSET_BULK) {
                 pinMode(pin, OUTPUT);
                 SEESAW_DEBUGLN(F(" OUTPUT"));
@@ -133,7 +148,7 @@ void receiveEvent(int howMany) {
         SEESAW_DEBUG(adcpin);
         SEESAW_DEBUG(F(": "));
         g_bufferedADCRead = analogRead(adcpin);
-        SEESAW_DEBUGLN(temp);
+        SEESAW_DEBUGLN(g_bufferedADCRead);
         g_adcStatus = 0x0;
       }
     }
