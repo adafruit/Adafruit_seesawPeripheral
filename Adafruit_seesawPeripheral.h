@@ -429,12 +429,10 @@ uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
 }
 
 void Adafruit_seesawPeripheral_write32(uint32_t value) {
-  uint8_t buff[4];
-  buff[0] = value >> 24;
-  buff[1] = value >> 16;
-  buff[2] = value >> 8;
-  buff[3] = value;
-  Wire.write(buff, 4);
+  Wire.write(value >> 24);
+  Wire.write(value >> 16);
+  Wire.write(value >> 8);
+  Wire.write(value);
   return;
 }
 
