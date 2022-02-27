@@ -1,23 +1,22 @@
 #define SEESAW_HW_ID_CODE_TINY8x7 0x87
+extern volatile uint32_t g_bufferedBulkGPIORead;
 
 /***************************** data read */
 void requestEvent(void) {
   // SEESAW_DEBUGLN(F("Requesting data"));
-
   uint8_t base_cmd = i2c_buffer[0];
   uint8_t module_cmd = i2c_buffer[1];
 
   if (base_cmd == SEESAW_STATUS_BASE) {
     if (module_cmd == SEESAW_STATUS_HW_ID) {
-      Wire.write(SEESAW_HW_ID_CODE_TINY8x7);
+      Wire.write(SEESAW_HW_ID_CODE_TINY8x7); // instant reply
     }
     if (module_cmd == SEESAW_STATUS_VERSION) {
-      Adafruit_seesawPeripheral_write32(CONFIG_VERSION | DATE_CODE);
+      Adafruit_seesawPeripheral_write32(CONFIG_VERSION | DATE_CODE); // instant reply
     }
   } else if (base_cmd == SEESAW_GPIO_BASE) {
     if (module_cmd == SEESAW_GPIO_BULK) {
-      Adafruit_seesawPeripheral_write32(
-          Adafruit_seesawPeripheral_readBulk(VALID_GPIO));
+      Adafruit_seesawPeripheral_write32(g_bufferedBulkGPIORead); // instant reply because we did the write before
     }
 #if CONFIG_INTERRUPT
     else if (module_cmd == SEESAW_GPIO_INTFLAG) {

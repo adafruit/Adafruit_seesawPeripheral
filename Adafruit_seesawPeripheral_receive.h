@@ -1,3 +1,5 @@
+volatile uint32_t g_bufferedBulkGPIORead = 0;
+
 #if CONFIG_FHT && defined(MEGATINYCORE)
 // If ADC sampling rate or MUX channel is changed, this function gets
 // called to discard a couple of initial ADC readings (which are invalid
@@ -57,6 +59,10 @@ void receiveEvent(int howMany) {
     temp |= i2c_buffer[5];
 
     switch (module_cmd) {
+      case SEESAW_GPIO_BULK:
+        g_bufferedBulkGPIORead = Adafruit_seesawPeripheral_readBulk(VALID_GPIO);
+        break;
+
       case SEESAW_GPIO_DIRSET_BULK:
       case SEESAW_GPIO_DIRCLR_BULK:
       case SEESAW_GPIO_BULK_SET:

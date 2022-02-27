@@ -406,14 +406,14 @@ ISR(ADC0_RESRDY_vect) { // ADC conversion complete
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
   uint32_t temp = 0;
   
-  //pinMode(12, OUTPUT);
   // read all ports
   uint8_t port_reads[3] = {0, 0, 0};
   port_reads[0] = VPORTA.IN;
   port_reads[1] = VPORTB.IN;
   port_reads[2] = VPORTC.IN;
 
-  //digitalWriteFast(12, HIGH);
+  //pinMode(2, OUTPUT);
+  //digitalWriteFast(2, HIGH);
   for (uint8_t pin = 0; pin < 32; pin++) {
     if (validpins & 0x1) {
       uint8_t mask = 1 << digital_pin_to_bit_position[pin];
@@ -424,7 +424,7 @@ uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
     }
     validpins >>= 1;
   }
-  //digitalWriteFast(12, LOW);
+  //digitalWriteFast(2, LOW);
   return temp;
 }
 
