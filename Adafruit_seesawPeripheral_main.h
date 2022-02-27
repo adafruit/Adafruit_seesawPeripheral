@@ -17,8 +17,7 @@ void Adafruit_seesawPeripheral_changedGPIO(void) {
 
 #if CONFIG_INTERRUPT
 void Adafruit_seesawPeripheral_pinChangeDetect(void) {
-#if CONFIG_INTERRUPT
-  g_currentGPIO = Adafruit_seesawPeripheral_readBulk();
+  g_currentGPIO = Adafruit_seesawPeripheral_readBulk(g_irqGPIO);
   uint32_t changedGPIO = (g_currentGPIO ^ g_lastGPIO) & g_irqGPIO;
 
   if (changedGPIO) {
@@ -30,17 +29,17 @@ void Adafruit_seesawPeripheral_pinChangeDetect(void) {
   }
 
   g_lastGPIO = g_currentGPIO;
-#endif
 }
 #endif
 
 void Adafruit_seesawPeripheral_run(void) {
 #if CONFIG_INTERRUPT && ! USE_PINCHANGE_INTERRUPT
-  // we dont .need. to use the IRQ system which takes a lot of flash and doesn't uniquely
-  // identify pins anyways
-  cli();
-  Adafruit_seesawPeripheral_pinChangeDetect();
-  sei();
+  // we dont .need. to use the IRQ system which takes a lot of flash and 
+  // doesn't uniquely identify pins anyways
+  if (IRQ_debounce_cntr == 0) {
+    Adafruit_seesawPeripheral_pinChangeDetect();
+    IRQ_debounce_cntr = IRQ_DEBOUNCE_TICKS;
+  }
 #endif
 
 #if CONFIG_INTERRUPT
@@ -56,6 +55,11 @@ void Adafruit_seesawPeripheral_run(void) {
     if (!IRQ_pulse_cntr) {
       pinMode(CONFIG_INTERRUPT_PIN, INPUT_PULLUP); // open-drainish
     }
+
+    // tick down the gpio irq cheker
+    if (IRQ_debounce_cntr)
+      IRQ_debounce_cntr--;
+
     last_millis = now;
   }
 #endif

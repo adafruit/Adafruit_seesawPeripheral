@@ -18,7 +18,7 @@ static void restart_sampling(void) {
 /***************************** data write */
 
 void receiveEvent(int howMany) {
-  //EESAW_DEBUG(F("Received "));
+  //SEESAW_DEBUG(F("Received "));
   //SEESAW_DEBUG(howMany);
   //SEESAW_DEBUG(F(" bytes:"));
   for (uint8_t i=howMany; i<sizeof(i2c_buffer); i++) {

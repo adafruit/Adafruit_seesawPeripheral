@@ -8,6 +8,8 @@
 #include "Adafruit_seesaw.h"
 #include "Arduino.h"
 #include <Wire.h>
+#include "wiring_private.h"
+#include "pins_arduino.h"
 
 void foo(void);
 
@@ -190,8 +192,10 @@ volatile uint8_t i2c_buffer[32];
 #if CONFIG_INTERRUPT
 volatile uint32_t g_irqGPIO = 0;
 volatile uint32_t g_irqFlags = 0;
+volatile uint8_t IRQ_debounce_cntr = 0;
 volatile uint8_t IRQ_pulse_cntr = 0;
 #define IRQ_PULSE_TICKS 10 // in millis
+#define IRQ_DEBOUNCE_TICKS 5 // in millis
 #endif
 
 #if CONFIG_ADC
@@ -398,16 +402,29 @@ ISR(ADC0_RESRDY_vect) { // ADC conversion complete
 }
 #endif
 
+
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
   uint32_t temp = 0;
+  
+  //pinMode(12, OUTPUT);
+  // read all ports
+  uint8_t port_reads[3] = {0, 0, 0};
+  port_reads[0] = VPORTA.IN;
+  port_reads[1] = VPORTB.IN;
+  port_reads[2] = VPORTC.IN;
 
+  //digitalWriteFast(12, HIGH);
   for (uint8_t pin = 0; pin < 32; pin++) {
-    if ((validpins >> pin) & 0x1) {
-      if (digitalRead(pin)) {
+    if (validpins & 0x1) {
+      uint8_t mask = 1 << digital_pin_to_bit_position[pin];
+      uint8_t port = digital_pin_to_port[pin];
+      if (port_reads[port] & mask) {
         temp |= 1UL << pin;
       }
     }
+    validpins >>= 1;
   }
+  //digitalWriteFast(12, LOW);
   return temp;
 }
 
