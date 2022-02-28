@@ -64,19 +64,19 @@ void receiveEvent(int howMany) {
         if (howMany == 2) {
           // we're about to request the data next so we'll do the read now
           g_bufferedBulkGPIORead = Adafruit_seesawPeripheral_readBulk(VALID_GPIO);
-          break;
-        }
-  pinMode(1, OUTPUT);
-  digitalWriteFast(1, HIGH);
-        // otherwise, we are writing bulk data!
-        uint32_t pinmask = 0x1;
-        for (uint8_t pin=0; pin<32; pin++) {
-          if (VALID_GPIO & pinmask) {
-            digitalWrite(pin, (temp >> pin) & 0x1);
+        } else {
+          //pinMode(1, OUTPUT);
+          //digitalWriteFast(1, HIGH);
+          // otherwise, we are writing bulk data!
+          uint32_t pinmask = 0x1;
+          for (uint8_t pin=0; pin<32; pin++) {
+            if (VALID_GPIO & pinmask) {
+              digitalWrite(pin, (temp >> pin) & 0x1);
+            }
+            pinmask <<= 1;
           }
-          pinmask <<= 1;
+         // digitalWriteFast(1, LOW);
         }
-  digitalWriteFast(1, LOW);
         break;
       case SEESAW_GPIO_DIRSET_BULK:
       case SEESAW_GPIO_DIRCLR_BULK:
