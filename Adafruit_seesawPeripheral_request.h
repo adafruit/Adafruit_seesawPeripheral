@@ -57,6 +57,26 @@ void requestEvent(void) {
   }
 #endif
 
+#if CONFIG_ENCODER
+  else if (base_cmd == SEESAW_ENCODER_BASE) {
+    uint8_t encoder_num = 0;
+    if (module_cmd >= SEESAW_ENCODER_POSITION && module_cmd < SEESAW_ENCODER_DELTA) {
+      encoder_num = module_cmd - SEESAW_ENCODER_POSITION;
+      if (encoder_num < CONFIG_NUM_ENCODERS){
+        Adafruit_seesawPeripheral_write32(g_enc_value[encoder_num]);
+        g_enc_delta[encoder_num] = 0;
+      }
+    }
+    else if (module_cmd >= SEESAW_ENCODER_DELTA) {
+      encoder_num = module_cmd - SEESAW_ENCODER_DELTA;
+      if (encoder_num < CONFIG_NUM_ENCODERS){
+        Adafruit_seesawPeripheral_write32(g_enc_delta[encoder_num]);
+        g_enc_delta[encoder_num] = 0;
+      }
+    }
+  }
+#endif
+
 #if CONFIG_FHT && defined(MEGATINYCORE)
   else if (base_cmd == SEESAW_SPECTRUM_BASE) {
     // TO DO: change to A/B/C/D results if we decide on FHT_N = 256.
