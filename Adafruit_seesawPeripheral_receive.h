@@ -1,3 +1,6 @@
+volatile uint32_t g_bufferedBulkGPIORead = 0;
+volatile uint16_t g_bufferedADCRead = 0;
+
 #if CONFIG_FHT && defined(MEGATINYCORE)
 // If ADC sampling rate or MUX channel is changed, this function gets
 // called to discard a couple of initial ADC readings (which are invalid
@@ -18,9 +21,9 @@ static void restart_sampling(void) {
 /***************************** data write */
 
 void receiveEvent(int howMany) {
-  //EESAW_DEBUG(F("Received "));
-  //SEESAW_DEBUG(howMany);
-  //SEESAW_DEBUG(F(" bytes:"));
+  SEESAW_DEBUG(F("Received "));
+  SEESAW_DEBUG(howMany);
+  SEESAW_DEBUG(F(" bytes:"));
   for (uint8_t i=howMany; i<sizeof(i2c_buffer); i++) {
     i2c_buffer[i] = 0;
   }
@@ -57,6 +60,24 @@ void receiveEvent(int howMany) {
     temp |= i2c_buffer[5];
 
     switch (module_cmd) {
+      case SEESAW_GPIO_BULK:
+        if (howMany == 2) {
+          // we're about to request the data next so we'll do the read now
+          g_bufferedBulkGPIORead = Adafruit_seesawPeripheral_readBulk(VALID_GPIO);
+        } else {
+          //pinMode(1, OUTPUT);
+          //digitalWriteFast(1, HIGH);
+          // otherwise, we are writing bulk data!
+          uint32_t pinmask = 0x1;
+          for (uint8_t pin=0; pin<32; pin++) {
+            if (VALID_GPIO & pinmask) {
+              digitalWrite(pin, (temp >> pin) & 0x1);
+            }
+            pinmask <<= 1;
+          }
+         // digitalWriteFast(1, LOW);
+        }
+        break;
       case SEESAW_GPIO_DIRSET_BULK:
       case SEESAW_GPIO_DIRCLR_BULK:
       case SEESAW_GPIO_BULK_SET:
@@ -69,6 +90,7 @@ void receiveEvent(int howMany) {
             if ((temp >> pin) & 0x1) {
               SEESAW_DEBUG(F("Set pin "));
               SEESAW_DEBUG(pin);
+
               if (module_cmd == SEESAW_GPIO_DIRSET_BULK) {
                 pinMode(pin, OUTPUT);
                 SEESAW_DEBUGLN(F(" OUTPUT"));
@@ -113,6 +135,26 @@ void receiveEvent(int howMany) {
           }
     }
   }
+
+#if CONFIG_ADC
+  else if (base_cmd == SEESAW_ADC_BASE) {
+    if (module_cmd >= SEESAW_ADC_CHANNEL_OFFSET) {
+      uint8_t adcpin = module_cmd - SEESAW_ADC_CHANNEL_OFFSET;
+      if (!((VALID_ADC) & (1UL << adcpin))) {
+        g_adcStatus = 0x1; // error, invalid pin!
+      } else {
+        // its valid!
+        SEESAW_DEBUG(F("ADC read "));
+        SEESAW_DEBUG(adcpin);
+        SEESAW_DEBUG(F(": "));
+        g_bufferedADCRead = analogRead(adcpin);
+        SEESAW_DEBUGLN(g_bufferedADCRead);
+        g_adcStatus = 0x0;
+      }
+    }
+  }
+#endif
+
 
 #if CONFIG_PWM
   else if (base_cmd == SEESAW_TIMER_BASE) {

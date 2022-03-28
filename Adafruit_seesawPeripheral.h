@@ -8,6 +8,8 @@
 #include "Adafruit_seesaw.h"
 #include "Arduino.h"
 #include <Wire.h>
+#include "wiring_private.h"
+#include "pins_arduino.h"
 
 void foo(void);
 
@@ -190,8 +192,8 @@ volatile uint8_t i2c_buffer[32];
 #if CONFIG_INTERRUPT
 volatile uint32_t g_irqGPIO = 0;
 volatile uint32_t g_irqFlags = 0;
-volatile uint8_t IRQ_pulse_cntr = 0;
-#define IRQ_PULSE_TICKS 10 // in millis
+volatile uint8_t IRQ_debounce_cntr = 0;
+#define IRQ_DEBOUNCE_TICKS 3 // in millis
 #endif
 
 #if CONFIG_ADC
@@ -241,6 +243,16 @@ void Adafruit_seesawPeripheral_setDatecode(void) {
 }
 
 
+void Adafruit_seesawPeripheral_setIRQ(void) {
+  digitalWrite(CONFIG_INTERRUPT_PIN, LOW);
+  pinMode(CONFIG_INTERRUPT_PIN, OUTPUT);
+}
+
+void Adafruit_seesawPeripheral_clearIRQ(void) {
+  // time to turn off the IRQ pin?
+  pinMode(CONFIG_INTERRUPT_PIN, INPUT_PULLUP); // open-drainish
+}
+
 bool Adafruit_seesawPeripheral_begin(void) {
   SEESAW_DEBUG(F("All GPIO: ")); 
   SEESAW_DEBUGLN(ALL_GPIO, HEX);
@@ -250,7 +262,7 @@ bool Adafruit_seesawPeripheral_begin(void) {
   SEESAW_DEBUGLN(VALID_GPIO, HEX);
 
 #ifdef CONFIG_INTERRUPT
-  pinMode(CONFIG_INTERRUPT_PIN, INPUT_PULLUP); // open-drainish
+  Adafruit_seesawPeripheral_clearIRQ();
 #endif
 
   Adafruit_seesawPeripheral_reset();
@@ -398,26 +410,38 @@ ISR(ADC0_RESRDY_vect) { // ADC conversion complete
 }
 #endif
 
+
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
   uint32_t temp = 0;
 
+  // read all ports
+  uint8_t port_reads[3] = {0, 0, 0};
+  port_reads[0] = VPORTA.IN;
+  port_reads[1] = VPORTB.IN;
+  port_reads[2] = VPORTC.IN;
+
+  //pinMode(1, OUTPUT);
+  //digitalWriteFast(1, HIGH);
   for (uint8_t pin = 0; pin < 32; pin++) {
-    if ((validpins >> pin) & 0x1) {
-      if (digitalRead(pin)) {
-        temp |= 1UL << pin;
+    temp >>= 1;
+    if (validpins & 0x1) {
+      uint8_t mask = 1 << digital_pin_to_bit_position[pin];
+      uint8_t port = digital_pin_to_port[pin];
+      if (port_reads[port] & mask) {
+        temp |= 0x80000000UL;
       }
     }
+    validpins >>= 1;
   }
+  //digitalWriteFast(1, LOW);
   return temp;
 }
 
 void Adafruit_seesawPeripheral_write32(uint32_t value) {
-  uint8_t buff[4];
-  buff[0] = value >> 24;
-  buff[1] = value >> 16;
-  buff[2] = value >> 8;
-  buff[3] = value;
-  Wire.write(buff, 4);
+  Wire.write(value >> 24);
+  Wire.write(value >> 16);
+  Wire.write(value >> 8);
+  Wire.write(value);
   return;
 }
 
