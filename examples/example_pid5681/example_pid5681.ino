@@ -1,9 +1,9 @@
 #define PRODUCT_CODE            5681
 #define CONFIG_I2C_PERIPH_ADDR  0x49
-//#define CONFIG_UART_DEBUG          1
+//#define CONFIG_UART_DEBUG         1
 
-#define CONFIG_INTERRUPT_PIN      10
-//#define USE_PINCHANGE_INTERRUPT    1
+#define CONFIG_INTERRUPT_PIN        6
+//#define USE_PINCHANGE_INTERRUPT   1
 
 // Can have up to 3 addresses
 #define CONFIG_ADDR_0_PIN          12
