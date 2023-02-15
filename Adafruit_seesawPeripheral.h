@@ -204,7 +204,7 @@ volatile uint8_t g_pwmStatus = 0;
 #endif
 #if CONFIG_NEOPIXEL
 volatile uint8_t g_neopixel_buf[CONFIG_NEOPIXEL_BUF_MAX];
-volatile uint8_t g_neopixel_bufsize = 0;
+volatile uint16_t g_neopixel_bufsize = 0;
 volatile uint8_t g_neopixel_pin = 0;
 #endif
 
