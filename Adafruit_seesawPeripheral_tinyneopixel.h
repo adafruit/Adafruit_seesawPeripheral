@@ -172,9 +172,9 @@ void tinyNeoPixel_show(uint8_t pin, uint16_t numBytes, uint8_t *pixels) {
       "rcall bitTimeD"          "\n\t" // Bit 1
       // Bit 0:
       "st   %a[port], %[hi]"    "\n\t" // 1    PORT = hi    (T =  1)
-      "rjmp .+0"                "\n\t" // 2    nop nop      (T =  3)
       "ld   %[byte] , %a[ptr]+" "\n\t" // 2    b = *ptr++   (T =  5)
       "st   %a[port], %[next]"  "\n\t" // 1    PORT = next  (T =  6)
+      "rjmp .+0"                "\n\t" // 2    nop nop      (T =  3)
       "mov  %[next] , %[lo]"    "\n\t" // 1    next = lo    (T =  7)
       "sbrc %[byte] , 7"        "\n\t" // 1-2  if (b & 0x80) (T =  8)
        "mov %[next] , %[hi]"    "\n\t" // 0-1    next = hi  (T =  9)
