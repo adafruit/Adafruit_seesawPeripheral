@@ -381,10 +381,10 @@ void Adafruit_seesawPeripheral_reset(void) {
 #endif
 
   for (uint8_t encodernum=0; encodernum<CONFIG_NUM_ENCODERS; encodernum++) {
-    g_enc_value[CONFIG_NUM_ENCODERS] = 0;
-    g_enc_delta[CONFIG_NUM_ENCODERS] = 0;
-    g_enc_prev_pos[CONFIG_NUM_ENCODERS] = 0;
-    g_enc_flags[CONFIG_NUM_ENCODERS] = 0;
+    g_enc_value[encodernum] = 0;
+    g_enc_delta[encodernum] = 0;
+    g_enc_prev_pos[encodernum] = 0;
+    g_enc_flags[encodernum] = 0;
   }
 #endif
 
