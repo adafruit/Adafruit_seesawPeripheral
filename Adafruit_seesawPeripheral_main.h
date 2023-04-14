@@ -32,7 +32,7 @@ void Adafruit_seesawPeripheral_pinChangeDetect(void) {
 
 void Adafruit_seesawPeripheral_run(void) {
 #if CONFIG_INTERRUPT && ! USE_PINCHANGE_INTERRUPT
-  // we dont .need. to use the IRQ system which takes a lot of flash and 
+  // we dont .need. to use the IRQ system which takes a lot of flash and
   // doesn't uniquely identify pins anyways
   if (IRQ_debounce_cntr == 0) {
     Adafruit_seesawPeripheral_pinChangeDetect();
@@ -106,5 +106,18 @@ void Adafruit_seesawPeripheral_run(void) {
   TWI0.SCTRLA |= TWI_DIEN_bm | TWI_APIEN_bm | TWI_PIEN_bm;
 #endif // end CONFIG_FHT
 
+#if CONFIG_UART
+  if (g_uart_inten) {
+    if (CONFIG_UART_SERCOM.available()) {
+      Adafruit_seesawPeripheral_setIRQ();
+    } else {
+      Adafruit_seesawPeripheral_clearIRQ();
+    }
+  }
+  if (g_uart_tx_len > 0) {
+    CONFIG_UART_SERCOM.write((char *)g_uart_buf, (size_t)g_uart_tx_len);
+    g_uart_tx_len = 0;
+  }
+#endif
   // delay(10);
 }
