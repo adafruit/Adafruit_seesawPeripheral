@@ -208,6 +208,30 @@ volatile uint16_t g_neopixel_bufsize = 0;
 volatile uint8_t g_neopixel_pin = 0;
 #endif
 
+#if CONFIG_ENCODER
+
+#define BIT_IS_SET(x,b) (((x)&(1UL << b)) != 0)
+#define BIT_IS_CLEAR(x,b) (((x)&(1UL << b)) == 0)
+
+#define ENCODER0_INPUT_MASK ((1UL << CONFIG_ENCODER0_A_PIN) | (1UL << CONFIG_ENCODER0_B_PIN))
+
+#ifdef CONFIG_ENCODER1_A_PIN
+#define ENCODER1_INPUT_MASK ((1UL << CONFIG_ENCODER1_A_PIN) | (1UL << CONFIG_ENCODER1_B_PIN))
+#endif
+#ifdef CONFIG_ENCODER2_A_PIN
+#define ENCODER2_INPUT_MASK ((1UL << CONFIG_ENCODER2_A_PIN) | (1UL << CONFIG_ENCODER2_B_PIN))
+#endif
+#ifdef CONFIG_ENCODER3_A_PIN
+#define ENCODER3_INPUT_MASK ((1UL << CONFIG_ENCODER3_A_PIN) | (1UL << CONFIG_ENCODER3_B_PIN))
+#endif
+
+volatile int32_t g_enc_value[CONFIG_NUM_ENCODERS];
+volatile int32_t g_enc_delta[CONFIG_NUM_ENCODERS];
+volatile uint8_t g_enc_prev_pos[CONFIG_NUM_ENCODERS];
+volatile uint8_t g_enc_flags[CONFIG_NUM_ENCODERS];
+
+#endif
+
 /****************************************************** code */
 
 // global address
@@ -341,6 +365,39 @@ void Adafruit_seesawPeripheral_reset(void) {
     g_neopixel_buf[i] = 0;
   }
   g_neopixel_bufsize = 0;
+#endif
+#if CONFIG_ENCODER
+#if defined(CONFIG_ENCODER0_A_PIN)
+  pinMode(CONFIG_ENCODER0_A_PIN, INPUT_PULLUP);
+#endif
+#if defined(CONFIG_ENCODER0_B_PIN)
+  pinMode(CONFIG_ENCODER0_B_PIN, INPUT_PULLUP);
+#endif
+#if defined(CONFIG_ENCODER1_A_PIN)
+  pinMode(CONFIG_ENCODER1_A_PIN, INPUT_PULLUP);
+#endif
+#if defined(CONFIG_ENCODER1_B_PIN)
+  pinMode(CONFIG_ENCODER1_B_PIN, INPUT_PULLUP);
+#endif
+#if defined(CONFIG_ENCODER2_A_PIN)
+  pinMode(CONFIG_ENCODER2_A_PIN, INPUT_PULLUP);
+#endif
+#if defined(CONFIG_ENCODER2_B_PIN)
+  pinMode(CONFIG_ENCODER2_B_PIN, INPUT_PULLUP);
+#endif
+#if defined(CONFIG_ENCODER3_A_PIN)
+  pinMode(CONFIG_ENCODER3_A_PIN, INPUT_PULLUP);
+#endif
+#if defined(CONFIG_ENCODER3_B_PIN)
+  pinMode(CONFIG_ENCODER3_B_PIN, INPUT_PULLUP);
+#endif
+
+  for (uint8_t encodernum=0; encodernum<CONFIG_NUM_ENCODERS; encodernum++) {
+    g_enc_value[encodernum] = 0;
+    g_enc_delta[encodernum] = 0;
+    g_enc_prev_pos[encodernum] = 0;
+    g_enc_flags[encodernum] = 0;
+  }
 #endif
 
 #if CONFIG_FHT && defined(MEGATINYCORE)

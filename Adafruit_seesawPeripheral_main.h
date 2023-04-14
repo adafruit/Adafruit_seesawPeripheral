@@ -26,6 +26,104 @@ void Adafruit_seesawPeripheral_pinChangeDetect(void) {
     Adafruit_seesawPeripheral_setIRQ();
   }
 
+#if CONFIG_ENCODER
+    uint32_t mask = ENCODER0_INPUT_MASK;
+#ifdef ENCODER1_INPUT_MASK
+    mask |= ENCODER1_INPUT_MASK;
+#endif
+#ifdef ENCODER2_INPUT_MASK
+    mask |= ENCODER2_INPUT_MASK;
+#endif
+#ifdef ENCODER3_INPUT_MASK
+    mask |= ENCODER3_INPUT_MASK;
+#endif
+
+    uint32_t in = g_currentGPIO & mask;    
+
+    for (uint8_t encodernum=0; encodernum<CONFIG_NUM_ENCODERS; encodernum++) {
+
+      int8_t enc_action = 0; // 1 or -1 if moved, sign is direction
+
+      uint8_t enc_cur_pos = 0;
+      // read in the encoder state first
+      if (encodernum == 0) {
+        enc_cur_pos |= ((BIT_IS_CLEAR(in, CONFIG_ENCODER0_A_PIN)) << 0) | ((BIT_IS_CLEAR(in, CONFIG_ENCODER0_B_PIN)) << 1);
+      }
+#if defined(CONFIG_ENCODER1_A_PIN)
+      if (encodernum == 1) {
+        enc_cur_pos |= ((BIT_IS_CLEAR(in, CONFIG_ENCODER1_A_PIN)) << 0) | ((BIT_IS_CLEAR(in, CONFIG_ENCODER1_B_PIN)) << 1);      
+      }
+#endif
+#if defined(CONFIG_ENCODER2_A_PIN)
+      if (encodernum == 2) {
+        enc_cur_pos |= ((BIT_IS_CLEAR(in, CONFIG_ENCODER2_A_PIN)) << 0) | ((BIT_IS_CLEAR(in, CONFIG_ENCODER2_B_PIN)) << 1);      
+      }
+#endif
+#if defined(CONFIG_ENCODER3_A_PIN)
+      if (encodernum == 3) {
+        enc_cur_pos |= ((BIT_IS_CLEAR(in, CONFIG_ENCODER3_A_PIN)) << 0) | ((BIT_IS_CLEAR(in, CONFIG_ENCODER3_B_PIN)) << 1);      
+      }
+#endif
+
+      // if any rotation at all
+      if (enc_cur_pos != g_enc_prev_pos[encodernum])
+      {
+        if (g_enc_prev_pos[encodernum] == 0x00)
+        {
+          // this is the first edge
+          if (enc_cur_pos == 0x01) {
+            g_enc_flags[encodernum] |= (1 << 0);
+          }
+          else if (enc_cur_pos == 0x02) {
+            g_enc_flags[encodernum] |= (1 << 1);
+          }
+        }
+        
+        if (enc_cur_pos == 0x03)
+        {
+          // this is when the encoder is in the middle of a "step"
+          g_enc_flags[encodernum] |= (1 << 4);
+        }
+        else if (enc_cur_pos == 0x00)
+        {
+          // this is the final edge
+          if (g_enc_prev_pos[encodernum] == 0x02) {
+            g_enc_flags[encodernum] |= (1 << 2);
+          }
+          else if (g_enc_prev_pos[encodernum] == 0x01) {
+            g_enc_flags[encodernum] |= (1 << 3);
+          }
+          
+          // check the first and last edge
+          // or maybe one edge is missing, if missing then require the middle state
+          // this will reject bounces and false movements
+          if (BIT_IS_SET(g_enc_flags[encodernum], 0) && (BIT_IS_SET(g_enc_flags[encodernum], 2) || BIT_IS_SET(g_enc_flags[encodernum], 4))) {
+            enc_action = 1;
+          }
+          else if (BIT_IS_SET(g_enc_flags[encodernum], 2) && (BIT_IS_SET(g_enc_flags[encodernum], 0) || BIT_IS_SET(g_enc_flags[encodernum], 4))) {
+            enc_action = 1;
+          }
+          else if (BIT_IS_SET(g_enc_flags[encodernum], 1) && (BIT_IS_SET(g_enc_flags[encodernum], 3) || BIT_IS_SET(g_enc_flags[encodernum], 4))) {
+            enc_action = -1;
+          }
+          else if (BIT_IS_SET(g_enc_flags[encodernum], 3) && (BIT_IS_SET(g_enc_flags[encodernum], 1) || BIT_IS_SET(g_enc_flags[encodernum], 4))) {
+            enc_action = -1;
+          }
+          
+          g_enc_flags[encodernum] = 0; // reset for next time
+        }
+      }
+
+      g_enc_prev_pos[encodernum] = enc_cur_pos;
+      
+      if(enc_action != 0){
+        g_enc_value[encodernum] += enc_action;
+        g_enc_delta[encodernum] += enc_action;
+        
+      }
+    }
+#endif
+
   g_lastGPIO = g_currentGPIO;
 }
 #endif
