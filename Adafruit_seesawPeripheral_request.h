@@ -90,6 +90,23 @@ void requestEvent(void) {
   }
 #endif
 
+#if CONFIG_UART
+  else if (base_cmd == SEESAW_SERCOM0_BASE) {
+    if (module_cmd == SEESAW_SERCOM_STATUS) {
+      Wire.write(g_uart_status);
+    } else if (module_cmd == SEESAW_SERCOM_INTEN) {
+      Wire.write(g_uart_inten);
+    } else if (module_cmd == SEESAW_SERCOM_BAUD) {
+      Wire.write((g_uart_baud >> 24) & 0xFF);
+      Wire.write((g_uart_baud >> 16) & 0xFF);
+      Wire.write((g_uart_baud >> 8) & 0xFF);
+      Wire.write(g_uart_baud & 0xFF);
+    } else if (module_cmd == SEESAW_SERCOM_DATA) {
+      Wire.write(CONFIG_UART_SERCOM.read());
+    }
+  }
+#endif
+
   else {
     SEESAW_DEBUG(F("Unhandled cmd 0x"));
     SEESAW_DEBUGLN(base_cmd, HEX);

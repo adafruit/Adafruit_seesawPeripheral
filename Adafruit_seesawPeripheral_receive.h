@@ -42,7 +42,7 @@ void receiveEvent(int howMany) {
 
   uint8_t base_cmd = i2c_buffer[0];
   uint8_t module_cmd = i2c_buffer[1];
-  
+
   if (base_cmd == SEESAW_STATUS_BASE) {
     if (module_cmd == SEESAW_STATUS_SWRST) {
       Adafruit_seesawPeripheral_reset();
@@ -171,7 +171,7 @@ void receiveEvent(int howMany) {
       SEESAW_DEBUG(pin);
       SEESAW_DEBUG(F(": "));
       SEESAW_DEBUGLN(value);
-      
+
       pinMode(pin, OUTPUT);
       analogWrite(pin, value);
       g_pwmStatus = 0x0;
@@ -240,6 +240,48 @@ void receiveEvent(int howMany) {
           SEESAW_DEBUG(F(" <- 0x"));
           SEESAW_DEBUGLN(i2c_buffer[2+i], HEX);
         }
+      }
+    }
+  }
+#endif
+
+#if CONFIG_UART
+  else if (base_cmd == SEESAW_SERCOM0_BASE) {
+    if (module_cmd == SEESAW_SERCOM_STATUS) {
+      if (CONFIG_UART_SERCOM.available()) {
+        g_uart_status |= 0x02;  // set DATA_RDY bit
+      } else {
+        g_uart_status &= ~0x02; // clear DATA_RDY bit
+      }
+    } else if ((module_cmd == SEESAW_SERCOM_INTEN) && (howMany == 3)){
+      // writing 0 to this register has no effect
+      if (i2c_buffer[2] & 0x01) {
+        g_uart_inten = 1;
+      }
+    } else if ((module_cmd == SEESAW_SERCOM_INTENCLR) && (howMany == 3)){
+      // writing 0 to this register has no effect
+      if (i2c_buffer[2] & 0x01) {
+        g_uart_inten = 0;
+      }
+    } else if ((module_cmd == SEESAW_SERCOM_BAUD) && (howMany == 6)){
+      uint32_t newBaud =
+        uint32_t(i2c_buffer[2]) << 24 |
+        uint32_t(i2c_buffer[3]) << 16 |
+        uint32_t(i2c_buffer[4]) << 8 |
+        i2c_buffer[5];
+      if (newBaud != g_uart_baud) {
+        g_uart_baud = newBaud;
+        CONFIG_UART_SERCOM.end();
+        CONFIG_UART_SERCOM.begin(g_uart_baud);
+      }
+    } else if (module_cmd ==  SEESAW_SERCOM_DATA) {
+      g_uart_tx_len = howMany - 2;
+      if (g_uart_tx_len <= CONFIG_UART_BUF_MAX) {
+        for (uint8_t i=0; i<g_uart_tx_len; i++) {
+          g_uart_buf[i] = i2c_buffer[i+2];
+        }
+      } else {
+        g_uart_tx_len = 0;
       }
     }
   }

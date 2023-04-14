@@ -207,6 +207,13 @@ volatile uint8_t g_neopixel_buf[CONFIG_NEOPIXEL_BUF_MAX];
 volatile uint16_t g_neopixel_bufsize = 0;
 volatile uint8_t g_neopixel_pin = 0;
 #endif
+#if CONFIG_UART
+volatile uint8_t g_uart_buf[CONFIG_UART_BUF_MAX];
+volatile uint8_t g_uart_status = 0;
+volatile uint8_t g_uart_inten = 0;
+volatile uint32_t g_uart_baud = 9600;
+volatile uint8_t g_uart_tx_len = 0;
+#endif
 
 #if CONFIG_ENCODER
 
@@ -278,7 +285,7 @@ void Adafruit_seesawPeripheral_clearIRQ(void) {
 }
 
 bool Adafruit_seesawPeripheral_begin(void) {
-  SEESAW_DEBUG(F("All GPIO: ")); 
+  SEESAW_DEBUG(F("All GPIO: "));
   SEESAW_DEBUGLN(ALL_GPIO, HEX);
   SEESAW_DEBUG(F("Invalid: "));
   SEESAW_DEBUGLN(INVALID_GPIO, HEX);
@@ -445,6 +452,10 @@ void Adafruit_seesawPeripheral_reset(void) {
   ADC0.SAMPCTRL = 12; // Add to usu. 13 ADC cycles for 25 cycles/sample
   ADC0.INTCTRL |= ADC_RESRDY_bm; // Enable result-ready interrupt
   ADC0.COMMAND |= ADC_STCONV_bm; // Start free-run conversion
+#endif
+
+#if CONFIG_UART
+  CONFIG_UART_SERCOM.begin(g_uart_baud);
 #endif
 
   Wire.begin(_i2c_addr);
