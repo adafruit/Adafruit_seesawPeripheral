@@ -65,6 +65,42 @@ void requestEvent(void) {
         g_enc_delta[encoder_num] = 0;
       }
     }
+    /*
+    else if ((module_cmd & 0xF0) ==  SEESAW_ENCODER_INTENSET) {
+      encoder_num = module_cmd & 0x0F;
+      if (encoder_num < CONFIG_NUM_ENCODERS) {
+        if (encoder_num == 0) {
+          g_irqGPIO |= ENCODER0_INPUT_MASK;
+        }
+        if (encoder_num == 1) {
+          g_irqGPIO |= ENCODER1_INPUT_MASK;
+        }
+        if (encoder_num == 2) {
+          g_irqGPIO |= ENCODER2_INPUT_MASK;
+        }
+        if (encoder_num == 0) {
+          g_irqGPIO |= ENCODER3_INPUT_MASK;
+        }
+      }
+    }
+    else if ((module_cmd & 0xF0) ==  SEESAW_ENCODER_INTENCLR) {
+      encoder_num = module_cmd & 0x0F;
+      if (encoder_num < CONFIG_NUM_ENCODERS) {
+        if (encoder_num == 0) {
+          g_irqGPIO &= ~ENCODER0_INPUT_MASK;
+        }
+        if (encoder_num == 1) {
+          g_irqGPIO &= ~ENCODER1_INPUT_MASK;
+        }
+        if (encoder_num == 2) {
+          g_irqGPIO &= ~ENCODER2_INPUT_MASK;
+        }
+        if (encoder_num == 0) {
+          g_irqGPIO &= ~ENCODER3_INPUT_MASK;
+        }
+      }
+    }
+    */
   }
 #endif
 
