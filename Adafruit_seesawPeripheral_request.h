@@ -51,15 +51,15 @@ void requestEvent(void) {
 #if CONFIG_ENCODER
   else if (base_cmd == SEESAW_ENCODER_BASE) {
     uint8_t encoder_num = 0;
-    if (module_cmd >= SEESAW_ENCODER_POSITION && module_cmd < SEESAW_ENCODER_DELTA) {
-      encoder_num = module_cmd - SEESAW_ENCODER_POSITION;
+    if ((module_cmd & 0xF0) == SEESAW_ENCODER_POSITION) {
+      encoder_num = module_cmd & 0x0F;
       if (encoder_num < CONFIG_NUM_ENCODERS){
         Adafruit_seesawPeripheral_write32(g_enc_value[encoder_num]);
         g_enc_delta[encoder_num] = 0;
       }
     }
-    else if (module_cmd >= SEESAW_ENCODER_DELTA) {
-      encoder_num = module_cmd - SEESAW_ENCODER_DELTA;
+    else if ((module_cmd & 0xF0) == SEESAW_ENCODER_DELTA) {
+      encoder_num = module_cmd & 0x0F;
       if (encoder_num < CONFIG_NUM_ENCODERS){
         Adafruit_seesawPeripheral_write32(g_enc_delta[encoder_num]);
         g_enc_delta[encoder_num] = 0;
