@@ -21,15 +21,9 @@ void Adafruit_seesawPeripheral_pinChangeDetect(void) {
    uint32_t encoder_mask = 0;
 #if CONFIG_ENCODER
     encoder_mask |= ENCODER0_INPUT_MASK;
-#ifdef ENCODER1_INPUT_MASK
-    mask |= ENCODER1_INPUT_MASK;
-#endif
-#ifdef ENCODER2_INPUT_MASK
-    mask |= ENCODER2_INPUT_MASK;
-#endif
-#ifdef ENCODER3_INPUT_MASK
-    mask |= ENCODER3_INPUT_MASK;
-#endif
+    encoder_mask |= ENCODER1_INPUT_MASK; // these will be 0 if not used
+    encoder_mask |= ENCODER2_INPUT_MASK;
+    encoder_mask |= ENCODER3_INPUT_MASK;
 #endif
 
   g_currentGPIO = Adafruit_seesawPeripheral_readBulk(g_irqGPIO | encoder_mask);
