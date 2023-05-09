@@ -17,17 +17,10 @@ void Adafruit_seesawPeripheral_changedGPIO(void) {
 
 #if CONFIG_INTERRUPT
 void Adafruit_seesawPeripheral_pinChangeDetect(void) {
-  g_currentGPIO = Adafruit_seesawPeripheral_readBulk(g_irqGPIO);
-  uint32_t changedGPIO = (g_currentGPIO ^ g_lastGPIO) & g_irqGPIO;
 
-  if (changedGPIO) {
-    SEESAW_DEBUGLN(F("IRQ"));
-    g_irqFlags |= (changedGPIO & g_irqGPIO); // flag the irq that changed
-    Adafruit_seesawPeripheral_setIRQ();
-  }
-
+   uint32_t encoder_mask = 0;
 #if CONFIG_ENCODER
-    uint32_t mask = ENCODER0_INPUT_MASK;
+    encoder_mask |= ENCODER0_INPUT_MASK;
 #ifdef ENCODER1_INPUT_MASK
     mask |= ENCODER1_INPUT_MASK;
 #endif
@@ -37,9 +30,20 @@ void Adafruit_seesawPeripheral_pinChangeDetect(void) {
 #ifdef ENCODER3_INPUT_MASK
     mask |= ENCODER3_INPUT_MASK;
 #endif
+#endif
 
-    uint32_t in = g_currentGPIO & mask;    
+  g_currentGPIO = Adafruit_seesawPeripheral_readBulk(g_irqGPIO | encoder_mask);
+  uint32_t changedGPIO = (g_currentGPIO ^ g_lastGPIO) & g_irqGPIO;
 
+  if (changedGPIO) {
+    SEESAW_DEBUGLN(F("IRQ"));
+    g_irqFlags |= (changedGPIO & g_irqGPIO); // flag the irq that changed
+    Adafruit_seesawPeripheral_setIRQ();
+  }
+
+#if CONFIG_ENCODER
+    uint32_t in = g_currentGPIO & encoder_mask;    
+    
     for (uint8_t encodernum=0; encodernum<CONFIG_NUM_ENCODERS; encodernum++) {
 
       int8_t enc_action = 0; // 1 or -1 if moved, sign is direction
@@ -48,6 +52,12 @@ void Adafruit_seesawPeripheral_pinChangeDetect(void) {
       // read in the encoder state first
       if (encodernum == 0) {
         enc_cur_pos |= ((BIT_IS_CLEAR(in, CONFIG_ENCODER0_A_PIN)) << 0) | ((BIT_IS_CLEAR(in, CONFIG_ENCODER0_B_PIN)) << 1);
+        SEESAW_DEBUG(F("GPIO 0x"));
+        SEESAW_DEBUGLN(g_currentGPIO, HEX);
+        SEESAW_DEBUG(F("IN 0x"));
+        SEESAW_DEBUGLN(in, HEX);
+        SEESAW_DEBUG(F("Enc0 CurPos 0x"));
+        SEESAW_DEBUGLN(enc_cur_pos, HEX);
       }
 #if defined(CONFIG_ENCODER1_A_PIN)
       if (encodernum == 1) {
