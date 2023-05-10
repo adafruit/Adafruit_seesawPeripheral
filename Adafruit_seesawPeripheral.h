@@ -217,6 +217,12 @@ volatile uint8_t g_uart_tx_len = 0;
 
 #if CONFIG_ENCODER
 
+#define ENCODER_FLAG_FORW_EDGE1 0x01
+#define ENCODER_FLAG_BACK_EDGE1 0x02
+#define ENCODER_FLAG_FORW_EDGE2 0x04
+#define ENCODER_FLAG_BACK_EDGE2 0x08
+#define ENCODER_FLAG_MIDSTEP    0x10
+
 #define BIT_IS_SET(x,b) (((x)&(1UL << b)) != 0)
 #define BIT_IS_CLEAR(x,b) (((x)&(1UL << b)) == 0)
 
@@ -224,12 +230,23 @@ volatile uint8_t g_uart_tx_len = 0;
 
 #ifdef CONFIG_ENCODER1_A_PIN
 #define ENCODER1_INPUT_MASK ((1UL << CONFIG_ENCODER1_A_PIN) | (1UL << CONFIG_ENCODER1_B_PIN))
+#else
+#define ENCODER1_INPUT_MASK 0
 #endif
 #ifdef CONFIG_ENCODER2_A_PIN
 #define ENCODER2_INPUT_MASK ((1UL << CONFIG_ENCODER2_A_PIN) | (1UL << CONFIG_ENCODER2_B_PIN))
+#else
+#define ENCODER2_INPUT_MASK 0
 #endif
 #ifdef CONFIG_ENCODER3_A_PIN
 #define ENCODER3_INPUT_MASK ((1UL << CONFIG_ENCODER3_A_PIN) | (1UL << CONFIG_ENCODER3_B_PIN))
+#else
+#define ENCODER3_INPUT_MASK 0
+#endif
+
+#ifndef CONFIG_ENCODER_2TICKS
+#define CONFIG_ENCODER_2TICKS 0
+
 #endif
 
 volatile int32_t g_enc_value[CONFIG_NUM_ENCODERS];
