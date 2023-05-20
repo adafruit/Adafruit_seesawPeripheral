@@ -225,6 +225,47 @@ void receiveEvent(int howMany) {
   }
 #endif
 
+#if CONFIG_ENCODER
+  else if (base_cmd == SEESAW_ENCODER_BASE) {
+    uint8_t encoder_num;
+    if ((module_cmd & 0xF0) ==  SEESAW_ENCODER_INTENSET) {
+      encoder_num = module_cmd & 0x0F;
+      if (encoder_num < CONFIG_NUM_ENCODERS) {
+        if (encoder_num == 0) {
+          g_irqGPIO |= ENCODER0_INPUT_MASK;
+        }
+        if (encoder_num == 1) {
+          g_irqGPIO |= ENCODER1_INPUT_MASK;
+        }
+        if (encoder_num == 2) {
+          g_irqGPIO |= ENCODER2_INPUT_MASK;
+        }
+        if (encoder_num == 3) {
+          g_irqGPIO |= ENCODER3_INPUT_MASK;
+        }
+      }
+    }
+    else if ((module_cmd & 0xF0) ==  SEESAW_ENCODER_INTENCLR) {
+      encoder_num = module_cmd & 0x0F;
+      if (encoder_num < CONFIG_NUM_ENCODERS) {
+        if (encoder_num == 0) {
+          g_irqGPIO &= ~ENCODER0_INPUT_MASK;
+        }
+        if (encoder_num == 1) {
+          g_irqGPIO &= ~ENCODER1_INPUT_MASK;
+        }
+        if (encoder_num == 2) {
+          g_irqGPIO &= ~ENCODER2_INPUT_MASK;
+        }
+        if (encoder_num == 3) {
+          g_irqGPIO &= ~ENCODER3_INPUT_MASK;
+        }
+      }
+    }  
+  }
+#endif
+  
+
 #if CONFIG_EEPROM
   else if (base_cmd == SEESAW_EEPROM_BASE) {
     // special case for 1 byte at -1 (i2c addr)

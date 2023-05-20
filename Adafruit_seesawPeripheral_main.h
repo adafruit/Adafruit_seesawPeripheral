@@ -21,15 +21,9 @@ void Adafruit_seesawPeripheral_pinChangeDetect(void) {
    uint32_t encoder_mask = 0;
 #if CONFIG_ENCODER
     encoder_mask |= ENCODER0_INPUT_MASK;
-#ifdef ENCODER1_INPUT_MASK
-    mask |= ENCODER1_INPUT_MASK;
-#endif
-#ifdef ENCODER2_INPUT_MASK
-    mask |= ENCODER2_INPUT_MASK;
-#endif
-#ifdef ENCODER3_INPUT_MASK
-    mask |= ENCODER3_INPUT_MASK;
-#endif
+    encoder_mask |= ENCODER1_INPUT_MASK; // these will be 0 if not used
+    encoder_mask |= ENCODER2_INPUT_MASK;
+    encoder_mask |= ENCODER3_INPUT_MASK;
 #endif
 
   g_currentGPIO = Adafruit_seesawPeripheral_readBulk(g_irqGPIO | encoder_mask);
@@ -52,12 +46,10 @@ void Adafruit_seesawPeripheral_pinChangeDetect(void) {
       // read in the encoder state first
       if (encodernum == 0) {
         enc_cur_pos |= ((BIT_IS_CLEAR(in, CONFIG_ENCODER0_A_PIN)) << 0) | ((BIT_IS_CLEAR(in, CONFIG_ENCODER0_B_PIN)) << 1);
-        SEESAW_DEBUG(F("GPIO 0x"));
-        SEESAW_DEBUGLN(g_currentGPIO, HEX);
-        SEESAW_DEBUG(F("IN 0x"));
-        SEESAW_DEBUGLN(in, HEX);
-        SEESAW_DEBUG(F("Enc0 CurPos 0x"));
-        SEESAW_DEBUGLN(enc_cur_pos, HEX);
+        //SEESAW_DEBUG(F("GPIO 0x"));
+        //SEESAW_DEBUGLN(g_currentGPIO, HEX);
+        //SEESAW_DEBUG(F("IN 0x"));
+        //SEESAW_DEBUGLN(in, HEX);
       }
 #if defined(CONFIG_ENCODER1_A_PIN)
       if (encodernum == 1) {
@@ -76,47 +68,60 @@ void Adafruit_seesawPeripheral_pinChangeDetect(void) {
 #endif
 
       // if any rotation at all
-      if (enc_cur_pos != g_enc_prev_pos[encodernum])
-      {
-        if (g_enc_prev_pos[encodernum] == 0x00)
-        {
+      if (enc_cur_pos != g_enc_prev_pos[encodernum]) {
+        SEESAW_DEBUG(F("Enc0 CurPos 0x"));
+        SEESAW_DEBUGLN(enc_cur_pos, HEX);
+
+        if (g_enc_prev_pos[encodernum] == 0x00) {
           // this is the first edge
           if (enc_cur_pos == 0x01) {
-            g_enc_flags[encodernum] |= (1 << 0);
+            g_enc_flags[encodernum] |= ENCODER_FLAG_FORW_EDGE1;
           }
           else if (enc_cur_pos == 0x02) {
-            g_enc_flags[encodernum] |= (1 << 1);
+            g_enc_flags[encodernum] |= ENCODER_FLAG_BACK_EDGE1;
+          }
+        }
+
+        if (g_enc_prev_pos[encodernum] == 0x03) {
+          // this is the second edge
+          if (enc_cur_pos == 0x02) {
+            g_enc_flags[encodernum] |= ENCODER_FLAG_FORW_EDGE2;
+          }
+          else if (enc_cur_pos == 0x01) {
+            g_enc_flags[encodernum] |= ENCODER_FLAG_BACK_EDGE2;
           }
         }
         
-        if (enc_cur_pos == 0x03)
-        {
-          // this is when the encoder is in the middle of a "step"
-          g_enc_flags[encodernum] |= (1 << 4);
+        if ((enc_cur_pos == 0x03) && ! CONFIG_ENCODER_2TICKS) {
+          // this is when the encoder is in the middle of a "step" of a 4-tick encoder
+          g_enc_flags[encodernum] |= ENCODER_FLAG_MIDSTEP;
         }
-        else if (enc_cur_pos == 0x00)
+        
+        if ((enc_cur_pos == 0x00) || ((enc_cur_pos == 0x03) && CONFIG_ENCODER_2TICKS))
         {
-          // this is the final edge
-          if (g_enc_prev_pos[encodernum] == 0x02) {
-            g_enc_flags[encodernum] |= (1 << 2);
-          }
-          else if (g_enc_prev_pos[encodernum] == 0x01) {
-            g_enc_flags[encodernum] |= (1 << 3);
-          }
+          // this is when the encoder is in a 'rest' state
           
           // check the first and last edge
           // or maybe one edge is missing, if missing then require the middle state
           // this will reject bounces and false movements
-          if (BIT_IS_SET(g_enc_flags[encodernum], 0) && (BIT_IS_SET(g_enc_flags[encodernum], 2) || BIT_IS_SET(g_enc_flags[encodernum], 4))) {
+          if ((g_enc_flags[encodernum] & ENCODER_FLAG_FORW_EDGE1) && 
+              (CONFIG_ENCODER_2TICKS || (g_enc_flags[encodernum] & (ENCODER_FLAG_FORW_EDGE2 | ENCODER_FLAG_MIDSTEP)))) {
+            SEESAW_DEBUG(F("+1"));
             enc_action = 1;
           }
-          else if (BIT_IS_SET(g_enc_flags[encodernum], 2) && (BIT_IS_SET(g_enc_flags[encodernum], 0) || BIT_IS_SET(g_enc_flags[encodernum], 4))) {
+          else if ((g_enc_flags[encodernum] & ENCODER_FLAG_FORW_EDGE2) && 
+                   (CONFIG_ENCODER_2TICKS || (g_enc_flags[encodernum] & (ENCODER_FLAG_FORW_EDGE1 | ENCODER_FLAG_MIDSTEP)))) {
+            SEESAW_DEBUG(F("+2"));
             enc_action = 1;
           }
-          else if (BIT_IS_SET(g_enc_flags[encodernum], 1) && (BIT_IS_SET(g_enc_flags[encodernum], 3) || BIT_IS_SET(g_enc_flags[encodernum], 4))) {
+          else if ((g_enc_flags[encodernum] & ENCODER_FLAG_BACK_EDGE1) && 
+                   (CONFIG_ENCODER_2TICKS || (g_enc_flags[encodernum] & (ENCODER_FLAG_BACK_EDGE2 | ENCODER_FLAG_MIDSTEP)))) {
+            SEESAW_DEBUG(F("-1"));
             enc_action = -1;
           }
-          else if (BIT_IS_SET(g_enc_flags[encodernum], 3) && (BIT_IS_SET(g_enc_flags[encodernum], 1) || BIT_IS_SET(g_enc_flags[encodernum], 4))) {
+          else if ((g_enc_flags[encodernum] & ENCODER_FLAG_BACK_EDGE2) && 
+                   (CONFIG_ENCODER_2TICKS || (g_enc_flags[encodernum] & (ENCODER_FLAG_BACK_EDGE1 | ENCODER_FLAG_MIDSTEP)))) {
+            SEESAW_DEBUG(F("-2"));
             enc_action = -1;
           }
           
@@ -128,8 +133,7 @@ void Adafruit_seesawPeripheral_pinChangeDetect(void) {
       
       if(enc_action != 0){
         g_enc_value[encodernum] += enc_action;
-        g_enc_delta[encodernum] += enc_action;
-        
+        g_enc_delta[encodernum] += enc_action;        
       }
     }
 #endif
