@@ -1,5 +1,10 @@
 void tinyNeoPixel_show(uint8_t pin, uint16_t numBytes, uint8_t *pixels) {
 
+#ifdef CONFIG_NEOPIXEL_ACT_LED
+  pinMode(CONFIG_NEOPIXEL_ACT_LED, OUTPUT);
+  digitalWrite(CONFIG_NEOPIXEL_ACT_LED, LOW);
+#endif
+
   // AVRxt MCUs --  tinyAVR 0/1/2, megaAVR 0, AVR Dx ----------------------
   // with extended maximum speeds to support vigorously overclocked
   // Dx-series parts. This is by no means intended to imply that they will
@@ -712,5 +717,10 @@ void tinyNeoPixel_show(uint8_t pin, uint16_t numBytes, uint8_t *pixels) {
 
 #else
   #error "CPU SPEED NOT SUPPORTED"
+#endif
+
+
+#ifdef CONFIG_NEOPIXEL_ACT_LED
+  pinMode(CONFIG_NEOPIXEL_ACT_LED, INPUT);
 #endif
 }
