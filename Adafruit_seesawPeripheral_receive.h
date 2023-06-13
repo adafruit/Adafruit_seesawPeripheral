@@ -166,14 +166,25 @@ void receiveEvent(int howMany) {
       g_pwmStatus = 0x1; // error, invalid pin!
     } else if (module_cmd == SEESAW_TIMER_PWM) {
       // its valid!
-      value >>= 8;  // we only support 8 bit analogwrites
       SEESAW_DEBUG(F("PWM "));
       SEESAW_DEBUG(pin);
       SEESAW_DEBUG(F(": "));
       SEESAW_DEBUGLN(value);
 
       pinMode(pin, OUTPUT);
-      analogWrite(pin, value);
+      // set duty cycle via CMPx
+      uint16_t duty_cycle = map(value, 0, 0xFFFF, 0, TCA0.SINGLE.PER);
+      pin -= PWM_WO_OFFSET;
+      if (pin == 0) {
+        TCA0.SINGLE.CTRLB |= TCA_SINGLE_CMP2EN_bm;
+        TCA0.SINGLE.CMP2 = duty_cycle;
+      } else if (pin == 1) {
+        TCA0.SINGLE.CTRLB |= TCA_SINGLE_CMP1EN_bm;
+        TCA0.SINGLE.CMP1 = duty_cycle;
+      } else if (pin == 2) {
+        TCA0.SINGLE.CTRLB |= TCA_SINGLE_CMP0EN_bm;
+        TCA0.SINGLE.CMP0 = duty_cycle;
+      }
       g_pwmStatus = 0x0;
     }
     else if (module_cmd == SEESAW_TIMER_FREQ) {
@@ -181,7 +192,18 @@ void receiveEvent(int howMany) {
       SEESAW_DEBUG(pin);
       SEESAW_DEBUG(F(": "));
       SEESAW_DEBUGLN(value);
-      tone(pin, value);
+
+      pinMode(pin, OUTPUT);
+      // set frequency via CLKSEL and PER based on F_CPU
+      // NOTE: changes all PWM outputs
+      uint8_t clksel = 0;
+      unsigned long period = (F_CPU / value);
+      while (period > 65536 && clksel < 7) {
+        clksel++;
+        period = period >> (clksel > 4 ? 2 : 1);
+      }
+      TCA0.SINGLE.CTRLA = (clksel << 1) | TCA_SINGLE_ENABLE_bm;
+      TCA0.SINGLE.PER = period;
       g_pwmStatus = 0x0;
     }
   }
@@ -261,10 +283,10 @@ void receiveEvent(int howMany) {
           g_irqGPIO &= ~ENCODER3_INPUT_MASK;
         }
       }
-    }  
+    }
   }
 #endif
-  
+
 
 #if CONFIG_EEPROM
   else if (base_cmd == SEESAW_EEPROM_BASE) {
