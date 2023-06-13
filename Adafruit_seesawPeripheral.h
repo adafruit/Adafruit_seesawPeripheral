@@ -143,9 +143,8 @@ uint16_t DATE_CODE = 0;
 #define ALL_GPIO                                                               \
   0x1FFFFFUL // this is chip dependant, for 817 we have 21 GPIO avail (0~20 inc)
 #define ALL_ADC 0b1111000000110011001111 // pins that have ADC capability
-#define ALL_PWM                                                                \
-  ((1UL << 0) | (1UL << 1) | (1UL << 9) | (1UL << 10) | (1UL << 11) |          \
-   (1UL << 12) | (1UL << 13) | (1UL << 10))
+#define ALL_PWM ((1UL << 6) | (1UL << 7) | (1UL << 8))  // alternate TCA0 WOx
+#define PWM_WO_OFFSET (6)
 #endif
 
 #if defined(ARDUINO_AVR_ATtiny816) || defined(ARDUINO_AVR_ATtiny806) ||        \
@@ -154,9 +153,8 @@ uint16_t DATE_CODE = 0;
 #define ALL_GPIO                                                               \
   0x01FFFFUL // this is chip dependant, for 816 we have 17 GPIO avail
 #define ALL_ADC 0b11100001100111111 // pins that have ADC capability
-#define ALL_PWM                                                                \
-  ((1UL << 0) | (1UL << 1) | (1UL << 7) | (1UL << 8) | (1UL << 9) |            \
-   (1UL << 10) | (1UL << 11) | (1UL << 16))
+#define ALL_PWM ((1UL << 4) | (1UL << 5) | (1UL << 6))  // alternate TCA0 WOx
+#define PWM_WO_OFFSET (4)
 #endif
 
 #define INVALID_GPIO ((1UL << SDA) | (1UL << SCL) | \
@@ -383,6 +381,13 @@ void Adafruit_seesawPeripheral_reset(void) {
 #endif
 #if CONFIG_PWM
   g_pwmStatus = 0;
+  // TCA0 is used for PWM support
+  takeOverTCA0();
+  PORTMUX.CTRLC |= 0b111;    // Alternate WOx output pin locations
+  TCA0.SINGLE.PER = 0xFFFF;  // Set TOP to MAX
+  TCA0.SINGLE.CTRLB = 0x03;  // Single-slope PWM, WG outputs off
+  TCA0.SINGLE.CTRLD = 0x00;  // Disable Split Mode
+  TCA0.SINGLE.CTRLA = 0x01;  // Enable TCA0 peripheral
 #endif
 #if CONFIG_NEOPIXEL
   for (uint16_t i = 0; i < CONFIG_NEOPIXEL_BUF_MAX; i++) {
