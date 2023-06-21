@@ -1,4 +1,19 @@
-#define SEESAW_HW_ID_CODE_TINY8x7 0x87
+#if defined(ARDUINO_AVR_ATtiny806)
+#define SEESAW_HW_ID 0x84
+#elif defined(ARDUINO_AVR_ATtiny807)
+#define SEESAW_HW_ID 0x85
+#elif defined(ARDUINO_AVR_ATtiny816)
+#define SEESAW_HW_ID 0x86
+#elif defined(ARDUINO_AVR_ATtiny817)
+#define SEESAW_HW_ID 0x87
+#elif defined(ARDUINO_AVR_ATtiny1616)
+#define SEESAW_HW_ID 0x88
+#elif defined(ARDUINO_AVR_ATtiny1617)
+#define SEESAW_HW_ID 0x89
+#else
+#error "Unsupported chip variant selected"
+#endif
+
 extern volatile uint32_t g_bufferedBulkGPIORead;
 
 /***************************** data read */
@@ -9,7 +24,7 @@ void requestEvent(void) {
 
   if (base_cmd == SEESAW_STATUS_BASE) {
     if (module_cmd == SEESAW_STATUS_HW_ID) {
-      Wire.write(SEESAW_HW_ID_CODE_TINY8x7); // instant reply
+      Wire.write(SEESAW_HW_ID); // instant reply
     }
     if (module_cmd == SEESAW_STATUS_VERSION) {
       Adafruit_seesawPeripheral_write32(CONFIG_VERSION | DATE_CODE); // instant reply
