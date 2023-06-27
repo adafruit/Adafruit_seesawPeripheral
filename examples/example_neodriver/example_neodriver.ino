@@ -1,4 +1,4 @@
-#define PRODUCT_CODE            5742
+#define PRODUCT_CODE            5742 // the original PID
 #define CONFIG_I2C_PERIPH_ADDR  0x60
 //#define CONFIG_UART_DEBUG          1
 
