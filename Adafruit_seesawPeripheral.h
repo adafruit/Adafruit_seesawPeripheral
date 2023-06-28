@@ -143,7 +143,13 @@ uint16_t DATE_CODE = 0;
 #define ALL_GPIO                                                               \
   0x1FFFFFUL // this is chip dependant, for 817 we have 21 GPIO avail (0~20 inc)
 #define ALL_ADC 0b1111000000110011001111 // pins that have ADC capability
+#ifdef CONFIG_PWM_16BIT
 #define ALL_PWM ((1UL << 6) | (1UL << 7) | (1UL << 8))  // alternate TCA0 WOx
+#else
+#define ALL_PWM                                                                \
+  ((1UL << 0) | (1UL << 1) | (1UL << 9) | (1UL << 10) | (1UL << 11) |          \
+   (1UL << 12) | (1UL << 13) | (1UL << 10))
+#endif
 #define PWM_WO_OFFSET (6)
 #endif
 
@@ -153,7 +159,13 @@ uint16_t DATE_CODE = 0;
 #define ALL_GPIO                                                               \
   0x01FFFFUL // this is chip dependant, for 816 we have 17 GPIO avail
 #define ALL_ADC 0b11100001100111111 // pins that have ADC capability
+#ifdef CONFIG_PWM_16BIT
 #define ALL_PWM ((1UL << 4) | (1UL << 5) | (1UL << 6))  // alternate TCA0 WOx
+#else
+#define ALL_PWM                                                                \
+  ((1UL << 0) | (1UL << 1) | (1UL << 7) | (1UL << 8) | (1UL << 9) |            \
+   (1UL << 10) | (1UL << 11) | (1UL << 16))
+#endif
 #define PWM_WO_OFFSET (4)
 #endif
 
@@ -197,7 +209,7 @@ volatile uint8_t IRQ_debounce_cntr = 0;
 #if CONFIG_ADC
 volatile uint8_t g_adcStatus = 0;
 #endif
-#if CONFIG_PWM
+#if (CONFIG_PWM | CONFIG_PWM_16BIT)
 volatile uint8_t g_pwmStatus = 0;
 #endif
 #if CONFIG_NEOPIXEL
@@ -381,7 +393,10 @@ void Adafruit_seesawPeripheral_reset(void) {
 #endif
 #if CONFIG_PWM
   g_pwmStatus = 0;
-  // TCA0 is used for PWM support
+  // PWM is provided by BSP's analogWrite() and tone()
+#elif CONFIG_PWM_16BIT
+  g_pwmStatus = 0;
+  // TCA0 is used for 16 bit PWM support
   takeOverTCA0();
   PORTMUX.CTRLC |= 0b111;    // Alternate WOx output pin locations
   TCA0.SINGLE.PER = 0xFFFF;  // Set TOP to MAX

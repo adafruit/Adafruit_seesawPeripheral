@@ -156,7 +156,7 @@ void receiveEvent(int howMany) {
 #endif
 
 
-#if CONFIG_PWM
+#if (CONFIG_PWM | CONFIG_PWM_16BIT)
   else if (base_cmd == SEESAW_TIMER_BASE) {
     uint8_t pin = i2c_buffer[2];
     uint16_t value = i2c_buffer[3];
@@ -166,12 +166,18 @@ void receiveEvent(int howMany) {
       g_pwmStatus = 0x1; // error, invalid pin!
     } else if (module_cmd == SEESAW_TIMER_PWM) {
       // its valid!
+#if CONFIG_PWM
+      value >>= 8;  // we only support 8 bit analogwrites
+#endif
       SEESAW_DEBUG(F("PWM "));
       SEESAW_DEBUG(pin);
       SEESAW_DEBUG(F(": "));
       SEESAW_DEBUGLN(value);
 
       pinMode(pin, OUTPUT);
+#if CONFIG_PWM
+      analogWrite(pin, value);
+#elif CONFIG_PWM_16BIT
       // set duty cycle via CMPx
       uint16_t duty_cycle = map(value, 0, 0xFFFF, 0, TCA0.SINGLE.PER);
       pin -= PWM_WO_OFFSET;
@@ -185,6 +191,7 @@ void receiveEvent(int howMany) {
         TCA0.SINGLE.CTRLB |= TCA_SINGLE_CMP0EN_bm;
         TCA0.SINGLE.CMP0 = duty_cycle;
       }
+#endif
       g_pwmStatus = 0x0;
     }
     else if (module_cmd == SEESAW_TIMER_FREQ) {
@@ -192,7 +199,9 @@ void receiveEvent(int howMany) {
       SEESAW_DEBUG(pin);
       SEESAW_DEBUG(F(": "));
       SEESAW_DEBUGLN(value);
-
+#if CONFIG_PWM
+      tone(pin, value);
+#elif CONFIG_PWM_16BIT
       pinMode(pin, OUTPUT);
       // set frequency via CLKSEL and PER based on F_CPU
       // NOTE: changes all PWM outputs
@@ -205,6 +214,7 @@ void receiveEvent(int howMany) {
       TCA0.SINGLE.CTRLA = (clksel << 1) | TCA_SINGLE_ENABLE_bm;
       TCA0.SINGLE.PER = period;
       g_pwmStatus = 0x0;
+#endif
     }
   }
 #endif
