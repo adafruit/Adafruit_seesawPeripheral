@@ -5,10 +5,10 @@
 //#define USE_PINCHANGE_INTERRUPT    1
 
 // Can have up to 3 addresses
+#define CONFIG_ADDR_INVERTED
 #define CONFIG_ADDR_0_PIN           2
 #define CONFIG_ADDR_1_PIN           1
 #define CONFIG_ADDR_2_PIN           20
-#define CONFIG_ADDR_INVERTED
 
 #define CONFIG_NEOPIXEL            1
 #define CONFIG_NEOPIXEL_BUF_MAX   (30*3) // 30 pixels == 180 bytes
