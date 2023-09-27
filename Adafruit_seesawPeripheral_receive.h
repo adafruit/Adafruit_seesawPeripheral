@@ -295,7 +295,7 @@ void receiveEvent(int howMany) {
       }
     }
     else if ((module_cmd & 0xF0) ==  SEESAW_ENCODER_POSITION) {
-      if (howMany == 6) {
+      if (howMany == 6) { 
       encoder_num = module_cmd & 0x0F;
         if (encoder_num < CONFIG_NUM_ENCODERS){
           uint32_t value = i2c_buffer[2];
