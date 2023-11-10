@@ -53,13 +53,13 @@ void setup() {
   //sendSPIinit(HD40015C40_initcode);  // 4" round
   //sendSPIinit(TL021WVC02_initcode);   // 2.1" round
   sendSPIinit(TL040WVS01_initcode); // 3.4" 480x480
-/*    while (1) {
-     sendSPIcommand(0x22, NULL, 0);
-     delay(500);
-     sendSPIcommand(0x23, NULL, 0);
-     delay(500);     
+  while (1) {
+   sendSPIcommand(0x22, NULL, 0);
+   delay(1000);
+   sendSPIcommand(0x23, NULL, 0);
+   delay(1000);     
   }
-*/
+
 /*
   digitalWrite(TFT_CS, LOW);
   SPItransfer(0xDA, false);
@@ -242,9 +242,8 @@ void sendSPIinit(const uint8_t PROGMEM *initcmd) {
     sendSPIcommand(cmd, args, numArgs);
     if (x & 0x80) {
       uint16_t delaytime = pgm_read_byte(addr++);
-      Serial.print("Delaying for "); Serial.print(delaytime); Serial.println(" ms");
+      //Serial.print("Delaying for "); Serial.print(delaytime); Serial.println(" ms");
       delay(delaytime);
-      delay(500);
     }
   }
 }
@@ -276,7 +275,7 @@ void SPItransfer(uint8_t data, bool dc) {
     send |= 0x100;
   }
 
-  Serial.print("(0x"); Serial.print(send, HEX); Serial.print(") ");
+  //Serial.print("(0x"); Serial.print(send, HEX); Serial.print(") ");
   digitalWrite(TFT_CLOCK, HIGH);
 
   for (int mask = 0x100; mask != 0x00; mask >>= 1) {
