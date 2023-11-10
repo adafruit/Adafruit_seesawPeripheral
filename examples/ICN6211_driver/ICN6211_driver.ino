@@ -17,8 +17,7 @@
 
 void sendSPIinit(const uint8_t PROGMEM *initcmd);
 #include "SPI_initcodes.h"
-
-
+#include "ICN_config.h"
 #include "Adafruit_seesawPeripheral.h"
 
 void setup() {
@@ -28,7 +27,7 @@ void setup() {
   Serial.println("ICN test");
 #endif
 
-  printI2Cscan();
+  //printI2Cscan();
   prettyPrintEEPROM();
 
   delay(10);
@@ -46,34 +45,26 @@ void setup() {
   digitalWrite(TFT_CLOCK, HIGH);
   delay(10);
   digitalWrite(TFT_RESET, HIGH);
-  delay(100);
+  delay(200);
   pinMode(TFT_BACKLIGHT, OUTPUT);
   digitalWrite(TFT_BACKLIGHT, HIGH);
 
   //sendSPIinit(HD40015C40_initcode);  // 4" round
   //sendSPIinit(TL021WVC02_initcode);   // 2.1" round
-  sendSPIinit(TL040WVS01_initcode); // 3.4" 480x480
-  while (1) {
-   sendSPIcommand(0x22, NULL, 0);
-   delay(1000);
-   sendSPIcommand(0x23, NULL, 0);
-   delay(1000);     
-  }
+  //sendSPIinit(TL040WVS01_initcode); // 3.4" 480x480
+  //sendSPIinit(HD62001C40_initcode); // 5.6" bar
+  sendSPIinit(TL060HDV07_initcode); // 6" high def
+
 
 /*
-  digitalWrite(TFT_CS, LOW);
-  SPItransfer(0xDA, false);
-  Serial.println(SPIread(), HEX);
-  digitalWrite(TFT_CS, HIGH);
-  digitalWrite(TFT_CS, LOW);
-  SPItransfer(0xDB, false);
-  Serial.println(SPIread(), HEX);
-  digitalWrite(TFT_CS, HIGH);
-  digitalWrite(TFT_CS, LOW);
-  SPItransfer(0xDC, false);
-  Serial.println(SPIread(), HEX);
-  digitalWrite(TFT_CS, HIGH);
-*/
+  for (uint8_t blink=0; blink<10; blink++) {
+   sendSPIcommand(0x22, NULL, 0);
+   delay(500);
+   sendSPIcommand(0x23, NULL, 0);
+   delay(500);     
+  }
+  sendSPIcommand(0x29, NULL, 0);
+  */
 }
 
 
@@ -98,19 +89,40 @@ bool configICN6211() {
   }
   
   Serial.println("\nFound ICN6211");
-
   uint8_t reg, val;
-  for (size_t i = 0; i < 0xFF; i += 2) {
-    readEEPROM(0x400 + i, &reg, 1);
-    readEEPROM(0x400 + i + 1, &val, 1);
-    
-    if (reg == 0xFF) break; // we're done!
-    Serial.print("0x"); Serial.print(reg, HEX); 
-    Serial.print(" = ");
-    Serial.print("0x"); Serial.println(val, HEX);
-    if (!write_i2c_register(0x2C, reg, val)) {
-      Wire.end();
-      return false;
+
+  // check if first byte is 0xFF of eeprom (doesn't exist or not programmed)
+  readEEPROM(0x400, &reg, 1);
+  if (reg != 0xFF) {
+    // EEPROM is valid, load from there
+    for (size_t i = 0; i < 0xFF; i += 2) {
+      readEEPROM(0x400 + i, &reg, 1);
+      readEEPROM(0x400 + i + 1, &val, 1);
+      
+      if (reg == 0xFF) break; // we're done!
+      Serial.print("0x"); Serial.print(reg, HEX); 
+      Serial.print(" = ");
+      Serial.print("0x"); Serial.println(val, HEX);
+      if (!write_i2c_register(0x2C, reg, val)) {
+        Wire.end();
+        return false;
+      }
+    }
+  } else {
+    Serial.println("EEPROM not found, loading default config");
+    // EEPROM is not valid, load from flash
+    for (size_t i = 0; i < 0xFF; i += 2) {
+      reg = pgm_read_byte(ICN6211_TL040HD + i);
+      val = pgm_read_byte(ICN6211_TL040HD + i + 1);
+      
+      if (reg == 0xFF) break; // we're done!
+      Serial.print("0x"); Serial.print(reg, HEX); 
+      Serial.print(" = ");
+      Serial.print("0x"); Serial.println(val, HEX);
+      if (!write_i2c_register(0x2C, reg, val)) {
+        Wire.end();
+        return false;
+      }
     }
   }
   
@@ -242,8 +254,9 @@ void sendSPIinit(const uint8_t PROGMEM *initcmd) {
     sendSPIcommand(cmd, args, numArgs);
     if (x & 0x80) {
       uint16_t delaytime = pgm_read_byte(addr++);
-      //Serial.print("Delaying for "); Serial.print(delaytime); Serial.println(" ms");
+      Serial.print("Delaying for "); Serial.print(delaytime); Serial.println(" ms");
       delay(delaytime);
+      delay(100);
     }
   }
 }
