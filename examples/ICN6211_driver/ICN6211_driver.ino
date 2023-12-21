@@ -31,7 +31,7 @@ void setup() {
   prettyPrintEEPROM();
 
   delay(10);
-  if (configICN6211()) {
+  if (configICN6211(ICN6211_HM040HQ40R)) {
     Serial.println("Found and configured ICN6211");
   }
   
@@ -57,6 +57,7 @@ void setup() {
 
 
 /*
+  // turn all pixels on and off to test SPI connection
   for (uint8_t blink=0; blink<10; blink++) {
    sendSPIcommand(0x22, NULL, 0);
    delay(500);
@@ -73,7 +74,7 @@ void loop() {
 }
 
 
-bool configICN6211() {
+bool configICN6211(const uint8_t PROGMEM *program) {
   // send ICN6211 configuration
   Wire.begin();
   // softreset
@@ -112,8 +113,8 @@ bool configICN6211() {
     Serial.println("EEPROM not found, loading default config");
     // EEPROM is not valid, load from flash
     for (size_t i = 0; i < 0xFF; i += 2) {
-      reg = pgm_read_byte(ICN6211_TL040HD + i);
-      val = pgm_read_byte(ICN6211_TL040HD + i + 1);
+      reg = pgm_read_byte(program + i);
+      val = pgm_read_byte(program + i + 1);
       
       if (reg == 0xFF) break; // we're done!
       Serial.print("0x"); Serial.print(reg, HEX); 
