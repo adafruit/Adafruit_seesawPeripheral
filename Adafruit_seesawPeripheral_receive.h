@@ -399,4 +399,37 @@ void receiveEvent(int howMany) {
     }
   }
 #endif
+
+#if CONFIG_SOIL
+  else if (base_cmd == SEESAW_SOIL_BASE) {
+    uint8_t soil_num = 0;
+    if ((module_cmd == SEESAW_SOIL_RATE) && (howMany == 6)) {
+      g_soil_update_delay =
+        uint32_t(i2c_buffer[2]) << 24 |
+        uint32_t(i2c_buffer[3]) << 16 |
+        uint32_t(i2c_buffer[4]) << 8  |
+        i2c_buffer[5];
+    }
+    else if (((module_cmd & 0xF0) == SEESAW_SOIL_SAMPLES) && (howMany == 3)) {
+      soil_num = module_cmd & 0x0F;
+      if (soil_num < CONFIG_NUM_SOIL) {
+        g_soil_samples[soil_num] = i2c_buffer[2];
+      }
+    }
+    else if (((module_cmd & 0xF0) == SEESAW_SOIL_XDELAY) && (howMany == 3)) {
+      soil_num = module_cmd & 0x0F;
+      if (soil_num < CONFIG_NUM_SOIL) {
+        g_soil_xdelay[soil_num] = i2c_buffer[2];
+      }
+    }
+    else if (((module_cmd & 0xF0) == SEESAW_SOIL_TIMEOUT) && (howMany == 4)) {
+      soil_num = module_cmd & 0x0F;
+      if (soil_num < CONFIG_NUM_SOIL) {
+        g_soil_timeout[soil_num] =
+          uint16_t(i2c_buffer[2]) << 8 |
+          i2c_buffer[3];
+      }
+    }
+  }
+#endif
 }

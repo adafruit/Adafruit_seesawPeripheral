@@ -105,6 +105,41 @@ void requestEvent(void) {
   }
 #endif
 
+#if CONFIG_SOIL
+  else if (base_cmd == SEESAW_SOIL_BASE) {
+    uint8_t soil_num = 0;
+    if (module_cmd == SEESAW_SOIL_RATE) {
+      Adafruit_seesawPeripheral_write32(g_soil_update_delay);
+    }
+    else if ((module_cmd & 0xF0) == SEESAW_SOIL_VALUE) {
+      soil_num = module_cmd & 0x0F;
+      if (soil_num < CONFIG_NUM_SOIL) {
+        Wire.write(g_soil_value[soil_num] >> 8);
+        Wire.write(g_soil_value[soil_num]);
+      }
+    }
+    else if ((module_cmd & 0xF0) == SEESAW_SOIL_SAMPLES) {
+      soil_num =  module_cmd & 0x0F;
+      if (soil_num < CONFIG_NUM_SOIL) {
+        Wire.write(g_soil_samples[soil_num]);
+      }
+    }
+    else if ((module_cmd & 0xF0) == SEESAW_SOIL_XDELAY) {
+      soil_num =  module_cmd & 0x0F;
+      if (soil_num < CONFIG_NUM_SOIL) {
+        Wire.write(g_soil_xdelay[soil_num]);
+      }
+    }
+    else if ((module_cmd & 0xF0) == SEESAW_SOIL_TIMEOUT) {
+      soil_num =  module_cmd & 0x0F;
+      if (soil_num < CONFIG_NUM_SOIL) {
+        Wire.write(g_soil_timeout[soil_num] >> 8);
+        Wire.write(g_soil_timeout[soil_num]);
+      }
+    }
+  }
+#endif
+
 #if CONFIG_UART
   else if (base_cmd == SEESAW_SERCOM0_BASE) {
     if (module_cmd == SEESAW_SERCOM_STATUS) {
