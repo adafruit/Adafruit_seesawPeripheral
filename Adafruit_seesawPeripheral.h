@@ -266,14 +266,6 @@ volatile uint8_t g_enc_flags[CONFIG_NUM_ENCODERS];
 
 #endif
 
-#if CONFIG_SOIL
-volatile uint32_t g_soil_update_delay = 5000;                  // milliseconds
-volatile uint16_t g_soil_value[CONFIG_NUM_SOIL] = {0};         // microseconds
-volatile uint8_t g_soil_samples[CONFIG_NUM_SOIL] = {10};       // unitless sample count
-volatile uint8_t g_soil_xdelay[CONFIG_NUM_SOIL] = {10};        // unitless multiplier
-volatile uint16_t g_soil_timeout[CONFIG_NUM_SOIL] = {0xFFFF};  // microseconds
-#endif
-
 /****************************************************** code */
 
 // global address
@@ -497,29 +489,6 @@ void Adafruit_seesawPeripheral_reset(void) {
   ADC0.SAMPCTRL = 12; // Add to usu. 13 ADC cycles for 25 cycles/sample
   ADC0.INTCTRL |= ADC_RESRDY_bm; // Enable result-ready interrupt
   ADC0.COMMAND |= ADC_STCONV_bm; // Start free-run conversion
-#endif
-
-#if CONFIG_SOIL
-#if defined(CONFIG_SOIL0_EXC_PIN) && defined(CONFIG_SOIL0_SEN_PIN)
-  pinMode(CONFIG_SOIL0_EXC_PIN, OUTPUT);
-  digitalWrite(CONFIG_SOIL0_EXC_PIN, LOW);
-  pinMode(CONFIG_SOIL0_SEN_PIN, INPUT);
-#endif
-#if defined(CONFIG_SOIL1_EXC_PIN) && defined(CONFIG_SOIL1_SEN_PIN)
-  pinMode(CONFIG_SOIL1_EXC_PIN, OUTPUT);
-  digitalWrite(CONFIG_SOIL1_EXC_PIN, LOW);
-  pinMode(CONFIG_SOIL1_SEN_PIN, INPUT);
-#endif
-#if defined(CONFIG_SOIL2_EXC_PIN) && defined(CONFIG_SOIL2_SEN_PIN)
-  pinMode(CONFIG_SOIL2_EXC_PIN, OUTPUT);
-  digitalWrite(CONFIG_SOIL2_EXC_PIN, LOW);
-  pinMode(CONFIG_SOIL2_SEN_PIN, INPUT);
-#endif
-#if defined(CONFIG_SOIL3_EXC_PIN) && defined(CONFIG_SOIL3_SEN_PIN)
-  pinMode(CONFIG_SOIL3_EXC_PIN, OUTPUT);
-  digitalWrite(CONFIG_SOIL3_EXC_PIN, LOW);
-  pinMode(CONFIG_SOIL3_SEN_PIN, INPUT);
-#endif
 #endif
 
 #if CONFIG_UART
