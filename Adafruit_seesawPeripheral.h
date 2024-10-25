@@ -95,9 +95,9 @@ uint16_t DATE_CODE = 0;
 #define UART_DEBUG_RXD 8
 #define UART_DEBUG_TXD 9
 #endif
-#if defined(ARDUINO_AVR_ATtiny816) || defined(ARDUINO_AVR_ATtiny806) ||        \
-    defined(ARDUINO_AVR_ATtiny1616) || defined(ARDUINO_AVR_ATtiny1606) ||      \
-    defined(ARDUINO_AVR_ATtiny3216)
+#if defined(ARDUINO_AVR_ATtiny416) || defined(ARDUINO_AVR_ATtiny816) ||        \
+    defined(ARDUINO_AVR_ATtiny806) || defined(ARDUINO_AVR_ATtiny1616) ||       \
+    defined(ARDUINO_AVR_ATtiny1606) || defined(ARDUINO_AVR_ATtiny3216)
 #define UART_DEBUG_RXD 6
 #define UART_DEBUG_TXD 7
 #endif
@@ -153,9 +153,9 @@ uint16_t DATE_CODE = 0;
 #define PWM_WO_OFFSET (6)
 #endif
 
-#if defined(ARDUINO_AVR_ATtiny816) || defined(ARDUINO_AVR_ATtiny806) ||        \
-    defined(ARDUINO_AVR_ATtiny1616) || defined(ARDUINO_AVR_ATtiny1606) ||      \
-    defined(ARDUINO_AVR_ATtiny3216)
+#if defined(ARDUINO_AVR_ATtiny416) || defined(ARDUINO_AVR_ATtiny816) ||        \
+    defined(ARDUINO_AVR_ATtiny806) || defined(ARDUINO_AVR_ATtiny1616) ||      \
+    defined(ARDUINO_AVR_ATtiny1606) || defined(ARDUINO_AVR_ATtiny3216)
 #define ALL_GPIO                                                               \
   0x01FFFFUL // this is chip dependant, for 816 we have 17 GPIO avail
 #define ALL_ADC 0b11100001100111111 // pins that have ADC capability

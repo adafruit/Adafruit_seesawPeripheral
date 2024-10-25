@@ -1,4 +1,6 @@
-#if defined(ARDUINO_AVR_ATtiny806)
+#if defined(ARDUINO_AVR_ATtiny416)
+#define SEESAW_HW_ID 0x46
+#elif defined(ARDUINO_AVR_ATtiny806)
 #define SEESAW_HW_ID 0x84
 #elif defined(ARDUINO_AVR_ATtiny807)
 #define SEESAW_HW_ID 0x85
