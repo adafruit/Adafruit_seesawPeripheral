@@ -91,7 +91,7 @@ void spiRequest(uint8_t reg) {
           (spiPort.getHandle()->Init.BaudRatePrescaler >> SPI_CR1_BR_Pos) + 1;
       clock = HAL_RCC_GetPCLK1Freq() >> divisor;
     }
-    write32(clock);
+    Adafruit_seesawPeripheral_write32(clock);
   }
 }
 
@@ -118,7 +118,7 @@ void spiProcess(uint8_t reg, const uint8_t *data, uint8_t length) {
       spiFail(spiBadConfig);
       return;
     }
-    uint32_t frequency = read32(data + 2);
+    uint32_t frequency = Adafruit_seesawPeripheral_read32(data + 2);
     // The generic C011 runs SPI from 48 MHz with divisors 2 through 256.
     // Reject a request below the hardware minimum instead of exceeding it.
     if (frequency < 187500 || frequency > 24000000 || spiSelected) {
@@ -132,8 +132,8 @@ void spiProcess(uint8_t reg, const uint8_t *data, uint8_t length) {
       available &= ~((1UL << encoderPins[i][0]) | (1UL << encoderPins[i][1]));
 #endif
 #if CONFIG_NEOPIXEL
-    if (pixelPin < 16)
-      available &= ~(1UL << pixelPin);
+    if (g_neopixel_pin < 16)
+      available &= ~(1UL << g_neopixel_pin);
 #endif
     if ((available & spiPinMask) != spiPinMask) {
       spiFail(spiPinConflict);

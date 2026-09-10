@@ -6,8 +6,11 @@ These are engineering tests, not production fixture firmware.
   GPIO, 12-bit ADC, 16-bit PWM commands, open-drain GPIO interrupt,
   one quadrature encoder, 192-byte NeoPixel buffer, and flash-backed EEPROM.
   The UART bridge is off by default; use the `uart` build target to enable it.
-  Core Serial support is disabled except in the UART build. The STM32 backend
-  uses private protocol constants without the host-side BusIO dependency.
+  Core Serial support is disabled except in the UART build. Both targets use
+  the register definitions in `Adafruit_seesaw.h`, without instantiating a host
+  seesaw or BusIO object. Serial-disabled builds use BusIO's existing global
+  `NO_GLOBAL_SERIAL` guard. STM32duino's global `SPI` object is still linked by
+  that dependency, including in builds where the seesaw SPI module is disabled.
 - `metro_host/`: Metro Mini / Uno serial-to-seesaw test host. Its GPIO remain
   inputs except D4-D11, which only pull low or release to emulate encoders.
   It never enables 5 V pull-ups or drives those pins high.
@@ -23,9 +26,40 @@ These are engineering tests, not production fixture firmware.
 - `openocd_command.py`: explicit commands to an already-running local OpenOCD
   server. It does not launch a debugger or change option bytes automatically.
 
-## Current validation status
+## Post-refactor validation — draft, incomplete
 
-2026-09-10 replacement-readiness checks, using the same C011F6Ux breakout:
+The shared AVR/STM32 handlers were compiled and tested on 2026-09-10:
+
+- All 18 AVR examples, the minimal C011 example, and all eight C011 engineering
+  configurations compiled, including UART, four encoders, both strap polarities,
+  and the SPI queue-fault build. No AVR hardware run was performed.
+- Four-encoder firmware: all four physical channels passed -5/+3 motion,
+  position/delta clearing, interrupt-disable, isolation, and simultaneous -8
+  detents at 2 ms phase spacing.
+- Both programmed images passed byte verification. After the tests, all 2048
+  reserved EEPROM-page bytes matched the new pre-refactor full-flash backup;
+  the option register remained `0xfffffeaa`. The 24396-byte SPI image remains
+  loaded. No option-byte writes or mass erase were performed.
+- Final SPI firmware: identity/options/software reset passed 25 cycles each at
+  100/400 kHz; nine ADC pins passed five voltage points each; eight PWM pins
+  passed all three frequency/duty combinations. GPIO IRQ, eight EEPROM bytes
+  across software reset with restoration, and address 0x49->0x4A->0x49 passed.
+- **FAILED:** the general GPIO run passed PA2-PA4, then stopped during PA5's
+  high-output readback with `R 49 01 04 04: ERR I2C 3`. No GPIO retry was run.
+- **FAILED:** Arduino SPI mode/order pairs (0,0), (0,1), and (1,0) passed all
+  lengths 0/1/29/30/58/96; the next pair stopped with host result `FAIL FF`.
+  No SPI retry was run. The source review did not establish either failure's
+  cause; do not label them fixture faults or proven refactor defects.
+- Further bus testing stopped: raw SPI, CircuitPython, Arduino GPIO/ADC/PWM,
+  queue-overflow hardware, and physical strap combinations were not rerun on
+  this refactor. Prior passes below remain historical. UART is compile-only in
+  this sequence; NeoPixel ring commands and power changes remain stopped.
+
+## Pre-refactor hardware evidence
+
+2026-09-10 replacement-readiness checks before the shared-handler refactor,
+using the same C011F6Ux breakout. These are historical passes, not substitutes
+for the post-refactor checks below:
 
 | Area | Actual evidence | Result |
 |---|---|---|
@@ -51,10 +85,13 @@ These are engineering tests, not production fixture firmware.
 | FHT/audio spectrum | AVR assembly implementation has no STM32 port; enabling it explicitly fails compilation | Unsupported |
 | NeoPixel | No ring commands or ring power changes during these checks | STOP: supervised testing only |
 
-The normal UART-off build occupies **20592 flash bytes**, leaving **10128 bytes**
-before the reserved EEPROM page, and uses 1660 bytes of static RAM. The SPI build
-occupies **24140 flash bytes** and uses 1964 bytes of static RAM. The opt-in UART
-build occupies 28804 flash bytes and uses 2228 bytes of static RAM.
+After the shared-handler refactor, the normal UART-off build occupies
+**22252 flash bytes**, leaving **8468 bytes** before the reserved EEPROM page,
+and uses 1796 bytes of static RAM. The SPI build occupies **24396 flash bytes**
+and uses 1972 bytes of static RAM. The opt-in UART build occupies **30468 flash
+bytes** and uses 2364 bytes of static RAM: only **252 flash bytes** remain before
+EEPROM, so additional features require a new size check. The minimal example
+occupies 17004 flash bytes and 1400 static RAM bytes.
 The Arduino size summary omits 212 bytes of vectors/initialization sections;
 these flash figures use the binary size and programmer's byte verification.
 
@@ -96,9 +133,26 @@ reads, the verified recovery is OpenOCD `cortex_m reset_config sysresetreq`,
 not clear this session's stuck state. Preserve a full flash backup and option
 readout first, inspect each programming response, and verify before running.
 
-All 18 existing AVR examples compiled with megaTinyCore 2.6.11, using their
-chip-specific test selections where present. The existing AVR implementation is
-unchanged. The neodriver example retains its existing low-RAM warning.
+All 18 existing AVR examples compiled again after the shared-handler refactor
+with megaTinyCore 2.6.11, using their chip-specific test selections where present.
+The neodriver example retains its existing low-RAM warning. AVR hardware has not
+been rerun in this refactor; its protocol implementation is now shared.
+
+## Shared protocol architecture
+
+The common header owns module defaults/state, register byte encoding, build-date
+packing, address-strap polarity/weights, and the existing AVR detent decoder.
+`Adafruit_seesawPeripheral_receive.h` and `_request.h` now decode commands and
+responses for both targets. GPIO/PWM/NeoPixel hardware hooks, ADC acquisition,
+EEPROM storage, and transport scheduling remain target-specific. STM32 queues
+blocking work for `loop()`; AVR retains its callback dispatch and deferred UART TX.
+FHT remains AVR-only and the experimental SPI controller remains STM32-only.
+
+Valid ordinary host commands keep their encoding. The common decoder also
+requires complete payloads, bounds-checks pin shifts and NeoPixel writes, and
+rejects zero PWM frequency. AVR gains GPIO toggle/interrupt-clear dispatch and
+module-status responses previously missing from its handlers. IRQ timing and
+encoder position-write delta behavior retain their target-specific semantics.
 
 ## Physical fixture
 

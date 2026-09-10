@@ -1,6 +1,7 @@
 /*!
  * @file Adafruit_seesawPeripheral_stm32.h
- * STM32duino backend. Slow peripheral work runs outside Wire interrupts.
+ * STM32duino hardware and deferred-I2C execution backend.
+ * Register decoding and responses live in the shared receive/request headers.
  */
 #ifndef ADAFRUIT_SEESAWPERIPHERAL_STM32_H
 #define ADAFRUIT_SEESAWPERIPHERAL_STM32_H
@@ -8,69 +9,34 @@
 #if !defined(ARDUINO_GENERIC_C011F6UX)
 #error "The STM32 backend currently supports the generic STM32C011F6Ux only"
 #endif
-
-#ifndef CONFIG_ADC
-#define CONFIG_ADC 0 ///< Enable ADC channels.
-#endif
-#ifndef CONFIG_PWM
-#if CONFIG_PWM_16BIT
-#define CONFIG_PWM 1 ///< STM32 PWM always accepts the 16-bit seesaw duty value.
-#else
-#define CONFIG_PWM 0 ///< Enable PWM channels.
-#endif
-#endif
 #if CONFIG_ADC
 #include "stm32c0xx_ll_adc.h"
-#endif
-#ifndef CONFIG_EEPROM
-#define CONFIG_EEPROM 0 ///< Enable the reserved-flash EEPROM window.
-#endif
-#ifndef CONFIG_NEOPIXEL
-#define CONFIG_NEOPIXEL 0 ///< Enable raw NeoPixel buffer output.
-#endif
-#ifndef CONFIG_UART
-#define CONFIG_UART 0 ///< Enable the UART bridge.
-#endif
-#ifndef CONFIG_SPI
-#define CONFIG_SPI 0 ///< Enable the experimental I2C-to-SPI controller bridge.
 #endif
 #if CONFIG_SPI
 #include <SPI.h>
 #endif
-#ifndef CONFIG_UART_DEBUG
-#define CONFIG_UART_DEBUG                                                      \
-  0 ///< Reserve the default UART pins for sketch logging.
-#endif
-#ifndef CONFIG_ENCODER
-#define CONFIG_ENCODER 0 ///< Enable quadrature encoders.
+#if CONFIG_NEOPIXEL
+#include <Adafruit_NeoPixel.h>
 #endif
 #if CONFIG_FHT
 #error "The AVR assembly FHT backend is not available on STM32"
 #endif
-#if CONFIG_NEOPIXEL
-#include <Adafruit_NeoPixel.h>
-#ifndef CONFIG_NEOPIXEL_BUF_MAX
-#define CONFIG_NEOPIXEL_BUF_MAX 192 ///< Default raw LED buffer capacity.
-#endif
-#endif
 #if CONFIG_UART || CONFIG_UART_DEBUG
 #ifndef CONFIG_UART_SERCOM
-#define CONFIG_UART_SERCOM Serial ///< UART implementation.
+#define CONFIG_UART_SERCOM Serial
 #endif
 #ifndef CONFIG_UART_RX_PIN
-#define CONFIG_UART_RX_PIN 1 ///< PA1, USART1 RX.
+#define CONFIG_UART_RX_PIN 1 // PA1, USART1 RX.
 #endif
 #ifndef CONFIG_UART_TX_PIN
-#define CONFIG_UART_TX_PIN 0 ///< PA0, USART1 TX.
+#define CONFIG_UART_TX_PIN 0 // PA0, USART1 TX.
 #endif
 #endif
-
 #if CONFIG_EEPROM
 extern "C" uint8_t _sidata, _sdata, _edata;
 #endif
 
 namespace SeesawSTM32 {
-const uint8_t hardwareID = 0x90;        ///< Provisional STM32C011 hardware ID.
 const uint32_t gpioMask = 0x000087FFUL; ///< PA0-PA8, PA11, PA12, PC14.
 const uint32_t adcMask = 0x000007FFUL;  ///< Eleven exposed analog inputs.
 const uint32_t pwmMask = 0x000083FFUL;  ///< All exposed pins except PA12.
@@ -84,9 +50,8 @@ volatile Command commands[queueSize]; ///< Single producer/consumer queue.
 volatile uint8_t head = 0, tail = 0;  ///< Queue cursors.
 volatile uint8_t selectedBase = 0, selectedRegister = 0; ///< Read pointer.
 uint32_t direction = 0, output = 0, pull = 0; ///< GPIO register semantics.
-uint32_t irqEnabled = 0, lastGPIO = 0;        ///< Change interrupt state.
-volatile uint32_t irqFlags = 0; ///< Latched changes, cleared by Wire reads.
-uint32_t pwmActive = 0;         ///< Pins currently using timers.
+uint32_t lastGPIO = 0;                        ///< Last sampled GPIO state.
+uint32_t pwmActive = 0;                       ///< Pins currently using timers.
 #if CONFIG_SPI
 const uint8_t spiBase = 0x13; ///< Experimental SPI controller register module.
 const uint32_t spiPinMask = 0xF0; ///< PA4 CS, PA5 SCK, PA6 MISO, PA7 MOSI.
@@ -111,27 +76,11 @@ const uint16_t pwmPins[16] = {PA0_ALT1, PA1_ALT1, 2, PA3_ALT1, PA4_ALT1, 5,  6,
                               14,       15}; ///< Prefer non-complementary
                                              ///< channels.
 #endif
-volatile uint16_t adcValue = 0;                  ///< Completed ADC conversion.
-volatile uint8_t adcStatus = 0, timerStatus = 0; ///< Peripheral error flags.
 #if CONFIG_ADC
 bool adcReady = false; ///< Calibration and enable completed.
 const uint32_t adcTimeoutMicros =
     5000; ///< Bounded calibration/conversion waits.
 #endif
-uint32_t version = 0; ///< Product/date code, compatible with existing seesaw.
-constexpr uint16_t buildDate(const char *date) {
-  const char *months = "JanFebMarAprMayJunJulAugSepOctNovDec";
-  uint8_t month = 1;
-  for (; month <= 12; month++) {
-    uint8_t pos = (month - 1) * 3;
-    if (date[0] == months[pos] && date[1] == months[pos + 1] &&
-        date[2] == months[pos + 2])
-      break;
-  }
-  uint8_t day = (date[4] == ' ' ? 0 : date[4] - '0') * 10 + date[5] - '0';
-  uint8_t year = (date[9] - '0') * 10 + date[10] - '0';
-  return (day << 11) | (month << 7) | year;
-}
 uint8_t address = CONFIG_I2C_PERIPH_ADDR; ///< Current effective I2C address.
 #if CONFIG_EEPROM
 const uint32_t eepromAddress = FLASH_BASE + 30 * 1024; ///< Last 2 KB page.
@@ -140,10 +89,6 @@ const uint8_t addressOffset = 0xFF; ///< Persistent I2C address byte.
 uint8_t eepromBuffer[eepromSize]
     __attribute__((aligned(8))); ///< Page workspace.
 bool eepromSafe = false; ///< True only if program data ends before this page.
-#endif
-#if CONFIG_UART
-volatile uint32_t uartBaud = 9600;  ///< UART bit rate, exposed to Wire reads.
-volatile uint8_t uartInterrupt = 0; ///< RX-ready interrupt enable.
 #endif
 #if CONFIG_ENCODER
 static_assert(CONFIG_NUM_ENCODERS >= 1 && CONFIG_NUM_ENCODERS <= 4,
@@ -160,14 +105,7 @@ const uint8_t encoderPins[CONFIG_NUM_ENCODERS][2] = {
     {CONFIG_ENCODER3_A_PIN, CONFIG_ENCODER3_B_PIN},
 #endif
 }; ///< Encoder A/B pin indices.
-volatile int32_t encoderPosition[CONFIG_NUM_ENCODERS] =
-    {}; ///< Absolute counts.
-volatile int32_t encoderDelta[CONFIG_NUM_ENCODERS] =
-    {}; ///< Unread count changes.
-uint8_t encoderPrevious[CONFIG_NUM_ENCODERS] =
-    {};                                        ///< Previous quadrature phase.
-int8_t encoderSteps[CONFIG_NUM_ENCODERS] = {}; ///< Partial-detent counts.
-volatile uint8_t encoderInterrupts = 0;        ///< Interrupt enable bitmap.
+volatile uint8_t encoderInterrupts = 0; ///< Interrupt enable bitmap.
 #endif
 #if CONFIG_NEOPIXEL
 class RawPixels : public Adafruit_NeoPixel {
@@ -177,10 +115,7 @@ public:
                           NEO_RGB + NEO_KHZ800) {}
   void byteLength(uint16_t length) { numBytes = length; }
 }; ///< Uses NeoPixel's STM32 timing with unmodified raw RGB/RGBW byte order.
-RawPixels pixels;         ///< Fixed-capacity LED buffer, allocated once.
-uint16_t pixelLength = 0; ///< Requested byte count.
-uint8_t pixelPin = 0xFF,
-        pixelStatus = 0; ///< Selected pin and validation status.
+RawPixels pixels; ///< Fixed-capacity LED buffer, allocated once.
 #endif
 
 uint32_t validGPIO() {
@@ -195,16 +130,16 @@ uint32_t validGPIO() {
 #if CONFIG_UART || CONFIG_UART_DEBUG
   pins &= ~((1UL << CONFIG_UART_RX_PIN) | (1UL << CONFIG_UART_TX_PIN));
 #endif
-#ifdef CONFIG_ADDR_0_PIN
+#if CONFIG_ADDR_0
   pins &= ~(1UL << CONFIG_ADDR_0_PIN);
 #endif
-#ifdef CONFIG_ADDR_1_PIN
+#if CONFIG_ADDR_1
   pins &= ~(1UL << CONFIG_ADDR_1_PIN);
 #endif
-#ifdef CONFIG_ADDR_2_PIN
+#if CONFIG_ADDR_2
   pins &= ~(1UL << CONFIG_ADDR_2_PIN);
 #endif
-#ifdef CONFIG_ADDR_3_PIN
+#if CONFIG_ADDR_3
   pins &= ~(1UL << CONFIG_ADDR_3_PIN);
 #endif
   return pins;
@@ -213,13 +148,13 @@ uint32_t validGPIO() {
 void updateIRQ() {
 #ifdef CONFIG_INTERRUPT_PIN
   // A real open-drain output; the local pull-up is in the 3.3 V domain.
-  bool active = irqFlags != 0;
+  bool active = g_irqFlags != 0;
 #if CONFIG_UART
-  active |= uartInterrupt && CONFIG_UART_SERCOM.available();
+  active |= g_uart_inten && CONFIG_UART_SERCOM.available();
 #endif
 #if CONFIG_ENCODER
   for (uint8_t i = 0; i < CONFIG_NUM_ENCODERS; i++) {
-    active |= (encoderInterrupts & (1 << i)) && encoderDelta[i] != 0;
+    active |= (encoderInterrupts & (1 << i)) && g_enc_delta[i] != 0;
   }
 #endif
   digitalWrite(CONFIG_INTERRUPT_PIN, active ? LOW : HIGH);
@@ -257,17 +192,6 @@ void applyGPIO(uint32_t pins) {
     }
     pwmActive &= ~bit;
   }
-}
-
-uint32_t read32(const uint8_t *data) {
-  return ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) |
-         ((uint32_t)data[2] << 8) | data[3];
-}
-
-void write32(uint32_t value) {
-  uint8_t data[4] = {(uint8_t)(value >> 24), (uint8_t)(value >> 16),
-                     (uint8_t)(value >> 8), (uint8_t)value};
-  Wire.write(data, sizeof(data));
 }
 
 #if CONFIG_SPI
@@ -320,106 +244,6 @@ void receive(int length) {
     spiPending++;
 #endif
   head = next;
-}
-
-void request() {
-#if CONFIG_SPI
-  if (selectedBase == spiBase) {
-    spiRequest(selectedRegister);
-    return;
-  }
-#endif
-  if (selectedBase == SEESAW_STATUS_BASE) {
-    switch (selectedRegister) {
-    case SEESAW_STATUS_HW_ID:
-      Wire.write(hardwareID);
-      break;
-    case SEESAW_STATUS_VERSION:
-      write32(version);
-      break;
-    case SEESAW_STATUS_OPTIONS:
-      write32((1UL << SEESAW_STATUS_BASE) | (1UL << SEESAW_GPIO_BASE) |
-              ((uint32_t)CONFIG_ADC << SEESAW_ADC_BASE) |
-              ((uint32_t)CONFIG_PWM << SEESAW_TIMER_BASE) |
-              ((uint32_t)CONFIG_EEPROM << SEESAW_EEPROM_BASE) |
-              ((uint32_t)CONFIG_NEOPIXEL << SEESAW_NEOPIXEL_BASE) |
-              ((uint32_t)CONFIG_UART << SEESAW_SERCOM0_BASE) |
-              ((uint32_t)CONFIG_ENCODER << SEESAW_ENCODER_BASE)
-#if CONFIG_SPI
-              | (1UL << spiBase)
-#endif
-      );
-      break;
-    default:
-      Wire.write((uint8_t)0);
-    }
-  } else if (selectedBase == SEESAW_GPIO_BASE) {
-    if (selectedRegister == SEESAW_GPIO_BULK) {
-      write32(readGPIO());
-      irqFlags = 0;
-      updateIRQ();
-    } else if (selectedRegister == SEESAW_GPIO_INTFLAG) {
-      write32(irqFlags);
-      irqFlags = 0;
-      updateIRQ();
-    }
-#if CONFIG_ADC
-  } else if (selectedBase == SEESAW_ADC_BASE) {
-    if (selectedRegister == SEESAW_ADC_STATUS) {
-      Wire.write(adcStatus);
-    } else if (selectedRegister >= SEESAW_ADC_CHANNEL_OFFSET) {
-      Wire.write((uint8_t)(adcValue >> 8));
-      Wire.write((uint8_t)adcValue);
-    }
-#endif
-#if CONFIG_PWM
-  } else if (selectedBase == SEESAW_TIMER_BASE) {
-    Wire.write(timerStatus);
-#endif
-#if CONFIG_EEPROM
-  } else if (selectedBase == SEESAW_EEPROM_BASE) {
-    // Reads are live flash contents, not an optimistic write cache.
-    uint8_t value = 0xFF;
-    if (eepromSafe)
-      value = *((const uint8_t *)eepromAddress + selectedRegister);
-    Wire.write(value);
-#endif
-#if CONFIG_NEOPIXEL
-  } else if (selectedBase == SEESAW_NEOPIXEL_BASE) {
-    Wire.write(pixelStatus);
-#endif
-#if CONFIG_UART
-  } else if (selectedBase == SEESAW_SERCOM0_BASE) {
-    switch (selectedRegister) {
-    case SEESAW_SERCOM_STATUS:
-      Wire.write((uint8_t)(CONFIG_UART_SERCOM.available() ? 2 : 0));
-      break;
-    case SEESAW_SERCOM_INTEN:
-      Wire.write(uartInterrupt);
-      break;
-    case SEESAW_SERCOM_BAUD:
-      write32(uartBaud);
-      break;
-    case SEESAW_SERCOM_DATA:
-      Wire.write((uint8_t)CONFIG_UART_SERCOM.read());
-      break;
-    }
-#endif
-#if CONFIG_ENCODER
-  } else if (selectedBase == SEESAW_ENCODER_BASE) {
-    uint8_t index = selectedRegister & 0x0F;
-    uint8_t reg = selectedRegister & 0xF0;
-    if (index < CONFIG_NUM_ENCODERS &&
-        (reg == SEESAW_ENCODER_POSITION || reg == SEESAW_ENCODER_DELTA)) {
-      write32(reg == SEESAW_ENCODER_POSITION ? encoderPosition[index]
-                                             : encoderDelta[index]);
-      encoderDelta[index] = 0;
-      updateIRQ();
-    }
-#endif
-  } else {
-    Wire.write((uint8_t)0);
-  }
 }
 
 #if CONFIG_ADC
@@ -490,31 +314,36 @@ void reset() {
   spiAbortPending = false;
 #endif
   direction = output = pull = 0;
-  irqEnabled = irqFlags = 0;
-  adcValue = adcStatus = timerStatus = 0;
+  g_irqGPIO = g_irqFlags = 0;
+#if CONFIG_ADC
+  g_bufferedADCRead = g_adcStatus = 0;
+#endif
+#if CONFIG_PWM || CONFIG_PWM_16BIT
+  g_pwmStatus = 0;
+#endif
   pwmFrequency = 1000;
   applyGPIO(validGPIO());
 #if CONFIG_ADC
   adcReady = beginADC();
   if (!adcReady)
-    adcStatus = 1;
+    g_adcStatus = 1;
 #endif
 #if CONFIG_NEOPIXEL
-  pixelLength = 0;
-  pixelPin = 0xFF;
+  g_neopixel_bufsize = 0;
+  g_neopixel_pin = 0xFF;
   pixels.setPin(-1);
   pixels.byteLength(CONFIG_NEOPIXEL_BUF_MAX);
   pixels.clear();
   pixels.byteLength(0);
-  pixelStatus = pixels.getPixels() ? 0 : 1;
+  g_neopixel_status = pixels.getPixels() ? 0 : 1;
 #endif
 #if CONFIG_UART
-  uartInterrupt = 0;
-  uartBaud = 9600;
+  g_uart_inten = 0;
+  g_uart_baud = 9600;
   CONFIG_UART_SERCOM.end();
   CONFIG_UART_SERCOM.setRx(CONFIG_UART_RX_PIN);
   CONFIG_UART_SERCOM.setTx(CONFIG_UART_TX_PIN);
-  CONFIG_UART_SERCOM.begin(uartBaud);
+  CONFIG_UART_SERCOM.begin(g_uart_baud);
 #endif
 #if CONFIG_ENCODER
   encoderInterrupts = 0;
@@ -524,10 +353,10 @@ void reset() {
     uint32_t bits = (1UL << encoderPins[i][0]) | (1UL << encoderPins[i][1]);
     pull |= bits;
     output |= bits;
-    encoderPrevious[i] =
-        digitalRead(encoderPins[i][0]) | (digitalRead(encoderPins[i][1]) << 1);
-    encoderPosition[i] = encoderDelta[i] = 0;
-    encoderSteps[i] = 0;
+    g_enc_prev_pos[i] = 3 ^ (digitalRead(encoderPins[i][0]) |
+                             (digitalRead(encoderPins[i][1]) << 1));
+    g_enc_value[i] = g_enc_delta[i] = 0;
+    g_enc_flags[i] = 0;
   }
 #endif
 #ifdef CONFIG_INTERRUPT_PIN
@@ -549,31 +378,7 @@ uint8_t configuredAddress() {
       result = saved;
   }
 #endif
-#ifdef CONFIG_ADDR_INVERTED
-  const uint8_t activeLevel = HIGH;
-#else
-  const uint8_t activeLevel = LOW;
-#endif
-#ifdef CONFIG_ADDR_0_PIN
-  pinMode(CONFIG_ADDR_0_PIN, INPUT_PULLUP);
-  if (digitalRead(CONFIG_ADDR_0_PIN) == activeLevel)
-    result += 1;
-#endif
-#ifdef CONFIG_ADDR_1_PIN
-  pinMode(CONFIG_ADDR_1_PIN, INPUT_PULLUP);
-  if (digitalRead(CONFIG_ADDR_1_PIN) == activeLevel)
-    result += 2;
-#endif
-#ifdef CONFIG_ADDR_2_PIN
-  pinMode(CONFIG_ADDR_2_PIN, INPUT_PULLUP);
-  if (digitalRead(CONFIG_ADDR_2_PIN) == activeLevel)
-    result += 4;
-#endif
-#ifdef CONFIG_ADDR_3_PIN
-  pinMode(CONFIG_ADDR_3_PIN, INPUT_PULLUP);
-  if (digitalRead(CONFIG_ADDR_3_PIN) == activeLevel)
-    result += 8;
-#endif
+  result = Adafruit_seesawPeripheral_applyAddressStraps(result);
   if (result < 8 || result > 0x77)
     result = CONFIG_I2C_PERIPH_ADDR;
   return result;
@@ -609,204 +414,106 @@ void writeEEPROM(uint8_t offset, const uint8_t *data, uint8_t length) {
 }
 #endif
 
-void process(const Command &command) {
-  uint8_t base = command.data[0], reg = command.data[1];
-  const uint8_t *data = command.data + 2;
-  uint8_t length = command.length - 2;
-#if CONFIG_SPI
-  if (base == spiBase) {
-    spiProcess(reg, data, length);
-    noInterrupts();
-    if (spiPending)
-      spiPending--;
-    interrupts();
-    return;
-  }
-#endif
-  if (base == SEESAW_STATUS_BASE && reg == SEESAW_STATUS_SWRST && length == 1 &&
-      data[0] == 0xFF) {
-    reset();
-    uint8_t newAddress = configuredAddress();
-    if (newAddress != address) {
-      Wire.end();
-      address = newAddress;
-      Wire.begin((int)address);
-      Wire.onReceive(receive);
-      Wire.onRequest(request);
-    }
-  } else if (base == SEESAW_GPIO_BASE && length == 4) {
-    uint32_t bits = read32(data) & validGPIO();
-    switch (reg) {
-    case SEESAW_GPIO_DIRSET_BULK:
-      direction |= bits;
-      break;
-    case SEESAW_GPIO_DIRCLR_BULK:
-      direction &= ~bits;
-      break;
-    case SEESAW_GPIO_BULK:
-      output = bits;
-      bits = validGPIO();
-      break;
-    case SEESAW_GPIO_BULK_SET:
-      output |= bits;
-      break;
-    case SEESAW_GPIO_BULK_CLR:
-      output &= ~bits;
-      break;
-    case SEESAW_GPIO_BULK_TOGGLE:
-      output ^= bits;
-      break;
-    case SEESAW_GPIO_PULLENSET:
-      pull |= bits;
-      break;
-    case SEESAW_GPIO_PULLENCLR:
-      pull &= ~bits;
-      break;
-    case SEESAW_GPIO_INTENSET:
-      lastGPIO = readGPIO();
-      irqEnabled |= bits;
-      return;
-    case SEESAW_GPIO_INTENCLR:
-      irqEnabled &= ~bits;
-      irqFlags &= ~bits;
-      updateIRQ();
-      return;
-    default:
-      return;
-    }
-    applyGPIO(bits);
-#if CONFIG_ADC
-  } else if (base == SEESAW_ADC_BASE && length == 0 &&
-             reg >= SEESAW_ADC_CHANNEL_OFFSET) {
-    uint8_t pin = reg - SEESAW_ADC_CHANNEL_OFFSET;
-    adcStatus = 1;
-    adcValue = 0;
-    if (pin < 16 && (adcMask & validGPIO() & (1UL << pin))) {
-      uint16_t value;
-      if (readADC(pin, value)) {
-        adcValue = value;
-        adcStatus = 0;
-      }
-    }
-#endif
-#if CONFIG_EEPROM
-  } else if (base == SEESAW_EEPROM_BASE && length > 0) {
-    writeEEPROM(reg, data, length);
-#endif
-#if CONFIG_NEOPIXEL
-  } else if (base == SEESAW_NEOPIXEL_BASE) {
-    pixelStatus = 0;
-    if (reg == SEESAW_NEOPIXEL_PIN && length == 1) {
-      if (data[0] >= 16 || !(validGPIO() & (1UL << data[0]))) {
-        pixelStatus = 1;
-        return;
-      }
-      pixelPin = data[0];
-      pixels.setPin(pixelPin);
-    } else if (reg == SEESAW_NEOPIXEL_SPEED && length == 1) {
-      // Like the AVR peripheral, this backend supports 800 kHz only.
-      if (data[0] != 1)
-        pixelStatus = 1;
-    } else if (reg == SEESAW_NEOPIXEL_BUF_LENGTH && length == 2) {
-      pixelLength = ((uint16_t)data[0] << 8) | data[1];
-      if (pixelLength > CONFIG_NEOPIXEL_BUF_MAX)
-        pixelLength = CONFIG_NEOPIXEL_BUF_MAX;
-      pixels.byteLength(pixelLength);
-    } else if (reg == SEESAW_NEOPIXEL_BUF && length >= 2) {
-      uint16_t offset = ((uint16_t)data[0] << 8) | data[1];
-      if (!pixels.getPixels() ||
-          (uint32_t)offset + length - 2 > CONFIG_NEOPIXEL_BUF_MAX) {
-        pixelStatus = 1;
-        return;
-      }
-      memcpy(pixels.getPixels() + offset, data + 2, length - 2);
-    } else if (reg == SEESAW_NEOPIXEL_SHOW && length == 0) {
-      if (pixelPin == 0xFF || !pixels.getPixels() || pixelLength == 0) {
-        pixelStatus = 1;
-        return;
-      }
-#if CONFIG_PWM
-      if (pwmActive & (1UL << pixelPin))
-        pinMode(pwmPins[pixelPin], INPUT);
-#endif
-      pinMode(pixelPin, OUTPUT);
-      pwmActive &= ~(1UL << pixelPin);
-      pixels.show();
-    }
-#endif
-#if CONFIG_UART
-  } else if (base == SEESAW_SERCOM0_BASE) {
-    if (reg == SEESAW_SERCOM_INTEN && length == 1)
-      uartInterrupt |= data[0] & 1;
-    else if (reg == SEESAW_SERCOM_INTENCLR && length == 1)
-      uartInterrupt &= ~(data[0] & 1);
-    else if (reg == SEESAW_SERCOM_BAUD && length == 4) {
-      uint32_t baud = read32(data);
-      if (baud >= 300 && baud <= 1000000) {
-        uartBaud = baud;
-        CONFIG_UART_SERCOM.end();
-        CONFIG_UART_SERCOM.begin(baud);
-      }
-    } else if (reg == SEESAW_SERCOM_DATA && length > 0) {
-      CONFIG_UART_SERCOM.write(data, length);
-    }
-#endif
-#if CONFIG_ENCODER
-  } else if (base == SEESAW_ENCODER_BASE) {
-    uint8_t index = reg & 0x0F;
-    if (index >= CONFIG_NUM_ENCODERS)
-      return;
-    switch (reg & 0xF0) {
-    case SEESAW_ENCODER_INTENSET:
-      encoderInterrupts |= 1 << index;
-      break;
-    case SEESAW_ENCODER_INTENCLR:
-      encoderInterrupts &= ~(1 << index);
-      break;
-    case SEESAW_ENCODER_POSITION:
-      if (length == 4) {
-        noInterrupts();
-        encoderPosition[index] = (int32_t)read32(data);
-        encoderDelta[index] = 0;
-        interrupts();
-      }
-      break;
-    }
-#endif
-#if CONFIG_PWM
-  } else if (base == SEESAW_TIMER_BASE && length == 3) {
-    uint8_t pin = data[0];
-    uint16_t value = ((uint16_t)data[1] << 8) | data[2];
-    timerStatus = 1;
-    if (pin >= 16 || !(pwmMask & validGPIO() & (1UL << pin))) {
-      return;
-    }
-    if (reg == SEESAW_TIMER_PWM) {
-      pwmValues[pin] = value;
-      analogWriteFrequency(pwmFrequency);
-      analogWrite(pwmPins[pin], value);
-      pwmActive |= 1UL << pin;
-      timerStatus = 0;
-    } else if (reg == SEESAW_TIMER_FREQ && value != 0) {
-      // Channels share hardware timers: keep one documented global frequency.
-      pwmFrequency = value;
-      analogWriteFrequency(value);
-      for (uint8_t activePin = 0; activePin < 16; activePin++) {
-        if (pwmActive & (1UL << activePin)) {
-          analogWrite(pwmPins[activePin], pwmValues[activePin]);
-        }
-      }
-      timerStatus = 0;
-    }
-#endif
+} // namespace SeesawSTM32
+
+// GPIO hardware hooks; register decoding is shared with AVR.
+void Adafruit_seesawPeripheral_gpioDirection(uint32_t mask, bool output) {
+  using namespace SeesawSTM32;
+  if (output)
+    direction |= mask;
+  else
+    direction &= ~mask;
+  applyGPIO(mask);
+}
+void Adafruit_seesawPeripheral_gpioWrite(uint32_t mask, bool high) {
+  using namespace SeesawSTM32;
+  if (high)
+    output |= mask;
+  else
+    output &= ~mask;
+  applyGPIO(mask);
+}
+void Adafruit_seesawPeripheral_gpioToggle(uint32_t mask) {
+  using namespace SeesawSTM32;
+  output ^= mask;
+  applyGPIO(mask);
+}
+void Adafruit_seesawPeripheral_gpioPull(uint32_t mask, bool enabled) {
+  using namespace SeesawSTM32;
+  if (enabled)
+    pull |= mask;
+  else
+    pull &= ~mask;
+  applyGPIO(mask);
+}
+void Adafruit_seesawPeripheral_gpioInterrupt(uint32_t mask, bool enabled) {
+  using namespace SeesawSTM32;
+  if (enabled) {
+    lastGPIO = readGPIO();
+    g_irqGPIO |= mask;
+  } else {
+    g_irqGPIO &= ~mask;
+    g_irqFlags &= ~mask;
+    updateIRQ();
   }
 }
-} // namespace SeesawSTM32
+#if CONFIG_PWM
+void Adafruit_seesawPeripheral_setPWM(uint8_t pin, uint16_t value) {
+  using namespace SeesawSTM32;
+  pwmValues[pin] = value;
+  analogWriteFrequency(pwmFrequency);
+  analogWrite(pwmPins[pin], value);
+  pwmActive |= 1UL << pin;
+}
+void Adafruit_seesawPeripheral_setPWMFrequency(uint8_t pin, uint16_t value) {
+  using namespace SeesawSTM32;
+  pwmFrequency = value;
+  analogWriteFrequency(value);
+  for (uint8_t activePin = 0; activePin < 16; activePin++)
+    if (pwmActive & (1UL << activePin))
+      analogWrite(pwmPins[activePin], pwmValues[activePin]);
+}
+#endif
+#if CONFIG_NEOPIXEL
+volatile uint8_t *Adafruit_seesawPeripheral_pixelBuffer() {
+  return SeesawSTM32::pixels.getPixels();
+}
+void Adafruit_seesawPeripheral_setPixelPin(uint8_t pin) {
+  SeesawSTM32::pixels.setPin(pin);
+}
+void Adafruit_seesawPeripheral_setPixelLength(uint16_t length) {
+  SeesawSTM32::pixels.byteLength(length);
+}
+void Adafruit_seesawPeripheral_showPixels() {
+  using namespace SeesawSTM32;
+#if CONFIG_PWM
+  if (pwmActive & (1UL << g_neopixel_pin))
+    pinMode(pwmPins[g_neopixel_pin], INPUT);
+#endif
+  pinMode(g_neopixel_pin, OUTPUT);
+  pwmActive &= ~(1UL << g_neopixel_pin);
+  pixels.show();
+}
+#endif
+
+/*! Reset peripheral state, then apply a changed persistent I2C address. */
+void Adafruit_seesawPeripheral_reset(void) {
+  using namespace SeesawSTM32;
+  reset();
+  uint8_t newAddress = configuredAddress();
+  if (newAddress != address) {
+    Wire.end();
+    address = newAddress;
+    Wire.begin((int)address);
+    // STM32duino clears callbacks in begin(); always reattach afterward.
+    Wire.onReceive(receiveEvent);
+    Wire.onRequest(requestEvent);
+  }
+}
 
 bool Adafruit_seesawPeripheral_begin() {
   using namespace SeesawSTM32;
-  constexpr uint16_t dateCode = buildDate(__DATE__);
-  version = ((uint32_t)PRODUCT_CODE << 16) | dateCode;
+  Adafruit_seesawPeripheral_setDatecode();
 #if CONFIG_EEPROM
   // Refuse flash writes if a build forgot to reserve the final page.
   eepromSafe =
@@ -825,8 +532,8 @@ bool Adafruit_seesawPeripheral_begin() {
   Wire.begin((int)address);
   // STM32duino begin() clears the request callback: attach after
   // initialization.
-  Wire.onReceive(receive);
-  Wire.onRequest(request);
+  Wire.onReceive(receiveEvent);
+  Wire.onRequest(requestEvent);
   return true;
 }
 
@@ -851,41 +558,20 @@ void Adafruit_seesawPeripheral_run() {
     if (command.data[0] == spiBase)
       delayMicroseconds(CONFIG_SPI_TEST_HOLD_US);
 #endif
-    process(command);
+    Adafruit_seesawPeripheral_processCommand(command.data, command.length);
   }
 #if defined(CONFIG_INTERRUPT_PIN) || CONFIG_ENCODER
   // Snapshot and flag updates must not race the read-to-clear Wire callback.
   noInterrupts();
   uint32_t current = readGPIO();
 #if CONFIG_ENCODER
-  // Reject impossible two-bit transitions; count only complete detents.
-  const int8_t transitions[16] = {0, 1, -1, 0,  -1, 0,  0, 1,
-                                  1, 0, 0,  -1, 0,  -1, 1, 0};
   for (uint8_t i = 0; i < CONFIG_NUM_ENCODERS; i++) {
-    uint8_t phase =
-        digitalRead(encoderPins[i][0]) | (digitalRead(encoderPins[i][1]) << 1);
-    uint8_t previous = encoderPrevious[i];
-    if ((phase ^ previous) == 3)
-      encoderSteps[i] = 0;
-    else
-      encoderSteps[i] += transitions[(previous << 2) | phase];
-    encoderPrevious[i] = phase;
-#if CONFIG_ENCODER_2TICKS
-    const int8_t ticks = 2;
-    bool detent = phase == 0 || phase == 3;
-#else
-    const int8_t ticks = 4;
-    bool detent = phase == 3;
-#endif
-    if (detent && (encoderSteps[i] >= ticks || encoderSteps[i] <= -ticks)) {
-      int8_t step = encoderSteps[i] > 0 ? 1 : -1;
-      encoderPosition[i] = (int32_t)((uint32_t)encoderPosition[i] + step);
-      encoderDelta[i] = (int32_t)((uint32_t)encoderDelta[i] + step);
-      encoderSteps[i] = 0;
-    }
+    uint8_t phase = 3 ^ (digitalRead(encoderPins[i][0]) |
+                         (digitalRead(encoderPins[i][1]) << 1));
+    Adafruit_seesawPeripheral_updateEncoder(i, phase);
   }
 #endif
-  irqFlags |= (current ^ lastGPIO) & irqEnabled;
+  g_irqFlags |= (current ^ lastGPIO) & g_irqGPIO;
   lastGPIO = current;
   updateIRQ();
   interrupts();

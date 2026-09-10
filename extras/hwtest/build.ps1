@@ -34,21 +34,28 @@ if ($Target -eq 'avr') {
 }
 $fqbn = 'STMicroelectronics:stm32:GenC0:pnum=GENERIC_C011F6UX,xserial=disabled,usb=none,opt=oslto,dbg=none,rtlib=nano,upload_method=OpenOCDSTLink'
 $properties = @('--build-property', 'upload.maximum_size=30720')
+$extraFlags = ''
 if ($Target -eq 'gpio') {
-  $properties += @('--build-property', 'compiler.cpp.extra_flags=-DHWTEST_UART=0 -DHWTEST_ENCODER=0 -DHWTEST_IRQ=0')
+  $extraFlags = '-DHWTEST_UART=0 -DHWTEST_ENCODER=0 -DHWTEST_IRQ=0'
 } elseif ($Target -eq 'four_encoders') {
-  $properties += @('--build-property', 'compiler.cpp.extra_flags=-DHWTEST_ENCODERS=4')
+  $extraFlags = '-DHWTEST_ENCODERS=4'
 } elseif ($Target -eq 'uart') {
   $fqbn = $fqbn.Replace('xserial=disabled', 'xserial=generic')
-  $properties += @('--build-property', 'compiler.cpp.extra_flags=-DHWTEST_UART=1')
+  $extraFlags = '-DHWTEST_UART=1'
 } elseif ($Target -eq 'spi') {
-  $properties += @('--build-property', 'compiler.cpp.extra_flags=-DHWTEST_SPI=1')
+  $extraFlags = '-DHWTEST_SPI=1'
 } elseif ($Target -eq 'spi_queue') {
-  $properties += @('--build-property', 'compiler.cpp.extra_flags=-DHWTEST_SPI=1 -DHWTEST_SPI_QUEUE_HOLD=1')
+  $extraFlags = '-DHWTEST_SPI=1 -DHWTEST_SPI_QUEUE_HOLD=1'
 } elseif ($Target -in @('address_straps', 'address_straps_inverted')) {
   $strapFlags = '-DHWTEST_ENCODER=0 -DHWTEST_IRQ=0 -DCONFIG_ADDR_0_PIN=0 -DCONFIG_ADDR_1_PIN=1 -DCONFIG_ADDR_2_PIN=2 -DCONFIG_ADDR_3_PIN=3'
   if ($Target -eq 'address_straps_inverted') { $strapFlags += ' -DCONFIG_ADDR_INVERTED=1' }
-  $properties += @('--build-property', "compiler.cpp.extra_flags=$strapFlags")
+  $extraFlags = $strapFlags
 }
+if ($Target -ne 'uart') {
+  # Arduino compiles BusIO even when only its caller's register enums are used.
+  # Its existing guard removes default print arguments referring to Serial.
+  $extraFlags += ' -DNO_GLOBAL_SERIAL'
+}
+$properties += @('--build-property', "compiler.cpp.extra_flags=$extraFlags")
 & arduino-cli compile --fqbn $fqbn --library $libraryRoot @properties --build-path $targetOutput (Join-Path $PSScriptRoot 'c011_firmware')
 exit $LASTEXITCODE
