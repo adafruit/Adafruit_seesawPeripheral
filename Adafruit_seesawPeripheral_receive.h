@@ -10,15 +10,14 @@
 // immdiately after such a change) and reset the FHT buffer counter to
 // the beginning.
 static void restart_sampling(void) {
-  for (uint8_t i = 0; i < 3; i++) { // Discard initial readings
-    while (!ADC0.INTFLAGS & ADC_RESRDY_bm)
-      ;                             // In the INTFLAG register,
-    ADC0.INTFLAGS |= ADC_RESRDY_bm; // setting bit clears flag!
+  for(uint8_t i=0; i<3; i++) {             // Discard initial readings
+    while(!ADC0.INTFLAGS & ADC_RESRDY_bm); // In the INTFLAG register,
+    ADC0.INTFLAGS |= ADC_RESRDY_bm;        // setting bit clears flag!
     // (ADC is still free-running and will set RESRDY bit,
     // it's just not triggering interrupts right now.)
   }
-  fht_counter = 0;               // Restart at beginning of buf
-  ADC0.INTCTRL |= ADC_RESRDY_bm; // Enable result-ready IRQ
+  fht_counter = 0;                         // Restart at beginning of buf
+  ADC0.INTCTRL |= ADC_RESRDY_bm;           // Enable result-ready IRQ
 }
 #endif
 
@@ -114,7 +113,7 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
     uint8_t pin = data[0];
     uint16_t value = Adafruit_seesawPeripheral_read16(data + 1);
     g_pwmStatus = 1;
-    if (pin >= 32 || !(VALID_PWM & (1UL << pin)))
+    if (pin >= 32 || ! (VALID_PWM & (1UL << pin)))
       return;
     if (reg == SEESAW_TIMER_PWM)
       Adafruit_seesawPeripheral_setPWM(pin, value);
@@ -131,9 +130,9 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
     writeEEPROM(reg, data, length);
 #else
     if (reg == 0xFF && length == 1)
-      EEPROM.write(EEPROM.length() - 1, data[0]);
+      EEPROM.write(EEPROM.length()-1, data[0]);
     else
-      for (uint8_t i = 0; i < length; i++)
+      for (uint8_t i=0; i< length; i++)
         if ((uint16_t)reg + i < EEPROM.length())
           EEPROM.write(reg + i, data[i]);
 #endif
@@ -246,7 +245,7 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
       // AVR dispatches in IRQ context, so the main loop drains UART data.
       g_uart_tx_len = 0;
       if (length <= CONFIG_UART_BUF_MAX) {
-        for (uint8_t i = 0; i < length; i++)
+        for (uint8_t i=0; i< length; i++)
           g_uart_buf[i] = data[i];
         g_uart_tx_len = length;
       }
@@ -257,15 +256,14 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
 #if CONFIG_FHT && defined(MEGATINYCORE)
   else if (base == SEESAW_SPECTRUM_BASE) {
     if ((reg == SEESAW_SPECTRUM_RATE) && (size == 3)) {
-      ADC0.INTCTRL &= ~ADC_RESRDY_bm; // Disable result-ready IRQ
-      uint8_t rate = data[0];         // Requested rate index
-      if (rate > 31)
-        rate = 31;               // Clip rate between 0-31
-      ADC0.SAMPCTRL = rate & 31; // Set ADC sample control
-      restart_sampling();        // Purge recording, start over
+      ADC0.INTCTRL &= ~ADC_RESRDY_bm;          // Disable result-ready IRQ
+      uint8_t rate = data[0];            // Requested rate index
+      if (rate > 31) rate = 31;                // Clip rate between 0-31
+      ADC0.SAMPCTRL = rate & 31;               // Set ADC sample control
+      restart_sampling();                      // Purge recording, start over
     } else if ((reg == SEESAW_SPECTRUM_CHANNEL) && (size == 3)) {
-      ADC0.INTCTRL &= ~ADC_RESRDY_bm; // Disable result-ready IRQ
-      uint8_t channel = data[0];      // Requested ADC channel
+      ADC0.INTCTRL &= ~ADC_RESRDY_bm;          // Disable result-ready IRQ
+      uint8_t channel = data[0];         // Requested ADC channel
       // TO DO: clip channel to valid range. Most likely this will just be
       // 0 or 1 for mic vs. line-in. Value should then be mapped through a
       // const table to either an Arduino pin number (which is then mapped
@@ -274,8 +272,8 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
       // For now though, for the sake of initial testing, it's taken as a
       // direct ADC MUX value, valid or not. Final changes are only needed
       // here, not in the Adafruit_Seesaw library.
-      ADC0.MUXPOS = channel; // Set ADC input MUX
-      restart_sampling();    // Purge recording, start over
+      ADC0.MUXPOS = channel;                   // Set ADC input MUX
+      restart_sampling();                      // Purge recording, start over
     }
   }
 #endif

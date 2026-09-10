@@ -68,7 +68,7 @@
 #define SEESAW_DEBUG(...)
 #define SEESAW_DEBUGLN(...)
 #else
-#error ("CONFIG_UART_DEBUG must be 0 or 1")
+#error("CONFIG_UART_DEBUG must be 0 or 1")
 #endif
 
 /*************** Interrupt Pin */
@@ -177,29 +177,25 @@ volatile uint8_t g_enc_prev_pos[CONFIG_NUM_ENCODERS]; ///< Previous A/B phase.
 #define ENCODER_FLAG_BACK_EDGE1 0x02
 #define ENCODER_FLAG_FORW_EDGE2 0x04
 #define ENCODER_FLAG_BACK_EDGE2 0x08
-#define ENCODER_FLAG_MIDSTEP 0x10
+#define ENCODER_FLAG_MIDSTEP    0x10
 
-#define BIT_IS_SET(x, b) (((x) & (1UL << b)) != 0)
-#define BIT_IS_CLEAR(x, b) (((x) & (1UL << b)) == 0)
+#define BIT_IS_SET(x,b) (((x)&(1UL << b)) != 0)
+#define BIT_IS_CLEAR(x,b) (((x)&(1UL << b)) == 0)
 
-#define ENCODER0_INPUT_MASK                                                    \
-  ((1UL << CONFIG_ENCODER0_A_PIN) | (1UL << CONFIG_ENCODER0_B_PIN))
+#define ENCODER0_INPUT_MASK ((1UL << CONFIG_ENCODER0_A_PIN) | (1UL << CONFIG_ENCODER0_B_PIN))
 
 #ifdef CONFIG_ENCODER1_A_PIN
-#define ENCODER1_INPUT_MASK                                                    \
-  ((1UL << CONFIG_ENCODER1_A_PIN) | (1UL << CONFIG_ENCODER1_B_PIN))
+#define ENCODER1_INPUT_MASK ((1UL << CONFIG_ENCODER1_A_PIN) | (1UL << CONFIG_ENCODER1_B_PIN))
 #else
 #define ENCODER1_INPUT_MASK 0
 #endif
 #ifdef CONFIG_ENCODER2_A_PIN
-#define ENCODER2_INPUT_MASK                                                    \
-  ((1UL << CONFIG_ENCODER2_A_PIN) | (1UL << CONFIG_ENCODER2_B_PIN))
+#define ENCODER2_INPUT_MASK ((1UL << CONFIG_ENCODER2_A_PIN) | (1UL << CONFIG_ENCODER2_B_PIN))
 #else
 #define ENCODER2_INPUT_MASK 0
 #endif
 #ifdef CONFIG_ENCODER3_A_PIN
-#define ENCODER3_INPUT_MASK                                                    \
-  ((1UL << CONFIG_ENCODER3_A_PIN) | (1UL << CONFIG_ENCODER3_B_PIN))
+#define ENCODER3_INPUT_MASK ((1UL << CONFIG_ENCODER3_A_PIN) | (1UL << CONFIG_ENCODER3_B_PIN))
 #else
 #define ENCODER3_INPUT_MASK 0
 #endif
@@ -395,7 +391,7 @@ void foo(void);
 // Arduino Library Manager and must be separately installed.
 #if CONFIG_FHT && defined(MEGATINYCORE)
 #if CONFIG_ADC
-#error ("Cannot enable both CONFIG_ADC and CONFIG_FHT")
+#error("Cannot enable both CONFIG_ADC and CONFIG_FHT")
 #endif
 // Currently set up for size 128 FHT (64 spectrum outputs). 256 (128 out)
 // is an option IF a larger chip (1K RAM or better) is used; won't fit on
@@ -411,7 +407,7 @@ void foo(void);
 
 #if defined(ARDUINO_AVR_ATtiny817) || defined(ARDUINO_AVR_ATtiny807) ||        \
     defined(ARDUINO_AVR_ATtiny1617) || defined(ARDUINO_AVR_ATtiny1607) ||      \
-    defined(ARDUINO_AVR_ATtiny427) || defined(ARDUINO_AVR_ATtiny827) ||        \
+    defined(ARDUINO_AVR_ATtiny427) || defined(ARDUINO_AVR_ATtiny827) ||      \
     defined(ARDUINO_AVR_ATtiny3217)
 #define UART_DEBUG_RXD 8
 #define UART_DEBUG_TXD 9
@@ -427,13 +423,13 @@ void foo(void);
 
 #if defined(ARDUINO_AVR_ATtiny817) || defined(ARDUINO_AVR_ATtiny807) ||        \
     defined(ARDUINO_AVR_ATtiny1617) || defined(ARDUINO_AVR_ATtiny1607) ||      \
-    defined(ARDUINO_AVR_ATtiny427) || defined(ARDUINO_AVR_ATtiny827) ||        \
+    defined(ARDUINO_AVR_ATtiny427) || defined(ARDUINO_AVR_ATtiny827) ||      \
     defined(ARDUINO_AVR_ATtiny3217)
 #define ALL_GPIO                                                               \
   0x1FFFFFUL // this is chip dependant, for 817 we have 21 GPIO avail (0~20 inc)
 #define ALL_ADC 0b1111000000110011001111 // pins that have ADC capability
 #if CONFIG_PWM_16BIT
-#define ALL_PWM ((1UL << 6) | (1UL << 7) | (1UL << 8)) // alternate TCA0 WOx
+#define ALL_PWM ((1UL << 6) | (1UL << 7) | (1UL << 8))  // alternate TCA0 WOx
 #else
 #define ALL_PWM                                                                \
   ((1UL << 0) | (1UL << 1) | (1UL << 9) | (1UL << 10) | (1UL << 11) |          \
@@ -449,7 +445,7 @@ void foo(void);
   0x01FFFFUL // this is chip dependant, for 816 we have 17 GPIO avail
 #define ALL_ADC 0b11100001100111111 // pins that have ADC capability
 #if CONFIG_PWM_16BIT
-#define ALL_PWM ((1UL << 4) | (1UL << 5) | (1UL << 6)) // alternate TCA0 WOx
+#define ALL_PWM ((1UL << 4) | (1UL << 5) | (1UL << 6))  // alternate TCA0 WOx
 #else
 #define ALL_PWM                                                                \
   ((1UL << 0) | (1UL << 1) | (1UL << 7) | (1UL << 8) | (1UL << 9) |            \
@@ -458,15 +454,15 @@ void foo(void);
 #define PWM_WO_OFFSET (4)
 #endif
 
-#define INVALID_GPIO                                                           \
-  ((1UL << SDA) | (1UL << SCL) |                                               \
-   ((uint32_t)CONFIG_UART_DEBUG << UART_DEBUG_RXD) |                           \
-   ((uint32_t)CONFIG_UART_DEBUG << UART_DEBUG_TXD) |                           \
-   ((uint32_t)CONFIG_INTERRUPT << CONFIG_INTERRUPT_PIN) |                      \
-   ((uint32_t)CONFIG_ADDR_0 << CONFIG_ADDR_0_PIN) |                            \
-   ((uint32_t)CONFIG_ADDR_1 << CONFIG_ADDR_1_PIN) |                            \
-   ((uint32_t)CONFIG_ADDR_2 << CONFIG_ADDR_2_PIN) |                            \
-   ((uint32_t)CONFIG_ADDR_3 << CONFIG_ADDR_3_PIN) | 0)
+#define INVALID_GPIO ((1UL << SDA) | (1UL << SCL) | \
+                      ((uint32_t)CONFIG_UART_DEBUG << UART_DEBUG_RXD) | \
+                      ((uint32_t)CONFIG_UART_DEBUG << UART_DEBUG_TXD)   |   \
+                      ((uint32_t)CONFIG_INTERRUPT << CONFIG_INTERRUPT_PIN) | \
+                      ((uint32_t)CONFIG_ADDR_0 << CONFIG_ADDR_0_PIN) | \
+                      ((uint32_t)CONFIG_ADDR_1 << CONFIG_ADDR_1_PIN) | \
+                      ((uint32_t)CONFIG_ADDR_2 << CONFIG_ADDR_2_PIN) | \
+                      ((uint32_t)CONFIG_ADDR_3 << CONFIG_ADDR_3_PIN) | \
+                      0)
 
 #define VALID_GPIO (ALL_GPIO & ~INVALID_GPIO)
 #define VALID_ADC (ALL_ADC & VALID_GPIO)
@@ -499,6 +495,7 @@ volatile uint8_t g_neopixel_buf[CONFIG_NEOPIXEL_BUF_MAX];
 #if CONFIG_UART
 volatile uint8_t g_uart_buf[CONFIG_UART_BUF_MAX];
 volatile uint8_t g_uart_tx_len = 0;
+
 #endif
 
 /****************************************************** code */
@@ -584,11 +581,11 @@ void Adafruit_seesawPeripheral_reset(void) {
   g_pwmStatus = 0;
   // TCA0 is used for 16 bit PWM support
   takeOverTCA0();
-  PORTMUX.CTRLC |= 0b111;   // Alternate WOx output pin locations
-  TCA0.SINGLE.PER = 0xFFFF; // Set TOP to MAX
-  TCA0.SINGLE.CTRLB = 0x03; // Single-slope PWM, WG outputs off
-  TCA0.SINGLE.CTRLD = 0x00; // Disable Split Mode
-  TCA0.SINGLE.CTRLA = 0x01; // Enable TCA0 peripheral
+  PORTMUX.CTRLC |= 0b111;    // Alternate WOx output pin locations
+  TCA0.SINGLE.PER = 0xFFFF;  // Set TOP to MAX
+  TCA0.SINGLE.CTRLB = 0x03;  // Single-slope PWM, WG outputs off
+  TCA0.SINGLE.CTRLD = 0x00;  // Disable Split Mode
+  TCA0.SINGLE.CTRLA = 0x01;  // Enable TCA0 peripheral
 #endif
 #if CONFIG_NEOPIXEL
   for (uint16_t i = 0; i < CONFIG_NEOPIXEL_BUF_MAX; i++) {
@@ -622,7 +619,7 @@ void Adafruit_seesawPeripheral_reset(void) {
   pinMode(CONFIG_ENCODER3_B_PIN, INPUT_PULLUP);
 #endif
 
-  for (uint8_t encodernum = 0; encodernum < CONFIG_NUM_ENCODERS; encodernum++) {
+  for (uint8_t encodernum=0; encodernum<CONFIG_NUM_ENCODERS; encodernum++) {
     g_enc_value[encodernum] = 0;
     g_enc_delta[encodernum] = 0;
     g_enc_prev_pos[encodernum] = 0;
@@ -701,6 +698,7 @@ ISR(ADC0_RESRDY_vect) { // ADC conversion complete
 }
 #endif
 
+
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
   uint32_t temp = 0;
 
@@ -710,8 +708,8 @@ uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
   port_reads[1] = VPORTB.IN;
   port_reads[2] = VPORTC.IN;
 
-  // pinMode(1, OUTPUT);
-  // digitalWriteFast(1, HIGH);
+  //pinMode(1, OUTPUT);
+  //digitalWriteFast(1, HIGH);
   for (uint8_t pin = 0; pin < 32; pin++) {
     temp >>= 1;
     if (validpins & 0x1) {
@@ -723,7 +721,7 @@ uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
     }
     validpins >>= 1;
   }
-  // digitalWriteFast(1, LOW);
+  //digitalWriteFast(1, LOW);
   return temp;
 }
 

@@ -9,6 +9,7 @@
 #if !defined(ARDUINO_GENERIC_C011F6UX)
 #error "The STM32 backend currently supports the generic STM32C011F6Ux only"
 #endif
+
 #if CONFIG_ADC
 #include "stm32c0xx_ll_adc.h"
 #endif
@@ -32,6 +33,7 @@
 #define CONFIG_UART_TX_PIN 0 // PA0, USART1 TX.
 #endif
 #endif
+
 #if CONFIG_EEPROM
 extern "C" uint8_t _sidata, _sdata, _edata;
 #endif
@@ -51,7 +53,7 @@ volatile uint8_t head = 0, tail = 0;  ///< Queue cursors.
 volatile uint8_t selectedBase = 0, selectedRegister = 0; ///< Read pointer.
 uint32_t direction = 0, output = 0, pull = 0; ///< GPIO register semantics.
 uint32_t lastGPIO = 0;                        ///< Last sampled GPIO state.
-uint32_t pwmActive = 0;                       ///< Pins currently using timers.
+uint32_t pwmActive = 0;         ///< Pins currently using timers.
 #if CONFIG_SPI
 const uint8_t spiBase = 0x13; ///< Experimental SPI controller register module.
 const uint32_t spiPinMask = 0xF0; ///< PA4 CS, PA5 SCK, PA6 MISO, PA7 MOSI.
@@ -105,7 +107,7 @@ const uint8_t encoderPins[CONFIG_NUM_ENCODERS][2] = {
     {CONFIG_ENCODER3_A_PIN, CONFIG_ENCODER3_B_PIN},
 #endif
 }; ///< Encoder A/B pin indices.
-volatile uint8_t encoderInterrupts = 0; ///< Interrupt enable bitmap.
+volatile uint8_t encoderInterrupts = 0;        ///< Interrupt enable bitmap.
 #endif
 #if CONFIG_NEOPIXEL
 class RawPixels : public Adafruit_NeoPixel {
@@ -115,7 +117,7 @@ public:
                           NEO_RGB + NEO_KHZ800) {}
   void byteLength(uint16_t length) { numBytes = length; }
 }; ///< Uses NeoPixel's STM32 timing with unmodified raw RGB/RGBW byte order.
-RawPixels pixels; ///< Fixed-capacity LED buffer, allocated once.
+RawPixels pixels;         ///< Fixed-capacity LED buffer, allocated once.
 #endif
 
 uint32_t validGPIO() {
@@ -353,8 +355,7 @@ void reset() {
     uint32_t bits = (1UL << encoderPins[i][0]) | (1UL << encoderPins[i][1]);
     pull |= bits;
     output |= bits;
-    g_enc_prev_pos[i] = 3 ^ (digitalRead(encoderPins[i][0]) |
-                             (digitalRead(encoderPins[i][1]) << 1));
+    g_enc_prev_pos[i] = 3 ^ (digitalRead(encoderPins[i][0]) | (digitalRead(encoderPins[i][1]) << 1));
     g_enc_value[i] = g_enc_delta[i] = 0;
     g_enc_flags[i] = 0;
   }
@@ -499,12 +500,12 @@ void Adafruit_seesawPeripheral_showPixels() {
 /*! Reset peripheral state, then apply a changed persistent I2C address. */
 void Adafruit_seesawPeripheral_reset(void) {
   using namespace SeesawSTM32;
-  reset();
-  uint8_t newAddress = configuredAddress();
-  if (newAddress != address) {
-    Wire.end();
-    address = newAddress;
-    Wire.begin((int)address);
+    reset();
+    uint8_t newAddress = configuredAddress();
+    if (newAddress != address) {
+      Wire.end();
+      address = newAddress;
+      Wire.begin((int)address);
     // STM32duino clears callbacks in begin(); always reattach afterward.
     Wire.onReceive(receiveEvent);
     Wire.onRequest(requestEvent);
@@ -566,8 +567,7 @@ void Adafruit_seesawPeripheral_run() {
   uint32_t current = readGPIO();
 #if CONFIG_ENCODER
   for (uint8_t i = 0; i < CONFIG_NUM_ENCODERS; i++) {
-    uint8_t phase = 3 ^ (digitalRead(encoderPins[i][0]) |
-                         (digitalRead(encoderPins[i][1]) << 1));
+    uint8_t phase = 3 ^ (digitalRead(encoderPins[i][0]) | (digitalRead(encoderPins[i][1]) << 1));
     Adafruit_seesawPeripheral_updateEncoder(i, phase);
   }
 #endif
