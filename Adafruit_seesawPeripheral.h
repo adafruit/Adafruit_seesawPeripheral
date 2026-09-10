@@ -112,12 +112,14 @@ uint16_t DATE_CODE = 0;
 #define UART_DEBUG_TXD 7
 #endif
 
+// clang-format off
 #ifdef CONFIG_ADDR_INVERTED
-#undef CONFIG_ADDR_INVERTED
-#define CONFIG_ADDR_INVERTED 1
+  #undef CONFIG_ADDR_INVERTED
+  #define CONFIG_ADDR_INVERTED 1
 #else
-#define CONFIG_ADDR_INVERTED 0
+  #define CONFIG_ADDR_INVERTED 0
 #endif
+// clang-format on
 
 #ifdef CONFIG_ADDR_0_PIN
 #define CONFIG_ADDR_0 1
@@ -137,12 +139,14 @@ uint16_t DATE_CODE = 0;
 #define CONFIG_ADDR_2 0
 #define CONFIG_ADDR_2_PIN 0
 #endif
+// clang-format off
 #ifdef CONFIG_ADDR_3_PIN
-#define CONFIG_ADDR_3 1
+  #define CONFIG_ADDR_3 1
 #else
-#define CONFIG_ADDR_3 0
-#define CONFIG_ADDR_3_PIN 0
+  #define CONFIG_ADDR_3 0
+  #define CONFIG_ADDR_3_PIN 0
 #endif
+// clang-format on
 
 /********************** Available/taken GPIO configuration macros */
 
