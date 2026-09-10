@@ -11,7 +11,8 @@
 #define CONFIG_NEOPIXEL 1
 #define CONFIG_NEOPIXEL_BUF_MAX 192
 #ifndef HWTEST_SPI
-#define HWTEST_SPI 0 // Experimental controller bridge, enabled in the spi target.
+#define HWTEST_SPI                                                             \
+  0 // Experimental controller bridge, enabled in the spi target.
 #endif
 #define CONFIG_SPI HWTEST_SPI
 #ifdef HWTEST_SPI_QUEUE_HOLD
@@ -47,10 +48,6 @@
 
 #include "Adafruit_seesawPeripheral.h"
 
-void setup() {
-  Adafruit_seesawPeripheral_begin();
-}
+void setup() { Adafruit_seesawPeripheral_begin(); }
 
-void loop() {
-  Adafruit_seesawPeripheral_run();
-}
+void loop() { Adafruit_seesawPeripheral_run(); }

@@ -3,18 +3,18 @@
 // W address module register [data...] -> OK or ERR
 // R address module register count -> DATA xx xx ... or ERR
 // P encoder-mask phase -> hold quadrature phase (bits A/B), 3 releases both.
-// E encoder-mask direction detents step-ms -> generate quadrature, then release.
-// C clock -> 1 selects 100 kHz, 4 selects 400 kHz I2C.
-// B address -> BEGIN ACCEPTED/REJECTED using the installed seesaw host library.
-// H subcommand [arguments] -> host-library calls; see executeCommand().
-// S mode order -> start INPUT-ONLY hardware SPI observer (D10 CS, D11 MOSI, D13 SCK).
-// T -> CAP count first-us last-us [up to 64 bytes], all hexadecimal.
-// X -> stop observer. D12/MISO is NEVER an output.
-// Q count -> burst write-only SPI chunks without delays, for queue-overflow testing.
-// D4..D11 only pull LOW or release INPUT: NEVER output 5 V or enable pull-ups.
-// The C011 supplies the 3.3 V encoder pull-ups. D0..D3 are not touched.
-#include <Wire.h>
+// E encoder-mask direction detents step-ms -> generate quadrature, then
+// release. C clock -> 1 selects 100 kHz, 4 selects 400 kHz I2C. B address ->
+// BEGIN ACCEPTED/REJECTED using the installed seesaw host library. H subcommand
+// [arguments] -> host-library calls; see executeCommand(). S mode order ->
+// start INPUT-ONLY hardware SPI observer (D10 CS, D11 MOSI, D13 SCK). T -> CAP
+// count first-us last-us [up to 64 bytes], all hexadecimal. X -> stop observer.
+// D12/MISO is NEVER an output. Q count -> burst write-only SPI chunks without
+// delays, for queue-overflow testing. D4..D11 only pull LOW or release INPUT:
+// NEVER output 5 V or enable pull-ups. The C011 supplies the 3.3 V encoder
+// pull-ups. D0..D3 are not touched.
 #include <Adafruit_seesaw.h>
+#include <Wire.h>
 #include <seesaw_spi.h>
 
 char command[110];
@@ -65,15 +65,19 @@ void loop() {
 ISR(SPI_STC_vect) {
   uint8_t value = SPDR;
   uint32_t timestamp = micros();
-  if (spiCaptureCount == 0) spiFirstMicros = timestamp;
+  if (spiCaptureCount == 0)
+    spiFirstMicros = timestamp;
   spiLastMicros = timestamp;
-  if (spiCaptureCount < sizeof(spiCapture)) spiCapture[spiCaptureCount] = value;
-  if (spiCaptureCount != 65535) spiCaptureCount++;
+  if (spiCaptureCount < sizeof(spiCapture))
+    spiCapture[spiCaptureCount] = value;
+  if (spiCaptureCount != 65535)
+    spiCaptureCount++;
 }
 
 void executeCommand() {
   char *token = strtok(command, " ");
-  if (!token) return;
+  if (!token)
+    return;
   char operation = token[0];
   uint8_t bytes[34];
   uint8_t count = 0;
@@ -90,24 +94,29 @@ void executeCommand() {
     bool okay = false;
     uint8_t tx[96], rx[96];
     if (bytes[0] == 0 && count == 7) {
-      uint32_t frequency = ((uint32_t)bytes[3] << 24) | ((uint32_t)bytes[4] << 16) |
+      uint32_t frequency = ((uint32_t)bytes[3] << 24) |
+                           ((uint32_t)bytes[4] << 16) |
                            ((uint32_t)bytes[5] << 8) | bytes[6];
-      okay = spiHost.begin(0x49, -1, false) && spiHost.beginSPI(frequency, bytes[1], bytes[2]);
+      okay = spiHost.begin(0x49, -1, false) &&
+             spiHost.beginSPI(frequency, bytes[1], bytes[2]);
       if (okay) {
         Serial.print(F("CLOCK "));
         Serial.println(spiHost.getSPIClockFrequency(), HEX);
         return;
       }
-    } else if ((bytes[0] == 1 || bytes[0] == 2 || bytes[0] == 5) && count == 3 &&
-               bytes[1] <= 3 && bytes[2] <= sizeof(tx)) {
-      for (uint8_t i = 0; i < bytes[2]; i++) tx[i] = i * 37 + 13;
-      okay = spiHost.transfer(bytes[0] == 5 ? NULL : tx, bytes[0] == 2 ? NULL : rx,
-                             bytes[2], bytes[1] & 1, bytes[1] & 2);
+    } else if ((bytes[0] == 1 || bytes[0] == 2 || bytes[0] == 5) &&
+               count == 3 && bytes[1] <= 3 && bytes[2] <= sizeof(tx)) {
+      for (uint8_t i = 0; i < bytes[2]; i++)
+        tx[i] = i * 37 + 13;
+      okay =
+          spiHost.transfer(bytes[0] == 5 ? NULL : tx, bytes[0] == 2 ? NULL : rx,
+                           bytes[2], bytes[1] & 1, bytes[1] & 2);
       if (okay && bytes[0] != 2) {
         Serial.print(F("DATA"));
         for (uint8_t i = 0; i < bytes[2]; i++) {
           Serial.print(' ');
-          if (rx[i] < 16) Serial.print('0');
+          if (rx[i] < 16)
+            Serial.print('0');
           Serial.print(rx[i], HEX);
         }
         Serial.println();
@@ -120,14 +129,16 @@ void executeCommand() {
       Serial.println(spiHost.getLastSPIError(), HEX);
       return;
     }
-    if (okay) Serial.println(F("OK"));
+    if (okay)
+      Serial.println(F("OK"));
     else {
       Serial.print(F("FAIL "));
       Serial.println(spiHost.getLastSPIError(), HEX);
     }
     return;
   }
-  if (operation == 'Z' && count == 1) { // Empty hardware I2C probe for BusDevice.
+  if (operation == 'Z' &&
+      count == 1) { // Empty hardware I2C probe for BusDevice.
     Wire.beginTransmission(bytes[0]);
     Serial.println(Wire.endTransmission() ? F("ERR probe") : F("OK"));
     return;
@@ -142,7 +153,8 @@ void executeCommand() {
     while (Wire.available()) {
       uint8_t value = Wire.read();
       Serial.print(' ');
-      if (value < 16) Serial.print('0');
+      if (value < 16)
+        Serial.print('0');
       Serial.print(value, HEX);
     }
     Serial.println();
@@ -179,7 +191,8 @@ void executeCommand() {
     Serial.print(last, HEX);
     for (uint8_t i = 0; i < min(captured, (uint16_t)sizeof(spiCapture)); i++) {
       Serial.print(' ');
-      if (spiCapture[i] < 16) Serial.print('0');
+      if (spiCapture[i] < 16)
+        Serial.print('0');
       Serial.print(spiCapture[i], HEX);
     }
     Serial.println();
@@ -191,8 +204,10 @@ void executeCommand() {
     return;
   }
   if (operation == 'Q' && count == 1 && bytes[0] <= 32) {
-    uint8_t packet[32] = {0x13, 0x02, 0x04}; // SPI TRANSFER, discard RX, CS already held.
-    for (uint8_t i = 3; i < sizeof(packet); i++) packet[i] = i ^ 0xA5;
+    uint8_t packet[32] = {0x13, 0x02,
+                          0x04}; // SPI TRANSFER, discard RX, CS already held.
+    for (uint8_t i = 3; i < sizeof(packet); i++)
+      packet[i] = i ^ 0xA5;
     for (uint8_t i = 0; i < bytes[0]; i++) {
       Wire.beginTransmission(0x49);
       Wire.write(packet, sizeof(packet));
@@ -220,7 +235,8 @@ void executeCommand() {
     uint16_t value = 0;
     uint16_t rawADC = 0;
     if (bytes[0] == 0 && count == 2) { // Begin, including software reset.
-      Serial.println(hostSeesaw.begin(bytes[1]) ? F("OK") : F("ERR host begin"));
+      Serial.println(hostSeesaw.begin(bytes[1]) ? F("OK")
+                                                : F("ERR host begin"));
       return;
     } else if (bytes[0] == 1 && count == 2) { // Ten-bit analogRead.
       value = hostSeesaw.analogRead(bytes[1]);
@@ -238,10 +254,12 @@ void executeCommand() {
     } else if (bytes[0] == 4 && count == 2) { // GPIO read.
       value = hostSeesaw.digitalRead(bytes[1]);
     } else if (bytes[0] == 5 && count == 5) { // PWM pin, value high/low, width.
-      hostSeesaw.analogWrite(bytes[1], ((uint16_t)bytes[2] << 8) | bytes[3], bytes[4]);
+      hostSeesaw.analogWrite(bytes[1], ((uint16_t)bytes[2] << 8) | bytes[3],
+                             bytes[4]);
     } else if (bytes[0] == 6 && count == 4) { // PWM frequency in hertz.
       hostSeesaw.setPWMFreq(bytes[1], ((uint16_t)bytes[2] << 8) | bytes[3]);
-    } else if (bytes[0] == 7 && count == 1) { // Persistent I2C-address location.
+    } else if (bytes[0] == 7 &&
+               count == 1) { // Persistent I2C-address location.
       value = hostSeesaw.getI2CaddrEEPROMloc();
     } else {
       Serial.println(F("ERR host command"));
@@ -257,7 +275,8 @@ void executeCommand() {
     Serial.println();
     return;
   }
-  if (operation == 'P' && count == 2 && bytes[0] > 0 && bytes[0] <= 15 && bytes[1] <= 3) {
+  if (operation == 'P' && count == 2 && bytes[0] > 0 && bytes[0] <= 15 &&
+      bytes[1] <= 3) {
     encoderPhase(bytes[0], bytes[1]);
     Serial.println(F("OK"));
     return;
@@ -295,8 +314,10 @@ void executeCommand() {
   }
   if (operation == 'W') {
     // Allows the peripheral to finish deferred work before the next command.
-    if (bytes[1] == eepromModule) delay(100); // One reserved flash page is rewritten.
-    else delay(2);
+    if (bytes[1] == eepromModule)
+      delay(100); // One reserved flash page is rewritten.
+    else
+      delay(2);
     Serial.println(F("OK"));
     return;
   }
@@ -309,7 +330,8 @@ void executeCommand() {
   while (Wire.available()) {
     uint8_t value = Wire.read();
     Serial.print(' ');
-    if (value < 16) Serial.print('0');
+    if (value < 16)
+      Serial.print('0');
     Serial.print(value, HEX);
   }
   Serial.println();
@@ -317,13 +339,16 @@ void executeCommand() {
 
 void encoderPhase(uint8_t mask, uint8_t phase) {
   for (uint8_t encoder = 0; encoder < 4; encoder++) {
-    if (!(mask & (1 << encoder))) continue;
+    if (!(mask & (1 << encoder)))
+      continue;
     for (uint8_t channel = 0; channel < 2; channel++) {
       uint8_t pin = encoderPins[encoder][channel];
       // LOW clears the AVR PORT latch before DDR can enable its output.
       digitalWrite(pin, LOW);
-      if (phase & (1 << channel)) pinMode(pin, INPUT);
-      else pinMode(pin, OUTPUT);
+      if (phase & (1 << channel))
+        pinMode(pin, INPUT);
+      else
+        pinMode(pin, OUTPUT);
     }
   }
 }

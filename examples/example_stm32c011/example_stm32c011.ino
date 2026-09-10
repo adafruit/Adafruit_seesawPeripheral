@@ -5,7 +5,8 @@
 #define CONFIG_I2C_SDA_PIN PB7
 #define CONFIG_I2C_SCL_PIN PB6
 #define CONFIG_STATUS_LED_PIN PC15
-// The GPIO mask uses digital indices; PA13/PA14 are analog aliases in this core.
+// The GPIO mask uses digital indices; PA13/PA14 are analog aliases in this
+// core.
 #define CONFIG_SWDIO_PIN 11 // PA13
 #define CONFIG_SWCLK_PIN 12 // PA14
 
@@ -18,6 +19,4 @@ void setup() {
   Adafruit_seesawPeripheral_begin();
 }
 
-void loop() {
-  Adafruit_seesawPeripheral_run();
-}
+void loop() { Adafruit_seesawPeripheral_run(); }
