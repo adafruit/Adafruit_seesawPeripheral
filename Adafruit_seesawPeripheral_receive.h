@@ -1,5 +1,8 @@
-volatile uint32_t g_bufferedBulkGPIORead = 0;
-volatile uint16_t g_bufferedADCRead = 0;
+/*!
+ * @file Adafruit_seesawPeripheral_receive.h
+ * Shared seesaw command decoding. AVR dispatches in its Wire callback; STM32
+ * passes queued packets here from loop(), keeping blocking work out of IRQs.
+ */
 
 #if CONFIG_FHT && defined(MEGATINYCORE)
 // If ADC sampling rate or MUX channel is changed, this function gets
@@ -18,359 +21,247 @@ static void restart_sampling(void) {
 }
 #endif
 
-/***************************** data write */
-
-void receiveEvent(int howMany) {
-  SEESAW_DEBUG(F("Received "));
-  SEESAW_DEBUG(howMany);
-  SEESAW_DEBUG(F(" bytes:"));
-  for (uint8_t i=howMany; i<sizeof(i2c_buffer); i++) {
-    i2c_buffer[i] = 0;
-  }
-
-  if ((uint32_t)howMany > sizeof(i2c_buffer)) {
-    SEESAW_DEBUGLN();
+/*! Decode one complete packet, including its module/register prefix. */
+void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
+                                              uint8_t howMany) {
+  if (howMany < 2)
+    return;
+  uint8_t base_cmd = packet[0];
+  uint8_t module_cmd = packet[1];
+  const uint8_t *data = packet + 2;
+  uint8_t length = howMany - 2;
+#if defined(ARDUINO_ARCH_STM32)
+  using namespace SeesawSTM32;
+#endif
+#if CONFIG_SPI && defined(ARDUINO_ARCH_STM32)
+  if (base_cmd == spiBase) {
+    spiProcess(module_cmd, data, length);
+    noInterrupts();
+    if (spiPending)
+      spiPending--;
+    interrupts();
     return;
   }
-  for (uint8_t i=0; i<howMany; i++) {
-    i2c_buffer[i] = Wire.read();
-    //SEESAW_DEBUG(F("0x"));
-    //SEESAW_DEBUG(i2c_buffer[i], HEX);
-    //SEESAW_DEBUG(F(" "));
-  }
-  //SEESAW_DEBUG("\n");
-
-  uint8_t base_cmd = i2c_buffer[0];
-  uint8_t module_cmd = i2c_buffer[1];
+#endif
 
   if (base_cmd == SEESAW_STATUS_BASE) {
-    if (module_cmd == SEESAW_STATUS_SWRST) {
+    if (module_cmd == SEESAW_STATUS_SWRST && length == 1 && data[0] == 0xFF)
       Adafruit_seesawPeripheral_reset();
-      SEESAW_DEBUGLN(F("Resetting"));
+  } else if (base_cmd == SEESAW_GPIO_BASE) {
+    if (module_cmd == SEESAW_GPIO_BULK && length == 0) {
+#if !defined(ARDUINO_ARCH_STM32)
+      // The AVR port snapshots before the master's following read.
+      g_bufferedBulkGPIORead = Adafruit_seesawPeripheral_readBulk(VALID_GPIO);
+#endif
+      return;
     }
-  }
-  else if (base_cmd == SEESAW_GPIO_BASE) {
-    uint32_t temp;
-    temp = i2c_buffer[2];
-    temp <<= 8;
-    temp |= i2c_buffer[3];
-    temp <<= 8;
-    temp |= i2c_buffer[4];
-    temp <<= 8;
-    temp |= i2c_buffer[5];
-
+    if (length != 4)
+      return;
+    uint32_t temp = Adafruit_seesawPeripheral_read32(data) & VALID_GPIO;
     switch (module_cmd) {
-      case SEESAW_GPIO_BULK:
-        if (howMany == 2) {
-          // we're about to request the data next so we'll do the read now
-          g_bufferedBulkGPIORead = Adafruit_seesawPeripheral_readBulk(VALID_GPIO);
-        } else {
-          //pinMode(1, OUTPUT);
-          //digitalWriteFast(1, HIGH);
-          // otherwise, we are writing bulk data!
-          uint32_t pinmask = 0x1;
-          for (uint8_t pin=0; pin<32; pin++) {
-            if (VALID_GPIO & pinmask) {
-              digitalWrite(pin, (temp >> pin) & 0x1);
-            }
-            pinmask <<= 1;
-          }
-         // digitalWriteFast(1, LOW);
-        }
-        break;
-      case SEESAW_GPIO_DIRSET_BULK:
-      case SEESAW_GPIO_DIRCLR_BULK:
-      case SEESAW_GPIO_BULK_SET:
-      case SEESAW_GPIO_BULK_CLR:
-      case SEESAW_GPIO_PULLENSET:
-      case SEESAW_GPIO_PULLENCLR:
-      case SEESAW_GPIO_INTENSET:
-          temp &= VALID_GPIO;
-          for (uint8_t pin=0; pin<32; pin++) {
-            if ((temp >> pin) & 0x1) {
-              SEESAW_DEBUG(F("Set pin "));
-              SEESAW_DEBUG(pin);
-
-              if (module_cmd == SEESAW_GPIO_DIRSET_BULK) {
-                pinMode(pin, OUTPUT);
-                SEESAW_DEBUGLN(F(" OUTPUT"));
-              }
-              else if (module_cmd == SEESAW_GPIO_DIRCLR_BULK) {
-                pinMode(pin, INPUT);
-                SEESAW_DEBUGLN(F(" INPUT"));
-              }
-              else if (module_cmd == SEESAW_GPIO_BULK_SET) {
-                digitalWrite(pin, 1);
-                SEESAW_DEBUGLN(F(" HIGH"));
-              }
-              else if (module_cmd == SEESAW_GPIO_BULK_CLR) {
-                digitalWrite(pin, 0);
-                SEESAW_DEBUGLN(F(" LOW"));
-              }
-              else if (module_cmd == SEESAW_GPIO_PULLENSET) {
-                pinMode(pin, INPUT_PULLUP);
-                SEESAW_DEBUGLN(F(" PULL"));
-              }
-              else if (module_cmd == SEESAW_GPIO_PULLENCLR) {
-                pinMode(pin, INPUT);
-                SEESAW_DEBUGLN(F(" NOPULL"));
-              }
-#if CONFIG_INTERRUPT
-              else if (module_cmd == SEESAW_GPIO_INTENSET) {
-                g_irqGPIO |= 1UL << pin;
-                SEESAW_DEBUGLN(F(" INTEN"));
-#if USE_PINCHANGE_INTERRUPT
-                attachInterrupt(digitalPinToInterrupt(pin), Adafruit_seesawPeripheral_changedGPIO, CHANGE);
-#endif
-              }
-              else if (module_cmd == SEESAW_GPIO_INTENCLR) {
-                g_irqGPIO &= ~(1UL << pin);
-                SEESAW_DEBUGLN(F(" INTCLR"));
-#if USE_PINCHANGE_INTERRUPT
-                detachInterrupt(digitalPinToInterrupt(pin));
-#endif
-              }
-#endif
-            }
-          }
+    case SEESAW_GPIO_DIRSET_BULK:
+      Adafruit_seesawPeripheral_gpioDirection(temp, true);
+      break;
+    case SEESAW_GPIO_DIRCLR_BULK:
+      Adafruit_seesawPeripheral_gpioDirection(temp, false);
+      break;
+    case SEESAW_GPIO_BULK:
+      Adafruit_seesawPeripheral_gpioWrite(VALID_GPIO & ~temp, false);
+      Adafruit_seesawPeripheral_gpioWrite(temp, true);
+      break;
+    case SEESAW_GPIO_BULK_SET:
+      Adafruit_seesawPeripheral_gpioWrite(temp, true);
+      break;
+    case SEESAW_GPIO_BULK_CLR:
+      Adafruit_seesawPeripheral_gpioWrite(temp, false);
+      break;
+    case SEESAW_GPIO_BULK_TOGGLE:
+      Adafruit_seesawPeripheral_gpioToggle(temp);
+      break;
+    case SEESAW_GPIO_PULLENSET:
+      Adafruit_seesawPeripheral_gpioPull(temp, true);
+      break;
+    case SEESAW_GPIO_PULLENCLR:
+      Adafruit_seesawPeripheral_gpioPull(temp, false);
+      break;
+    case SEESAW_GPIO_INTENSET:
+      Adafruit_seesawPeripheral_gpioInterrupt(temp, true);
+      break;
+    case SEESAW_GPIO_INTENCLR:
+      Adafruit_seesawPeripheral_gpioInterrupt(temp, false);
+      break;
     }
   }
-
 #if CONFIG_ADC
-  else if (base_cmd == SEESAW_ADC_BASE) {
-    if (module_cmd >= SEESAW_ADC_CHANNEL_OFFSET) {
-      uint8_t adcpin = module_cmd - SEESAW_ADC_CHANNEL_OFFSET;
-      if (!((VALID_ADC) & (1UL << adcpin))) {
-        g_adcStatus = 0x1; // error, invalid pin!
-      } else {
-        // its valid!
-        SEESAW_DEBUG(F("ADC read "));
-        SEESAW_DEBUG(adcpin);
-        SEESAW_DEBUG(F(": "));
-        g_bufferedADCRead = analogRead(adcpin);
-        SEESAW_DEBUGLN(g_bufferedADCRead);
-        g_adcStatus = 0x0;
-      }
+  else if (base_cmd == SEESAW_ADC_BASE && length == 0 &&
+             module_cmd >= SEESAW_ADC_CHANNEL_OFFSET) {
+    uint8_t adcpin = module_cmd - SEESAW_ADC_CHANNEL_OFFSET;
+    g_adcStatus = 1;
+    g_bufferedADCRead = 0;
+    if (adcpin < 32 && (VALID_ADC & (1UL << adcpin))) {
+#if defined(ARDUINO_ARCH_STM32)
+      uint16_t value;
+      if (!readADC(adcpin, value))
+        return;
+      g_bufferedADCRead = value;
+#else
+      g_bufferedADCRead = analogRead(adcpin);
+#endif
+      g_adcStatus = 0;
     }
   }
 #endif
 
-
-#if (CONFIG_PWM | CONFIG_PWM_16BIT)
-  else if (base_cmd == SEESAW_TIMER_BASE) {
-    uint8_t pin = i2c_buffer[2];
-    uint16_t value = i2c_buffer[3];
-    value <<= 8;
-    value |= i2c_buffer[4];
-    if (! (VALID_PWM & (1UL << pin))) {
-      g_pwmStatus = 0x1; // error, invalid pin!
-    } else if (module_cmd == SEESAW_TIMER_PWM) {
-      // its valid!
-#if CONFIG_PWM
-      value >>= 8;  // we only support 8 bit analogwrites
-#endif
-      SEESAW_DEBUG(F("PWM "));
-      SEESAW_DEBUG(pin);
-      SEESAW_DEBUG(F(": "));
-      SEESAW_DEBUGLN(value);
-
-      pinMode(pin, OUTPUT);
-#if CONFIG_PWM
-      analogWrite(pin, value);
-#elif CONFIG_PWM_16BIT
-      // set duty cycle via CMPx
-      uint16_t duty_cycle = map(value, 0, 0xFFFF, 0, TCA0.SINGLE.PER);
-      pin -= PWM_WO_OFFSET;
-      if (pin == 0) {
-        TCA0.SINGLE.CTRLB |= TCA_SINGLE_CMP2EN_bm;
-        TCA0.SINGLE.CMP2 = duty_cycle;
-      } else if (pin == 1) {
-        TCA0.SINGLE.CTRLB |= TCA_SINGLE_CMP1EN_bm;
-        TCA0.SINGLE.CMP1 = duty_cycle;
-      } else if (pin == 2) {
-        TCA0.SINGLE.CTRLB |= TCA_SINGLE_CMP0EN_bm;
-        TCA0.SINGLE.CMP0 = duty_cycle;
-      }
-#endif
-      g_pwmStatus = 0x0;
-    }
-    else if (module_cmd == SEESAW_TIMER_FREQ) {
-      SEESAW_DEBUG(F("Freq "));
-      SEESAW_DEBUG(pin);
-      SEESAW_DEBUG(F(": "));
-      SEESAW_DEBUGLN(value);
-#if CONFIG_PWM
-      tone(pin, value);
-#elif CONFIG_PWM_16BIT
-      pinMode(pin, OUTPUT);
-      // set frequency via CLKSEL and PER based on F_CPU
-      // NOTE: changes all PWM outputs
-      uint8_t clksel = 0;
-      unsigned long period = (F_CPU / value);
-      while (period > 65536 && clksel < 7) {
-        clksel++;
-        period = period >> (clksel > 4 ? 2 : 1);
-      }
-      TCA0.SINGLE.CTRLA = (clksel << 1) | TCA_SINGLE_ENABLE_bm;
-      TCA0.SINGLE.PER = period;
-      g_pwmStatus = 0x0;
-#endif
-    }
+#if CONFIG_PWM || CONFIG_PWM_16BIT
+  else if (base_cmd == SEESAW_TIMER_BASE && length == 3) {
+    uint8_t pin = data[0];
+    uint16_t value = Adafruit_seesawPeripheral_read16(data + 1);
+    g_pwmStatus = 1;
+    if (pin >= 32 || ! (VALID_PWM & (1UL << pin)))
+      return;
+    if (module_cmd == SEESAW_TIMER_PWM)
+      Adafruit_seesawPeripheral_setPWM(pin, value);
+    else if (module_cmd == SEESAW_TIMER_FREQ && value != 0)
+      Adafruit_seesawPeripheral_setPWMFrequency(pin, value);
+    else
+      return;
+    g_pwmStatus = 0;
   }
 #endif
 
 #if CONFIG_NEOPIXEL
   else if (base_cmd == SEESAW_NEOPIXEL_BASE) {
-    if (module_cmd == SEESAW_NEOPIXEL_SPEED) {
-      // we only support 800khz anyways
-    }
-    else if (module_cmd == SEESAW_NEOPIXEL_BUF_LENGTH) {
-      uint16_t value = i2c_buffer[2];
-      value <<= 8;
-      value |= i2c_buffer[3];
-      // dont let it be larger than the internal buffer, of course
-      g_neopixel_bufsize = min((uint16_t)CONFIG_NEOPIXEL_BUF_MAX, value);
-      SEESAW_DEBUG(F("Neolen "));
-      SEESAW_DEBUGLN(g_neopixel_bufsize);
-    }
-    if (module_cmd == SEESAW_NEOPIXEL_PIN) {
-      g_neopixel_pin = i2c_buffer[2];
-      SEESAW_DEBUG(F("Neopin "));
-      SEESAW_DEBUGLN(g_neopixel_pin);
-    }
-    if (module_cmd == SEESAW_NEOPIXEL_BUF) {
-      uint16_t offset = i2c_buffer[2];
-      offset <<= 8;
-      offset |= i2c_buffer[3];
-
-      for (uint8_t i=0; i<howMany-4; i++) {
-        if (offset+i < CONFIG_NEOPIXEL_BUF_MAX) {
-          g_neopixel_buf[offset+i] = i2c_buffer[4+i];
-        }
+    g_neopixel_status = 0;
+    if (module_cmd == SEESAW_NEOPIXEL_PIN && length == 1) {
+      if (data[0] >= 32 || !(VALID_GPIO & (1UL << data[0]))) {
+        g_neopixel_status = 1;
+        return;
       }
-    }
-    if (module_cmd == SEESAW_NEOPIXEL_SHOW) {
-      //SEESAW_DEBUGLN(F("Neo show!"));
-      pinMode(g_neopixel_pin, OUTPUT);
-      tinyNeoPixel_show(g_neopixel_pin, g_neopixel_bufsize, (uint8_t *)g_neopixel_buf);
+      g_neopixel_pin = data[0];
+      Adafruit_seesawPeripheral_setPixelPin(g_neopixel_pin);
+    } else if (module_cmd == SEESAW_NEOPIXEL_SPEED && length == 1) {
+      // Both existing hardware implementations support 800 kHz only.
+      if (data[0] != 1)
+        g_neopixel_status = 1;
+    } else if (module_cmd == SEESAW_NEOPIXEL_BUF_LENGTH && length == 2) {
+      uint16_t value = Adafruit_seesawPeripheral_read16(data);
+      g_neopixel_bufsize = min(value, (uint16_t)CONFIG_NEOPIXEL_BUF_MAX);
+      Adafruit_seesawPeripheral_setPixelLength(g_neopixel_bufsize);
+    } else if (module_cmd == SEESAW_NEOPIXEL_BUF && length >= 2) {
+      uint16_t offset = Adafruit_seesawPeripheral_read16(data);
+      volatile uint8_t *buffer = Adafruit_seesawPeripheral_pixelBuffer();
+      if (!buffer || (uint32_t)offset + length - 2 > CONFIG_NEOPIXEL_BUF_MAX) {
+        g_neopixel_status = 1;
+        return;
+      }
+      for (uint8_t i = 2; i < length; i++)
+        buffer[offset + i - 2] = data[i];
+    } else if (module_cmd == SEESAW_NEOPIXEL_SHOW && length == 0) {
+      if (g_neopixel_pin >= 32 || !g_neopixel_bufsize ||
+          !Adafruit_seesawPeripheral_pixelBuffer()) {
+        g_neopixel_status = 1;
+        return;
+      }
+      Adafruit_seesawPeripheral_showPixels();
     }
   }
 #endif
 
 #if CONFIG_ENCODER
   else if (base_cmd == SEESAW_ENCODER_BASE) {
-    uint8_t encoder_num;
-    if ((module_cmd & 0xF0) ==  SEESAW_ENCODER_INTENSET) {
-      encoder_num = module_cmd & 0x0F;
-      if (encoder_num < CONFIG_NUM_ENCODERS) {
-        if (encoder_num == 0) {
-          g_irqGPIO |= ENCODER0_INPUT_MASK;
-        }
-        if (encoder_num == 1) {
-          g_irqGPIO |= ENCODER1_INPUT_MASK;
-        }
-        if (encoder_num == 2) {
-          g_irqGPIO |= ENCODER2_INPUT_MASK;
-        }
-        if (encoder_num == 3) {
-          g_irqGPIO |= ENCODER3_INPUT_MASK;
-        }
-      }
+    uint8_t encoder_num = module_cmd & 0x0F;
+    if (encoder_num >= CONFIG_NUM_ENCODERS)
+      return;
+    switch (module_cmd & 0xF0) {
+    case SEESAW_ENCODER_INTENSET:
+    case SEESAW_ENCODER_INTENCLR: {
+      bool enabled = (module_cmd & 0xF0) == SEESAW_ENCODER_INTENSET;
+#if defined(ARDUINO_ARCH_STM32)
+      if (enabled)
+        encoderInterrupts |= 1 << encoder_num;
+      else
+        encoderInterrupts &= ~(1 << encoder_num);
+#else
+      // AVR's edge detector owns GPIO IRQ masks; STM32 latches detent IRQs.
+      uint32_t mask = 0;
+      if (encoder_num == 0)
+        mask = ENCODER0_INPUT_MASK;
+      if (encoder_num == 1)
+        mask = ENCODER1_INPUT_MASK;
+      if (encoder_num == 2)
+        mask = ENCODER2_INPUT_MASK;
+      if (encoder_num == 3)
+        mask = ENCODER3_INPUT_MASK;
+      if (enabled)
+        g_irqGPIO |= mask;
+      else
+        g_irqGPIO &= ~mask;
+#endif
+      break;
     }
-    else if ((module_cmd & 0xF0) ==  SEESAW_ENCODER_INTENCLR) {
-      encoder_num = module_cmd & 0x0F;
-      if (encoder_num < CONFIG_NUM_ENCODERS) {
-        if (encoder_num == 0) {
-          g_irqGPIO &= ~ENCODER0_INPUT_MASK;
-        }
-        if (encoder_num == 1) {
-          g_irqGPIO &= ~ENCODER1_INPUT_MASK;
-        }
-        if (encoder_num == 2) {
-          g_irqGPIO &= ~ENCODER2_INPUT_MASK;
-        }
-        if (encoder_num == 3) {
-          g_irqGPIO &= ~ENCODER3_INPUT_MASK;
-        }
+    case SEESAW_ENCODER_POSITION:
+      if (length == 4) {
+#if defined(ARDUINO_ARCH_STM32)
+        noInterrupts(); // AVR already executes inside the Wire callback.
+#endif
+        g_enc_value[encoder_num] = (int32_t)Adafruit_seesawPeripheral_read32(data);
+#if defined(ARDUINO_ARCH_STM32)
+        g_enc_delta[encoder_num] = 0;
+        interrupts();
+#endif
       }
-    }
-    else if ((module_cmd & 0xF0) ==  SEESAW_ENCODER_POSITION) {
-      if (howMany == 6) { 
-      encoder_num = module_cmd & 0x0F;
-        if (encoder_num < CONFIG_NUM_ENCODERS){
-          uint32_t value = i2c_buffer[2];
-          value <<= 8;
-          value |= i2c_buffer[3];
-          value <<= 8;
-          value |= i2c_buffer[4];
-          value <<=8;
-          value |= i2c_buffer[5];
-          g_enc_value[encoder_num] = value;
-        }
-      }
+      break;
     }
   }
 #endif
 
-
 #if CONFIG_EEPROM
-  else if (base_cmd == SEESAW_EEPROM_BASE) {
-    // special case for 1 byte at -1 (i2c addr)
-    if ((module_cmd == 0xFF) && (howMany == 3)) {
-      EEPROM.write(EEPROM.length()-1, i2c_buffer[2]);
-    } else {
-      // write the data
-      for (uint8_t i=0; i<howMany-2; i++) {
-        if ((module_cmd+i) < EEPROM.length()) {
-          EEPROM.write(module_cmd+i, i2c_buffer[2+i]);
-          SEESAW_DEBUG(F("EEP $"));
-          SEESAW_DEBUG(module_cmd+i, HEX);
-          SEESAW_DEBUG(F(" <- 0x"));
-          SEESAW_DEBUGLN(i2c_buffer[2+i], HEX);
-        }
-      }
-    }
+  else if (base_cmd == SEESAW_EEPROM_BASE && length > 0) {
+#if defined(ARDUINO_ARCH_STM32)
+    // Flash erases/programs a reserved page; AVR has byte-addressable EEPROM.
+    writeEEPROM(module_cmd, data, length);
+#else
+    if (module_cmd == 0xFF && length == 1)
+      EEPROM.write(EEPROM.length()-1, data[0]);
+    else
+      for (uint8_t i=0; i< length; i++)
+        if ((uint16_t)module_cmd + i < EEPROM.length())
+          EEPROM.write(module_cmd + i, data[i]);
+#endif
   }
 #endif
 
 #if CONFIG_UART
   else if (base_cmd == SEESAW_SERCOM0_BASE) {
-    if (module_cmd == SEESAW_SERCOM_STATUS) {
-      if (CONFIG_UART_SERCOM.available()) {
-        g_uart_status |= 0x02;  // set DATA_RDY bit
-      } else {
-        g_uart_status &= ~0x02; // clear DATA_RDY bit
-      }
-    } else if ((module_cmd == SEESAW_SERCOM_INTEN) && (howMany == 3)){
-      // writing 0 to this register has no effect
-      if (i2c_buffer[2] & 0x01) {
-        g_uart_inten = 1;
-      }
-    } else if ((module_cmd == SEESAW_SERCOM_INTENCLR) && (howMany == 3)){
-      // writing 0 to this register has no effect
-      if (i2c_buffer[2] & 0x01) {
-        g_uart_inten = 0;
-      }
-    } else if ((module_cmd == SEESAW_SERCOM_BAUD) && (howMany == 6)){
-      uint32_t newBaud =
-        uint32_t(i2c_buffer[2]) << 24 |
-        uint32_t(i2c_buffer[3]) << 16 |
-        uint32_t(i2c_buffer[4]) << 8 |
-        i2c_buffer[5];
+    if (module_cmd == SEESAW_SERCOM_STATUS && length == 0)
+      g_uart_status = CONFIG_UART_SERCOM.available() ? 2 : 0;
+    else if (module_cmd == SEESAW_SERCOM_INTEN && length == 1)
+      g_uart_inten |= data[0] & 1;
+    else if (module_cmd == SEESAW_SERCOM_INTENCLR && length == 1)
+      g_uart_inten &= ~(data[0] & 1);
+    else if (module_cmd == SEESAW_SERCOM_BAUD && length == 4) {
+      uint32_t newBaud = Adafruit_seesawPeripheral_read32(data);
+#if defined(ARDUINO_ARCH_STM32)
+      if (newBaud < 300 || newBaud > 1000000)
+        return;
+#endif
       if (newBaud != g_uart_baud) {
         g_uart_baud = newBaud;
         CONFIG_UART_SERCOM.end();
-        CONFIG_UART_SERCOM.begin(g_uart_baud);
+        CONFIG_UART_SERCOM.begin(newBaud);
       }
-    } else if (module_cmd ==  SEESAW_SERCOM_DATA) {
-      g_uart_tx_len = howMany - 2;
-      if (g_uart_tx_len <= CONFIG_UART_BUF_MAX) {
-        for (uint8_t i=0; i<g_uart_tx_len; i++) {
-          g_uart_buf[i] = i2c_buffer[i+2];
-        }
-      } else {
-        g_uart_tx_len = 0;
+    } else if (module_cmd == SEESAW_SERCOM_DATA && length > 0) {
+#if defined(ARDUINO_ARCH_STM32)
+      CONFIG_UART_SERCOM.write(data, length); // Already in the deferred queue.
+#else
+      // AVR dispatches in IRQ context, so the main loop drains UART data.
+      g_uart_tx_len = 0;
+      if (length <= CONFIG_UART_BUF_MAX) {
+        for (uint8_t i=0; i< length; i++)
+          g_uart_buf[i] = data[i];
+        g_uart_tx_len = length;
       }
+#endif
     }
   }
 #endif
@@ -379,13 +270,13 @@ void receiveEvent(int howMany) {
   else if (base_cmd == SEESAW_SPECTRUM_BASE) {
     if ((module_cmd == SEESAW_SPECTRUM_RATE) && (howMany == 3)) {
       ADC0.INTCTRL &= ~ADC_RESRDY_bm;          // Disable result-ready IRQ
-      uint8_t rate = i2c_buffer[2];            // Requested rate index
+      uint8_t rate = data[0];            // Requested rate index
       if (rate > 31) rate = 31;                // Clip rate between 0-31
       ADC0.SAMPCTRL = rate & 31;               // Set ADC sample control
       restart_sampling();                      // Purge recording, start over
     } else if ((module_cmd == SEESAW_SPECTRUM_CHANNEL) && (howMany == 3)) {
       ADC0.INTCTRL &= ~ADC_RESRDY_bm;          // Disable result-ready IRQ
-      uint8_t channel = i2c_buffer[2];         // Requested ADC channel
+      uint8_t channel = data[0];         // Requested ADC channel
       // TO DO: clip channel to valid range. Most likely this will just be
       // 0 or 1 for mic vs. line-in. Value should then be mapped through a
       // const table to either an Arduino pin number (which is then mapped
@@ -398,5 +289,24 @@ void receiveEvent(int howMany) {
       restart_sampling();                      // Purge recording, start over
     }
   }
+#endif
+}
+
+/*! Wire receive entry point. Only STM32 needs the deferred command queue. */
+void receiveEvent(int howMany) {
+#if defined(ARDUINO_ARCH_STM32)
+  SeesawSTM32::receive(howMany);
+#else
+  if (howMany < 2 || (uint32_t)howMany > sizeof(i2c_buffer)) {
+    while (Wire.available())
+      Wire.read();
+    return;
+  }
+  for (uint8_t i = 0; i < howMany; i++)
+    i2c_buffer[i] = Wire.read();
+  // This callback owns the packet throughout decoding; it cannot be replaced
+  // by a second receive callback while interrupts are disabled.
+  Adafruit_seesawPeripheral_processCommand((const uint8_t *)i2c_buffer,
+                                           howMany);
 #endif
 }

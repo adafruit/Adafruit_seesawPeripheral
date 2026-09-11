@@ -40,8 +40,6 @@ void Adafruit_seesawPeripheral_pinChangeDetect(void) {
     
     for (uint8_t encodernum=0; encodernum<CONFIG_NUM_ENCODERS; encodernum++) {
 
-      int8_t enc_action = 0; // 1 or -1 if moved, sign is direction
-
       uint8_t enc_cur_pos = 0;
       // read in the encoder state first
       if (encodernum == 0) {
@@ -67,74 +65,7 @@ void Adafruit_seesawPeripheral_pinChangeDetect(void) {
       }
 #endif
 
-      // if any rotation at all
-      if (enc_cur_pos != g_enc_prev_pos[encodernum]) {
-        SEESAW_DEBUG(F("Enc0 CurPos 0x"));
-        SEESAW_DEBUGLN(enc_cur_pos, HEX);
-
-        if (g_enc_prev_pos[encodernum] == 0x00) {
-          // this is the first edge
-          if (enc_cur_pos == 0x01) {
-            g_enc_flags[encodernum] |= ENCODER_FLAG_FORW_EDGE1;
-          }
-          else if (enc_cur_pos == 0x02) {
-            g_enc_flags[encodernum] |= ENCODER_FLAG_BACK_EDGE1;
-          }
-        }
-
-        if (g_enc_prev_pos[encodernum] == 0x03) {
-          // this is the second edge
-          if (enc_cur_pos == 0x02) {
-            g_enc_flags[encodernum] |= ENCODER_FLAG_FORW_EDGE2;
-          }
-          else if (enc_cur_pos == 0x01) {
-            g_enc_flags[encodernum] |= ENCODER_FLAG_BACK_EDGE2;
-          }
-        }
-        
-        if ((enc_cur_pos == 0x03) && ! CONFIG_ENCODER_2TICKS) {
-          // this is when the encoder is in the middle of a "step" of a 4-tick encoder
-          g_enc_flags[encodernum] |= ENCODER_FLAG_MIDSTEP;
-        }
-        
-        if ((enc_cur_pos == 0x00) || ((enc_cur_pos == 0x03) && CONFIG_ENCODER_2TICKS))
-        {
-          // this is when the encoder is in a 'rest' state
-          
-          // check the first and last edge
-          // or maybe one edge is missing, if missing then require the middle state
-          // this will reject bounces and false movements
-          if ((g_enc_flags[encodernum] & ENCODER_FLAG_FORW_EDGE1) && 
-              (CONFIG_ENCODER_2TICKS || (g_enc_flags[encodernum] & (ENCODER_FLAG_FORW_EDGE2 | ENCODER_FLAG_MIDSTEP)))) {
-            SEESAW_DEBUG(F("+1"));
-            enc_action = 1;
-          }
-          else if ((g_enc_flags[encodernum] & ENCODER_FLAG_FORW_EDGE2) && 
-                   (CONFIG_ENCODER_2TICKS || (g_enc_flags[encodernum] & (ENCODER_FLAG_FORW_EDGE1 | ENCODER_FLAG_MIDSTEP)))) {
-            SEESAW_DEBUG(F("+2"));
-            enc_action = 1;
-          }
-          else if ((g_enc_flags[encodernum] & ENCODER_FLAG_BACK_EDGE1) && 
-                   (CONFIG_ENCODER_2TICKS || (g_enc_flags[encodernum] & (ENCODER_FLAG_BACK_EDGE2 | ENCODER_FLAG_MIDSTEP)))) {
-            SEESAW_DEBUG(F("-1"));
-            enc_action = -1;
-          }
-          else if ((g_enc_flags[encodernum] & ENCODER_FLAG_BACK_EDGE2) && 
-                   (CONFIG_ENCODER_2TICKS || (g_enc_flags[encodernum] & (ENCODER_FLAG_BACK_EDGE1 | ENCODER_FLAG_MIDSTEP)))) {
-            SEESAW_DEBUG(F("-2"));
-            enc_action = -1;
-          }
-          
-          g_enc_flags[encodernum] = 0; // reset for next time
-        }
-      }
-
-      g_enc_prev_pos[encodernum] = enc_cur_pos;
-      
-      if(enc_action != 0){
-        g_enc_value[encodernum] += enc_action;
-        g_enc_delta[encodernum] += enc_action;        
-      }
+      Adafruit_seesawPeripheral_updateEncoder(encodernum, enc_cur_pos);
     }
 #endif
 
