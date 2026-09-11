@@ -213,7 +213,7 @@ volatile uint8_t g_enc_flags[CONFIG_NUM_ENCODERS];
 /*! Decode an active-low A/B phase with the same detent rules on all targets. */
 void Adafruit_seesawPeripheral_updateEncoder(uint8_t encodernum,
                                              uint8_t enc_cur_pos) {
-  int8_t enc_action = 0;
+  int8_t enc_action = 0; // 1 or -1 if moved, sign is direction
   // if any rotation at all
   if (enc_cur_pos != g_enc_prev_pos[encodernum]) {
     SEESAW_DEBUG(F("Enc0 CurPos 0x"));
@@ -223,7 +223,8 @@ void Adafruit_seesawPeripheral_updateEncoder(uint8_t encodernum,
       // this is the first edge
       if (enc_cur_pos == 0x01) {
         g_enc_flags[encodernum] |= ENCODER_FLAG_FORW_EDGE1;
-      } else if (enc_cur_pos == 0x02) {
+      }
+      else if (enc_cur_pos == 0x02) {
         g_enc_flags[encodernum] |= ENCODER_FLAG_BACK_EDGE1;
       }
     }
@@ -232,46 +233,41 @@ void Adafruit_seesawPeripheral_updateEncoder(uint8_t encodernum,
       // this is the second edge
       if (enc_cur_pos == 0x02) {
         g_enc_flags[encodernum] |= ENCODER_FLAG_FORW_EDGE2;
-      } else if (enc_cur_pos == 0x01) {
+      }
+      else if (enc_cur_pos == 0x01) {
         g_enc_flags[encodernum] |= ENCODER_FLAG_BACK_EDGE2;
       }
     }
 
-    if ((enc_cur_pos == 0x03) && !CONFIG_ENCODER_2TICKS) {
-      // this is when the encoder is in the middle of a "step" of a 4-tick
-      // encoder
+    if ((enc_cur_pos == 0x03) && ! CONFIG_ENCODER_2TICKS) {
+      // this is when the encoder is in the middle of a "step" of a 4-tick encoder
       g_enc_flags[encodernum] |= ENCODER_FLAG_MIDSTEP;
     }
 
-    if ((enc_cur_pos == 0x00) ||
-        ((enc_cur_pos == 0x03) && CONFIG_ENCODER_2TICKS)) {
+    if ((enc_cur_pos == 0x00) || ((enc_cur_pos == 0x03) && CONFIG_ENCODER_2TICKS))
+    {
       // this is when the encoder is in a 'rest' state
 
       // check the first and last edge
       // or maybe one edge is missing, if missing then require the middle state
       // this will reject bounces and false movements
       if ((g_enc_flags[encodernum] & ENCODER_FLAG_FORW_EDGE1) &&
-          (CONFIG_ENCODER_2TICKS ||
-           (g_enc_flags[encodernum] &
-            (ENCODER_FLAG_FORW_EDGE2 | ENCODER_FLAG_MIDSTEP)))) {
+          (CONFIG_ENCODER_2TICKS || (g_enc_flags[encodernum] & (ENCODER_FLAG_FORW_EDGE2 | ENCODER_FLAG_MIDSTEP)))) {
         SEESAW_DEBUG(F("+1"));
         enc_action = 1;
-      } else if ((g_enc_flags[encodernum] & ENCODER_FLAG_FORW_EDGE2) &&
-                 (CONFIG_ENCODER_2TICKS ||
-                  (g_enc_flags[encodernum] &
-                   (ENCODER_FLAG_FORW_EDGE1 | ENCODER_FLAG_MIDSTEP)))) {
+      }
+      else if ((g_enc_flags[encodernum] & ENCODER_FLAG_FORW_EDGE2) &&
+               (CONFIG_ENCODER_2TICKS || (g_enc_flags[encodernum] & (ENCODER_FLAG_FORW_EDGE1 | ENCODER_FLAG_MIDSTEP)))) {
         SEESAW_DEBUG(F("+2"));
         enc_action = 1;
-      } else if ((g_enc_flags[encodernum] & ENCODER_FLAG_BACK_EDGE1) &&
-                 (CONFIG_ENCODER_2TICKS ||
-                  (g_enc_flags[encodernum] &
-                   (ENCODER_FLAG_BACK_EDGE2 | ENCODER_FLAG_MIDSTEP)))) {
+      }
+      else if ((g_enc_flags[encodernum] & ENCODER_FLAG_BACK_EDGE1) &&
+               (CONFIG_ENCODER_2TICKS || (g_enc_flags[encodernum] & (ENCODER_FLAG_BACK_EDGE2 | ENCODER_FLAG_MIDSTEP)))) {
         SEESAW_DEBUG(F("-1"));
         enc_action = -1;
-      } else if ((g_enc_flags[encodernum] & ENCODER_FLAG_BACK_EDGE2) &&
-                 (CONFIG_ENCODER_2TICKS ||
-                  (g_enc_flags[encodernum] &
-                   (ENCODER_FLAG_BACK_EDGE1 | ENCODER_FLAG_MIDSTEP)))) {
+      }
+      else if ((g_enc_flags[encodernum] & ENCODER_FLAG_BACK_EDGE2) &&
+               (CONFIG_ENCODER_2TICKS || (g_enc_flags[encodernum] & (ENCODER_FLAG_BACK_EDGE1 | ENCODER_FLAG_MIDSTEP)))) {
         SEESAW_DEBUG(F("-2"));
         enc_action = -1;
       }
@@ -282,11 +278,9 @@ void Adafruit_seesawPeripheral_updateEncoder(uint8_t encodernum,
 
   g_enc_prev_pos[encodernum] = enc_cur_pos;
 
-  if (enc_action != 0) {
-    g_enc_value[encodernum] =
-        (int32_t)((uint32_t)g_enc_value[encodernum] + enc_action);
-    g_enc_delta[encodernum] =
-        (int32_t)((uint32_t)g_enc_delta[encodernum] + enc_action);
+  if(enc_action != 0){
+    g_enc_value[encodernum] = (int32_t)((uint32_t)g_enc_value[encodernum] + enc_action);
+    g_enc_delta[encodernum] = (int32_t)((uint32_t)g_enc_delta[encodernum] + enc_action);
   }
 }
 #endif
@@ -294,7 +288,7 @@ void Adafruit_seesawPeripheral_updateEncoder(uint8_t encodernum,
 void receiveEvent(int howMany);
 void requestEvent(void);
 void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
-                                              uint8_t size);
+                                              uint8_t howMany);
 void Adafruit_seesawPeripheral_reset(void);
 
 /*! Decode a big-endian 16-bit protocol value. */
@@ -771,17 +765,17 @@ void Adafruit_seesawPeripheral_setPWM(uint8_t pin, uint16_t value) {
 #if CONFIG_PWM
   analogWrite(pin, value >> 8); // Legacy AVR PWM uses eight duty bits.
 #else
-  uint16_t duty = map(value, 0, 0xFFFF, 0, TCA0.SINGLE.PER);
+  uint16_t duty_cycle = map(value, 0, 0xFFFF, 0, TCA0.SINGLE.PER);
   pin -= PWM_WO_OFFSET;
   if (pin == 0) {
     TCA0.SINGLE.CTRLB |= TCA_SINGLE_CMP2EN_bm;
-    TCA0.SINGLE.CMP2 = duty;
+    TCA0.SINGLE.CMP2 = duty_cycle;
   } else if (pin == 1) {
     TCA0.SINGLE.CTRLB |= TCA_SINGLE_CMP1EN_bm;
-    TCA0.SINGLE.CMP1 = duty;
+    TCA0.SINGLE.CMP1 = duty_cycle;
   } else if (pin == 2) {
     TCA0.SINGLE.CTRLB |= TCA_SINGLE_CMP0EN_bm;
-    TCA0.SINGLE.CMP0 = duty;
+    TCA0.SINGLE.CMP0 = duty_cycle;
   }
 #endif
 }

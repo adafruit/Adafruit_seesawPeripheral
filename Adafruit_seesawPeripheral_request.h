@@ -68,19 +68,25 @@ void requestEvent(void) {
 #endif
     }
 #endif
+  }
+
 #if CONFIG_ADC
-  } else if (base_cmd == SEESAW_ADC_BASE) {
+  else if (base_cmd == SEESAW_ADC_BASE) {
     if (module_cmd >= SEESAW_ADC_CHANNEL_OFFSET)
       Adafruit_seesawPeripheral_write16(g_bufferedADCRead);
     else if (module_cmd == SEESAW_ADC_STATUS)
       Wire.write(g_adcStatus);
+  }
 #endif
+
 #if CONFIG_PWM || CONFIG_PWM_16BIT
-  } else if (base_cmd == SEESAW_TIMER_BASE) {
+  else if (base_cmd == SEESAW_TIMER_BASE) {
     Wire.write(g_pwmStatus);
+  }
 #endif
+
 #if CONFIG_EEPROM
-  } else if (base_cmd == SEESAW_EEPROM_BASE) {
+  else if (base_cmd == SEESAW_EEPROM_BASE) {
 #if defined(ARDUINO_ARCH_STM32)
     uint8_t value = 0xFF;
     if (eepromSafe)
@@ -89,42 +95,33 @@ void requestEvent(void) {
 #else
     Wire.write(EEPROM.read(module_cmd % EEPROM.length()));
 #endif
+  }
 #endif
+
 #if CONFIG_NEOPIXEL
-  } else if (base_cmd == SEESAW_NEOPIXEL_BASE) {
+  else if (base_cmd == SEESAW_NEOPIXEL_BASE) {
     Wire.write(g_neopixel_status);
+  }
 #endif
+
 #if CONFIG_ENCODER
-  } else if (base_cmd == SEESAW_ENCODER_BASE) {
-    uint8_t index = module_cmd & 0x0F;
+  else if (base_cmd == SEESAW_ENCODER_BASE) {
+    uint8_t encoder_num = module_cmd & 0x0F;
     uint8_t command = module_cmd & 0xF0;
-    if (index < CONFIG_NUM_ENCODERS && (command == SEESAW_ENCODER_POSITION ||
+    if (encoder_num < CONFIG_NUM_ENCODERS && (command == SEESAW_ENCODER_POSITION ||
                                         command == SEESAW_ENCODER_DELTA)) {
-      int32_t value = g_enc_value[index];
+      int32_t value = g_enc_value[encoder_num];
       if (command == SEESAW_ENCODER_DELTA)
-        value = g_enc_delta[index];
+        value = g_enc_delta[encoder_num];
       Adafruit_seesawPeripheral_write32(value);
-      g_enc_delta[index] = 0;
+      g_enc_delta[encoder_num] = 0;
 #if defined(ARDUINO_ARCH_STM32)
       updateIRQ();
 #endif
     }
-#endif
-#if CONFIG_UART
-  } else if (base_cmd == SEESAW_SERCOM0_BASE) {
-    if (module_cmd == SEESAW_SERCOM_STATUS) {
-#if defined(ARDUINO_ARCH_STM32)
-      g_uart_status = CONFIG_UART_SERCOM.available() ? 2 : 0;
-#endif
-      Wire.write(g_uart_status);
-    } else if (module_cmd == SEESAW_SERCOM_INTEN)
-      Wire.write(g_uart_inten);
-    else if (module_cmd == SEESAW_SERCOM_BAUD)
-      Adafruit_seesawPeripheral_write32(g_uart_baud);
-    else if (module_cmd == SEESAW_SERCOM_DATA)
-      Wire.write((uint8_t)CONFIG_UART_SERCOM.read());
-#endif
   }
+#endif
+
 #if CONFIG_FHT && defined(MEGATINYCORE)
   else if (base_cmd == SEESAW_SPECTRUM_BASE) {
     // TO DO: change to A/B/C/D results if we decide on FHT_N = 256.
@@ -144,6 +141,22 @@ void requestEvent(void) {
     } else if (module_cmd == SEESAW_SPECTRUM_RATE) {
       Wire.write(ADC0.SAMPCTRL); // Return current sample rate index
     }
+  }
+#endif
+
+#if CONFIG_UART
+  else if (base_cmd == SEESAW_SERCOM0_BASE) {
+    if (module_cmd == SEESAW_SERCOM_STATUS) {
+#if defined(ARDUINO_ARCH_STM32)
+      g_uart_status = CONFIG_UART_SERCOM.available() ? 2 : 0;
+#endif
+      Wire.write(g_uart_status);
+    } else if (module_cmd == SEESAW_SERCOM_INTEN)
+      Wire.write(g_uart_inten);
+    else if (module_cmd == SEESAW_SERCOM_BAUD)
+      Adafruit_seesawPeripheral_write32(g_uart_baud);
+    else if (module_cmd == SEESAW_SERCOM_DATA)
+      Wire.write((uint8_t)CONFIG_UART_SERCOM.read());
   }
 #endif
 
