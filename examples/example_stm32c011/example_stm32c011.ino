@@ -2,8 +2,7 @@
 #define CONFIG_I2C_PERIPH_ADDR 0x49
 #define CONFIG_EEPROM 0
 
-#define CONFIG_I2C_SDA_PIN PB7
-#define CONFIG_I2C_SCL_PIN PB6
+// begin() configures the C011 QT I2C pins (PB7/SDA and PB6/SCL).
 #define CONFIG_STATUS_LED_PIN PC15
 // The GPIO mask uses digital indices; PA13/PA14 are analog aliases in this
 // core.

@@ -10,6 +10,13 @@
 #error "The STM32 backend currently supports the generic STM32C011F6Ux only"
 #endif
 
+#ifndef CONFIG_I2C_SDA_PIN
+#define CONFIG_I2C_SDA_PIN PB7 ///< Default C011 QT I2C data pin.
+#endif
+#ifndef CONFIG_I2C_SCL_PIN
+#define CONFIG_I2C_SCL_PIN PB6 ///< Default C011 QT I2C clock pin.
+#endif
+
 #if CONFIG_ADC
 #include "stm32c0xx_ll_adc.h"
 #endif
