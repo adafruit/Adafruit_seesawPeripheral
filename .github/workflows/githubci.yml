@@ -13,14 +13,25 @@ jobs:
     - uses: actions/checkout@v3
     - uses: actions/checkout@v3
       with:
-         repository: adafruit/ci-arduino
+         # C011 support; switch back after adafruit/ci-arduino#239 merges.
+         repository: ladyada-eagleclaw/ci-arduino
+         ref: 0d4a449ce001ce3706b347f3cd38d56a03a72ab1
          path: ci
 
     - name: pre-install
       run: bash ci/actions_install.sh
 
     - name: test platforms
-      run: python3 ci/build_platform.py attiny817 attiny816 attiny807 attiny806 attiny1617 attiny1616
+      run: python3 ci/build_platform.py attiny817 attiny816 attiny807 attiny806 attiny1617 attiny1616 stm32c011
+
+    - name: test STM32C011 firmware configurations
+      shell: pwsh
+      run: |
+        foreach ($target in @('full', 'gpio', 'four_encoders', 'address_straps', 'address_straps_inverted', 'uart', 'spi', 'spi_queue')) {
+          Write-Output "Building STM32C011 $target"
+          & ./extras/hwtest/build.ps1 -Target $target -OutputRoot (Join-Path $env:RUNNER_TEMP 'seesaw-c011')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        }
 
 #    - name: clang
 #      run: python3 ci/run-clang-format.py -e "ci/*" -e "bin/*" -r . 
