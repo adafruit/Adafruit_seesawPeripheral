@@ -27,7 +27,7 @@ jobs:
       run: |
         # The all-feature UART image exceeds C011's reserved 30 KiB application
         # region. The public UART example above still compiles the UART backend.
-        foreach ($target in @('full', 'gpio', 'four_encoders', 'address_straps', 'address_straps_inverted')) {
+        foreach ($target in @('full', 'gpio', 'four_encoders', 'address_straps', 'address_straps_inverted', 'spi', 'spi_queue')) {
           Write-Output "Building STM32C011 $target"
           & ./extras/hwtest/build.ps1 -Target $target -OutputRoot (Join-Path $env:RUNNER_TEMP 'seesaw-c011')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -44,6 +44,12 @@ TwoWire &seesawWire = Wire; // AVR keeps its established Wire transport.
 #ifndef CONFIG_FHT
 #define CONFIG_FHT 0
 #endif
+#ifndef CONFIG_SPI
+#define CONFIG_SPI 0
+#endif
+#if CONFIG_SPI && !defined(ARDUINO_ARCH_STM32)
+#error "The SPI controller backend currently requires STM32"
+#endif
 #ifndef CONFIG_EEPROM
 #if defined(ARDUINO_ARCH_STM32)
 #define CONFIG_EEPROM 0 // Emulated flash requires an explicitly reserved page.

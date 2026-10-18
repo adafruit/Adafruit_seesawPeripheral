@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('full', 'gpio', 'four_encoders', 'address_straps', 'address_straps_inverted', 'uart', 'metro', 'nano', 'avr')]
+  [ValidateSet('full', 'gpio', 'four_encoders', 'address_straps', 'address_straps_inverted', 'uart', 'spi', 'spi_queue', 'metro', 'nano', 'avr')]
   [string]$Target = 'full',
   [Parameter(Mandatory = $true)]
   [string]$OutputRoot,
@@ -44,6 +44,10 @@ if ($Target -eq 'gpio') {
 } elseif ($Target -eq 'uart') {
   $fqbn = $fqbn.Replace('xserial=disabled', 'xserial=generic')
   $extraFlags = '-DHWTEST_UART=1'
+} elseif ($Target -eq 'spi') {
+  $extraFlags = '-DHWTEST_SPI=1'
+} elseif ($Target -eq 'spi_queue') {
+  $extraFlags = '-DHWTEST_SPI=1 -DHWTEST_SPI_QUEUE_HOLD=1'
 } elseif ($Target -in @('address_straps', 'address_straps_inverted')) {
   $strapFlags = '-DHWTEST_ENCODER=0 -DHWTEST_IRQ=0 -DCONFIG_ADDR_0_PIN=0 -DCONFIG_ADDR_1_PIN=1 -DCONFIG_ADDR_2_PIN=2 -DCONFIG_ADDR_3_PIN=3'
   if ($Target -eq 'address_straps_inverted') { $strapFlags += ' -DCONFIG_ADDR_INVERTED=1' }

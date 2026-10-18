@@ -14,6 +14,12 @@ void requestEvent(void) {
   uint8_t base_cmd = i2c_buffer[0];
   uint8_t module_cmd = i2c_buffer[1];
 #endif
+#if CONFIG_SPI && defined(ARDUINO_ARCH_STM32)
+  if (base_cmd == spiBase) {
+    spiRequest(module_cmd);
+    return;
+  }
+#endif
   if (base_cmd == SEESAW_STATUS_BASE) {
     if (module_cmd == SEESAW_STATUS_HW_ID)
       seesawWire.write((uint8_t)SEESAW_HW_ID);
@@ -29,6 +35,9 @@ void requestEvent(void) {
           ((uint32_t)CONFIG_UART << SEESAW_SERCOM0_BASE) |
           ((uint32_t)CONFIG_ENCODER << SEESAW_ENCODER_BASE) |
           ((uint32_t)CONFIG_FHT << SEESAW_SPECTRUM_BASE);
+#if CONFIG_SPI && defined(ARDUINO_ARCH_STM32)
+      options |= 1UL << spiBase;
+#endif
       Adafruit_seesawPeripheral_write32(options);
     } else
       seesawWire.write((uint8_t)0);

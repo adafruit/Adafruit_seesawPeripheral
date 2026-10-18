@@ -20,6 +20,9 @@
 #if CONFIG_ADC
 #include "stm32c0xx_ll_adc.h"
 #endif
+#if CONFIG_SPI
+#include <SPI.h>
+#endif
 #if CONFIG_NEOPIXEL
 #include <Adafruit_NeoPixel.h>
 #endif
@@ -58,6 +61,22 @@ volatile uint8_t selectedBase = 0, selectedRegister = 0; ///< Read pointer.
 uint32_t direction = 0, output = 0, pull = 0; ///< GPIO register semantics.
 uint32_t lastGPIO = 0;                        ///< Last sampled GPIO state.
 uint32_t pwmActive = 0;                       ///< Pins currently using timers.
+#if CONFIG_SPI
+const uint8_t spiBase = 0x13; ///< Experimental SPI controller register module.
+const uint32_t spiPinMask = 0xF0; ///< PA4 CS, PA5 SCK, PA6 MISO, PA7 MOSI.
+SPIClass spiPort(PA7, PA6, PA5);  ///< Dedicated hardware SPI controller.
+volatile bool spiConfigured = false,
+              spiSelected = false; ///< Pin ownership and CS state.
+volatile uint8_t spiPending =
+    0; ///< Accepted commands, including the active one.
+volatile uint8_t spiError = 0,
+                 spiSequence = 0;      ///< Sticky error and completion ID.
+volatile bool spiAbortPending = false; ///< ISR asks main loop to release CS.
+volatile uint8_t spiRxLength = 0;  ///< Completed bytes available to the host.
+uint8_t spiRx[29];                 ///< One full I2C transfer's receive bytes.
+uint32_t spiFrequency = 1000000;   ///< Requested SPI frequency in hertz.
+uint8_t spiMode = 0, spiOrder = 0; ///< SPI mode 0-3, MSB-first 0 / LSB-first 1.
+#endif
 uint16_t pwmValues[16] = {};  ///< Duty values needed when frequency changes.
 uint16_t pwmFrequency = 1000; ///< Shared PWM frequency in hertz.
 #if CONFIG_PWM
@@ -110,6 +129,10 @@ RawPixels pixels; ///< Fixed-capacity LED buffer, allocated once.
 
 uint32_t validGPIO() {
   uint32_t pins = gpioMask;
+#if CONFIG_SPI
+  if (spiConfigured)
+    pins &= ~spiPinMask;
+#endif
 #ifdef CONFIG_INTERRUPT_PIN
   pins &= ~(1UL << CONFIG_INTERRUPT_PIN);
 #endif
@@ -205,6 +228,9 @@ void applyGPIO(uint32_t pins) {
   }
 }
 
+#if CONFIG_SPI
+#include "Adafruit_seesawPeripheral_stm32_spi.h"
+#endif
 
 #if CONFIG_UART
 uint8_t firstUARTStatus() { return CONFIG_UART_SERCOM.available() ? 2 : 0; }
@@ -277,6 +303,18 @@ void prepareFirstByte() {
       seesawWire.setFirstByte(firstUARTData);
   }
 #endif
+#if CONFIG_SPI
+  else if (selectedBase == spiBase) {
+    if (selectedRegister == spiStatusRegister)
+      seesawWire.setFirstByte(spiStatusFlags);
+    else if (selectedRegister == spiReadRegister)
+      seesawWire.setFirstByte(spiFirstReceiveByte);
+    else if (selectedRegister == spiConfigRegister)
+      seesawWire.setFirstByte(&spiMode);
+    else if (selectedRegister == spiClockRegister)
+      seesawWire.setFirstByte(spiFirstClockByte);
+  }
+#endif
 }
 
 /*! Decode the register pointer before a possible immediate repeated START. */
@@ -287,12 +325,43 @@ bool receiveHeader(uint8_t base, uint8_t reg) {
   // A full queue can invalidate the pointer in receive(). In that case finish
   // reception before loading the first reply byte, even on a repeated START.
   // Between this header and START, the main loop can only free queue entries.
+#if CONFIG_SPI
+  if (base == spiBase)
+    return true; // Two-byte SPI queries bypass the command queue.
+#endif
   return (head + 1) % queueSize != tail;
 }
 
 void receive(int length) {
+#if CONFIG_SPI
+  // Status/RX reads must remain available when the work queue is full.
+  if (length >= 2) {
+    uint8_t base = seesawWire.peek();
+    if (base == spiBase && length == 2) {
+      seesawWire.read();
+      uint8_t reg = seesawWire.read();
+      selectedBase = base;
+      selectedRegister = reg;
+      prepareFirstByte();
+      if (reg == spiStatusRegister || reg == spiReadRegister ||
+          reg == spiConfigRegister || reg == spiClockRegister)
+        return;
+      // Other two-byte SPI commands are invalid; do not silently enqueue them.
+      spiError = spiInvalidCommand;
+      spiAbortPending = true;
+      return;
+    }
+  }
+#endif
   uint8_t next = (head + 1) % queueSize;
   if (length < 2 || length > commandSize || next == tail) {
+#if CONFIG_SPI
+    if (spiConfigured || spiPending ||
+        (length >= 2 && seesawWire.peek() == spiBase)) {
+      spiError = spiQueueOverflow;
+      spiAbortPending = true;
+    }
+#endif
     selectedBase = selectedRegister = 0xFF;
     prepareFirstByte();
     while (seesawWire.available()) {
@@ -307,6 +376,10 @@ void receive(int length) {
   selectedBase = commands[head].data[0];
   selectedRegister = commands[head].data[1];
   prepareFirstByte();
+#if CONFIG_SPI
+  if (selectedBase == spiBase)
+    spiPending++;
+#endif
   head = next;
 }
 
@@ -372,6 +445,11 @@ bool readADC(uint8_t pin, uint16_t &value) {
 #endif
 
 void reset() {
+#if CONFIG_SPI
+  spiStop();
+  spiError = spiSequence = spiRxLength = 0;
+  spiAbortPending = false;
+#endif
   direction = output = pull = 0;
   g_irqGPIO = g_irqFlags = 0;
 #if CONFIG_ADC
@@ -609,6 +687,12 @@ bool Adafruit_seesawPeripheral_begin() {
 
 void Adafruit_seesawPeripheral_run() {
   using namespace SeesawSTM32;
+#if CONFIG_SPI
+  if (spiAbortPending) {
+    spiRelease();
+    spiAbortPending = false;
+  }
+#endif
   if (tail != head) {
     Command command;
     command.length = commands[tail].length;
@@ -616,6 +700,12 @@ void Adafruit_seesawPeripheral_run() {
       command.data[i] = commands[tail].data[i];
     }
     tail = (tail + 1) % queueSize;
+#if CONFIG_SPI && defined(CONFIG_SPI_TEST_HOLD_US)
+    // Engineering fault injection only: leave IRQs enabled while the host
+    // deterministically fills the queue. Production builds omit this entirely.
+    if (command.data[0] == spiBase)
+      delayMicroseconds(CONFIG_SPI_TEST_HOLD_US);
+#endif
     Adafruit_seesawPeripheral_processCommand(command.data, command.length);
   }
 #if defined(CONFIG_INTERRUPT_PIN) || CONFIG_ENCODER

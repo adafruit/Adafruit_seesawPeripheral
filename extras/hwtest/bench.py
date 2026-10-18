@@ -285,6 +285,206 @@ def status_test(metro, jl):
         metro.input(0)
 
 
+def spi_test(metro, jl, queue_only=False):
+    """Hardware MOSI/MISO loopback plus an independent input-only AVR decoder."""
+    def status(expected_error=0):
+        deadline = time.monotonic() + 1
+        while True:
+            result = metro.read(0x13, 0, 4)
+            if not result[0] & 1:
+                check(result[1] == expected_error,
+                      f"SPI error {result[1]}, expected {expected_error}: {result.hex()}")
+                return result
+            check(time.monotonic() < deadline, "SPI completion timed out")
+
+    def configure(mode=0, order=0, frequency=1000000):
+        payload = bytes([mode, order]) + frequency.to_bytes(4, "big")
+        metro.write(0x13, 1, payload)
+        check(status()[0] & 2, "SPI did not become ready")
+        check(metro.read(0x13, 1, 6) == payload, "SPI configuration readback mismatch")
+
+    def transfer(payload, flags, receive=True):
+        before = status()[3]
+        metro.write(0x13, 2, [flags, *payload])
+        result = status()
+        check(result[3] == (before + 1) & 255, "SPI completion sequence did not advance once")
+        if receive and not flags & 4 and payload:
+            check(result[2] == len(payload), "SPI receive length mismatch")
+            received = metro.read(0x13, 3, len(payload))
+            check(received == bytes(payload),
+                  f"Physical SPI loopback mismatch: sent={bytes(payload).hex()} received={received.hex()}")
+            check(status()[2] == 0, "SPI RX read did not consume the buffer")
+        return result
+
+    def abort(disable=False):
+        metro.write(0x13, 4, [int(disable)])
+        return status()
+
+    check(metro.value(0, 3) & (1 << 19), "SPI build is not loaded")
+    if queue_only:
+        try:
+            configure(0, 0, 187500)
+            transfer(b"", 5)
+            check(abs(jl.sense(5)) < 0.2, "CS did not start asserted")
+            metro.command("C", [4])
+            check(metro.command("Q", [16, 1]) == "OK",
+                  "SPI burst or full-queue repeated-start response failed")
+            status(3)
+            check(jl.sense(5) > 2.8, "Queue overflow did not release CS")
+            abort(True)
+            metro.command("C", [1])
+            configure()
+            transfer(b"", 7)
+            passed("spi_queue_overflow_and_recovery", fault_injection="10 ms main-loop hold",
+                   rejected_header_first_byte=0)
+        finally:
+            metro.write(0x13, 4, [1])
+            metro.command("C", [1])
+        return
+    routes = ((2, 3), (4, 60), (2, 58), (5, 57))
+    try:
+        check(metro.command("S", [0, 0]) == "OK", "Observer setup failed")
+        for pin in (4, 5, 6, 7):
+            metro.input(pin)
+        for route in routes:
+            jl.connect(*route)
+        pattern = bytes([0, 255, 0x55, 0xAA, 0x96, 0x69] + [(i * 37 + 13) & 255 for i in range(23)])
+        for frequency in (187500, 1000000):
+            for mode in range(4):
+                for order in range(2):
+                    configure(mode, order, frequency)
+                    actual_clock = metro.value(0x13, 5, 4)
+                    check(0 < actual_clock <= frequency, "SPI clock exceeds the requested maximum")
+                    idle = jl.sense(4)
+                    check(idle > 2.8 if mode & 2 else abs(idle) < 0.2, "SPI clock idle polarity mismatch")
+                    check(jl.sense(5) > 2.8, "SPI CS is not released before transfer")
+                    check(metro.command("S", [mode, order]) == "OK", "Observer mode setup failed")
+                    result = transfer(pattern, 3)
+                    check(not result[0] & 4 and jl.sense(5) > 2.8, "SPI CS remained asserted")
+                    capture = metro.command("T", []).split()
+                    check(capture[0] == "CAP" and int(capture[1], 16) == len(pattern),
+                          f"Independent SPI decoder count: {capture[:2]}")
+                    check(bytes.fromhex(" ".join(capture[4:])) == pattern,
+                          f"Independent SPI decoder mismatch: mode={mode}, order={order}, frequency={frequency}")
+                    elapsed_us = (int(capture[3], 16) - int(capture[2], 16)) & 0xFFFFFFFF
+                    # Byte timestamps include inter-byte pauses; this is wire
+                    # throughput, not an individual SCK-period measurement.
+                    effective_bit_rate = (len(pattern) - 1) * 8e6 / elapsed_us
+                    check(0 < effective_bit_rate <= actual_clock * 1.08,
+                          "Observed SPI throughput exceeds the clock limit")
+                    passed("spi_mode_order_loopback_and_decoder", mode=mode, order=order,
+                           requested_hz=frequency, actual_hz=actual_clock,
+                           effective_bits_per_second=effective_bit_rate, bytes=len(pattern))
+
+        # Identical reconfiguration must work after peripheral deinitialization.
+        abort(True)
+        configure(0, 0, 1000000)
+        transfer(pattern, 3)
+        abort(True)
+        configure(0, 0, 1000000)
+        transfer(pattern, 3)
+        passed("spi_reinitialize_same_settings")
+
+        # Hold CS through an e-paper-sized frame, changing D/C on independent PA0.
+        metro.gpio(2, 1)
+        frame_length = 4736
+        started = time.monotonic()
+        for offset in range(0, frame_length, 29):
+            payload = bytes(((offset + i) * 73 + 19) & 255 for i in range(min(29, frame_length - offset)))
+            first, last = offset == 0, offset + len(payload) == frame_length
+            result = transfer(payload, int(first) | (int(last) << 1))
+            check(bool(result[0] & 4) == (not last), "SPI CS continuity status mismatch")
+            if first:
+                check(abs(jl.sense(5)) < 0.2, "CS did not physically stay low between chunks")
+                for level in (0, 1, 0):
+                    metro.gpio(5 if level else 6, 1)
+                    voltage = jl.sense(9)
+                    check(voltage > 2.8 if level else abs(voltage) < 0.2,
+                          "Independent e-paper D/C GPIO did not change")
+                    check(abs(jl.sense(5)) < 0.2, "D/C change interrupted CS")
+        check(jl.sense(5) > 2.8, "Frame end did not release CS")
+        passed("spi_chunked_epaper_frame", bytes=frame_length, elapsed_s=time.monotonic() - started)
+        metro.input(0)
+
+        # Write-only chunks do not require draining receive data.
+        transfer(pattern, 5)
+        transfer(pattern, 6)
+        check(status()[2] == 0, "Write-only SPI unexpectedly retained RX data")
+        passed("spi_write_only_chunks")
+
+        # Unread RX must stop, rather than overwrite a previous result.
+        transfer(pattern, 1, receive=False)
+        metro.write(0x13, 2, [2, 0xAA])
+        status(4)
+        check(jl.sense(5) > 2.8, "Unread-data error did not release CS")
+        abort()
+        metro.write(0x13, 2, [8])
+        status(6)
+        abort()
+        metro.write(0x13, 1, [4, 0, 0, 0, 0, 0])
+        status(1)
+        abort(True)
+        metro.write(0x13, 2, [7, 0x55])
+        status(2)
+        abort(True)
+        passed("spi_invalid_commands_and_unread_rx_recovery")
+
+        abort(True)
+        for pin in (4, 5, 6, 7):
+            metro.input(pin)
+        passed("spi_complete")
+    finally:
+        try:
+            metro.write(0x13, 4, [1])
+            metro.command("X", [])
+            metro.command("C", [1])
+            metro.input(0)
+        finally:
+            for route in routes:
+                if route in jl.routes:
+                    jl.disconnect(*route)
+
+
+def spi_host_test(metro, jl):
+    """Use the actual Arduino seesaw_SPI class and its automatic chunking."""
+    try:
+        metro.command("X", [])
+        jl.connect(2, 3)
+        for mode in range(4):
+            for order in range(2):
+                response = metro.command("J", [0, mode, order, *int(1000000).to_bytes(4, "big")])
+                check(response.startswith("CLOCK "), f"SPI host begin failed: {response}")
+                actual = int(response.split()[1], 16)
+                check(0 < actual <= 1000000, "Host actual SPI clock is invalid")
+                for length in (0, 1, 29, 30, 58, 96):
+                    data = metro.command("J", [1, 3, length]).split()
+                    check(data[0] == "DATA", f"Host SPI transfer failed: {data}")
+                    check(bytes.fromhex(" ".join(data[1:])) == bytes((i * 37 + 13) & 255 for i in range(length)),
+                          "Host auto-chunked SPI loopback mismatch")
+                check(jl.sense(5) > 2.8, "Host SPI left CS asserted")
+                passed("arduino_spi_host_chunk_boundaries", mode=mode, order=order, lengths=[0, 1, 29, 30, 58, 96])
+        response = metro.command("J", [5, 3, 96]).split()
+        check(response[0] == "DATA" and bytes.fromhex(" ".join(response[1:])) == bytes([255]) * 96,
+              "Host receive-only fill bytes did not loop back")
+        check(metro.command("J", [2, 1, 96]) == "OK", "Host write-only begin failed")
+        check(abs(jl.sense(5)) < 0.2, "Host did not keep CS low between API calls")
+        check(metro.command("J", [2, 2, 96]) == "OK", "Host write-only end failed")
+        check(jl.sense(5) > 2.8, "Host did not release CS at the end")
+        # A continuation without a prior begin must fail and retain its cause.
+        check(metro.command("J", [1, 2, 1]) == "FAIL 2", "Host did not report bad transaction state")
+        check(metro.command("J", [4]) == "LAST 2", "Host cleanup lost the original error")
+        response = metro.command("J", [0, 0, 0, *int(1000000).to_bytes(4, "big")])
+        check(response.startswith("CLOCK "), "Host did not recover after the failure")
+        check(metro.command("J", [2, 3, 96]) == "OK", "Host recovery transfer failed")
+        passed("arduino_spi_host_receive_write_only_cs_and_error_recovery")
+    finally:
+        try:
+            metro.command("J", [3])
+        finally:
+            if (2, 3) in jl.routes:
+                jl.disconnect(2, 3)
+
+
 def host_test(metro, jl, supply):
     """Exercise the real Arduino host APIs, with independent pin measurements."""
     def host(values):
@@ -740,7 +940,7 @@ def main():
     parser.add_argument("--helper", required=True)
     parser.add_argument("--fixture", choices=["metro", "nano"], default="metro")
     parser.add_argument("--physical-i2c", action="store_true", help="Use physical Nano A4/A5 jumpers without switched I2C routes")
-    parser.add_argument("--phase", choices=["preflight", "host", "status", "gpio", "adc", "pwm", "irq", "encoder", "uart", "eeprom", "address", "straps", "neopixel", "all"], default="preflight")
+    parser.add_argument("--phase", choices=["preflight", "host", "spi", "spi_queue", "spi_host", "status", "gpio", "adc", "pwm", "irq", "encoder", "uart", "eeprom", "address", "straps", "neopixel", "all"], default="preflight")
     parser.add_argument("--jumperless-link", action="store_true", help="Use verified Metro VBUS/I2C breadboard routes")
     parser.add_argument("--keep-link", action="store_true", help="Keep the powered Metro link after successful preflight for SWD programming")
     parser.add_argument("--pixels", type=int, help="RGB ring pixel count; only after wiring is verified")
@@ -786,6 +986,9 @@ def main():
             jl.exec(f"oled_clear(); oled_print('C011 bench test'); oled_print('{phase}')")
             if phase == "status": status_test(metro, jl)
             elif phase == "host": host_test(metro, jl, supply)
+            elif phase == "spi": spi_test(metro, jl)
+            elif phase == "spi_queue": spi_test(metro, jl, queue_only=True)
+            elif phase == "spi_host": spi_host_test(metro, jl)
             elif phase == "gpio": gpio_test(metro, jl, pins)
             elif phase == "adc": adc_test(metro, jl, pins, supply)
             elif phase == "pwm": pwm_test(metro, jl, pins)

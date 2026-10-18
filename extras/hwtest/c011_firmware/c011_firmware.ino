@@ -10,6 +10,14 @@
 #define CONFIG_EEPROM 1
 #define CONFIG_NEOPIXEL 1
 #define CONFIG_NEOPIXEL_BUF_MAX 192
+#ifndef HWTEST_SPI
+#define HWTEST_SPI                                                             \
+  0 // Experimental controller bridge, enabled in the spi target.
+#endif
+#define CONFIG_SPI HWTEST_SPI
+#ifdef HWTEST_SPI_QUEUE_HOLD
+#define CONFIG_SPI_TEST_HOLD_US 10000
+#endif
 #ifndef HWTEST_UART
 #define HWTEST_UART 0 // Specialty bridge; enable explicitly when testing UART.
 #endif

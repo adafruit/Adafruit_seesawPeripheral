@@ -33,6 +33,16 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
 #if defined(ARDUINO_ARCH_STM32)
   using namespace SeesawSTM32;
 #endif
+#if CONFIG_SPI && defined(ARDUINO_ARCH_STM32)
+  if (base_cmd == spiBase) {
+    spiProcess(module_cmd, data, length);
+    noInterrupts();
+    if (spiPending)
+      spiPending--;
+    interrupts();
+    return;
+  }
+#endif
 
   if (base_cmd == SEESAW_STATUS_BASE) {
     if (module_cmd == SEESAW_STATUS_SWRST && length == 1 && data[0] == 0xFF)

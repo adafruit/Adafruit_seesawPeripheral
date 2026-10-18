@@ -7,12 +7,16 @@
 // E encoder-mask direction detents step-ms -> generate quadrature, then
 // release. C clock -> 1/2/4 selects 100/200/400 kHz I2C. B address ->
 // BEGIN ACCEPTED/REJECTED using the installed seesaw host library. H subcommand
-// [arguments] -> host-library calls; see executeCommand().
-// D4..D11 only pull LOW or release INPUT:
+// [arguments] -> host-library calls; see executeCommand(). S mode order ->
+// start INPUT-ONLY hardware SPI observer (D10 CS, D11 MOSI, D13 SCK). T -> CAP
+// count first-us last-us [up to 64 bytes], all hexadecimal. X -> stop observer.
+// D12/MISO is NEVER an output. Q count -> burst write-only SPI chunks without
+// delays, for queue-overflow testing. D4..D11 only pull LOW or release INPUT:
 // NEVER output 5 V or enable pull-ups. The C011 supplies the 3.3 V encoder
 // pull-ups. D0..D3 are not touched.
 #include <Adafruit_seesaw.h>
 #include <Wire.h>
+#include <seesaw_spi.h>
 
 char command[110];
 uint8_t commandLength = 0;
@@ -24,6 +28,10 @@ public:
   using Adafruit_seesaw::getI2CaddrEEPROMloc;
 };
 HostSeesaw hostSeesaw;
+seesaw_SPI spiHost;
+volatile uint8_t spiCapture[64];
+volatile uint16_t spiCaptureCount = 0;
+volatile uint32_t spiFirstMicros = 0, spiLastMicros = 0;
 void executeCommand();
 void encoderPhase(uint8_t mask, uint8_t phase);
 
@@ -55,6 +63,18 @@ void loop() {
   }
 }
 
+ISR(SPI_STC_vect) {
+  uint8_t value = SPDR;
+  uint32_t timestamp = micros();
+  if (spiCaptureCount == 0)
+    spiFirstMicros = timestamp;
+  spiLastMicros = timestamp;
+  if (spiCaptureCount < sizeof(spiCapture))
+    spiCapture[spiCaptureCount] = value;
+  if (spiCaptureCount != 65535)
+    spiCaptureCount++;
+}
+
 void executeCommand() {
   char *token = strtok(command, " ");
   if (!token)
@@ -70,6 +90,53 @@ void executeCommand() {
       return;
     }
     bytes[count++] = value;
+  }
+  if (operation == 'J' && count >= 1) {
+    bool okay = false;
+    uint8_t tx[96], rx[96];
+    if (bytes[0] == 0 && count == 7) {
+      uint32_t frequency = ((uint32_t)bytes[3] << 24) |
+                           ((uint32_t)bytes[4] << 16) |
+                           ((uint32_t)bytes[5] << 8) | bytes[6];
+      okay = spiHost.begin(0x49, -1, false) &&
+             spiHost.beginSPI(frequency, bytes[1], bytes[2]);
+      if (okay) {
+        Serial.print(F("CLOCK "));
+        Serial.println(spiHost.getSPIClockFrequency(), HEX);
+        return;
+      }
+    } else if ((bytes[0] == 1 || bytes[0] == 2 || bytes[0] == 5) &&
+               count == 3 && bytes[1] <= 3 && bytes[2] <= sizeof(tx)) {
+      for (uint8_t i = 0; i < bytes[2]; i++)
+        tx[i] = i * 37 + 13;
+      okay =
+          spiHost.transfer(bytes[0] == 5 ? NULL : tx, bytes[0] == 2 ? NULL : rx,
+                           bytes[2], bytes[1] & 1, bytes[1] & 2);
+      if (okay && bytes[0] != 2) {
+        Serial.print(F("DATA"));
+        for (uint8_t i = 0; i < bytes[2]; i++) {
+          Serial.print(' ');
+          if (rx[i] < 16)
+            Serial.print('0');
+          Serial.print(rx[i], HEX);
+        }
+        Serial.println();
+        return;
+      }
+    } else if (bytes[0] == 3 && count == 1) {
+      okay = spiHost.abortSPI(true);
+    } else if (bytes[0] == 4 && count == 1) {
+      Serial.print(F("LAST "));
+      Serial.println(spiHost.getLastSPIError(), HEX);
+      return;
+    }
+    if (okay)
+      Serial.println(F("OK"));
+    else {
+      Serial.print(F("FAIL "));
+      Serial.println(spiHost.getLastSPIError(), HEX);
+    }
+    return;
   }
   if (operation == 'Z' &&
       count == 1) { // Empty hardware I2C probe for BusDevice.
@@ -92,6 +159,84 @@ void executeCommand() {
       Serial.print(value, HEX);
     }
     Serial.println();
+    return;
+  }
+  if (operation == 'S' && count == 2 && bytes[0] <= 3 && bytes[1] <= 1) {
+    SPCR = 0;
+    for (uint8_t pin = 10; pin <= 13; pin++) {
+      digitalWrite(pin, LOW);
+      pinMode(pin, INPUT); // Includes MISO: observe only, never drive 5 V.
+    }
+    noInterrupts();
+    spiCaptureCount = 0;
+    spiFirstMicros = spiLastMicros = 0;
+    uint8_t discard = SPSR;
+    discard = SPDR;
+    (void)discard;
+    SPCR = _BV(SPE) | _BV(SPIE) | ((bytes[0] & 2) ? _BV(CPOL) : 0) |
+           ((bytes[0] & 1) ? _BV(CPHA) : 0) | (bytes[1] ? _BV(DORD) : 0);
+    interrupts();
+    Serial.println(F("OK"));
+    return;
+  }
+  if (operation == 'T' && count == 0) {
+    noInterrupts();
+    uint16_t captured = spiCaptureCount;
+    uint32_t first = spiFirstMicros, last = spiLastMicros;
+    interrupts();
+    Serial.print(F("CAP "));
+    Serial.print(captured, HEX);
+    Serial.print(' ');
+    Serial.print(first, HEX);
+    Serial.print(' ');
+    Serial.print(last, HEX);
+    for (uint8_t i = 0; i < min(captured, (uint16_t)sizeof(spiCapture)); i++) {
+      Serial.print(' ');
+      if (spiCapture[i] < 16)
+        Serial.print('0');
+      Serial.print(spiCapture[i], HEX);
+    }
+    Serial.println();
+    return;
+  }
+  if (operation == 'X' && count == 0) {
+    SPCR = 0;
+    Serial.println(F("OK"));
+    return;
+  }
+  if (operation == 'Q' && (count == 1 || (count == 2 && bytes[1] == 1)) &&
+      bytes[0] <= 32) {
+    uint8_t packet[32] = {0x13, 0x02,
+                          0x04}; // SPI TRANSFER, discard RX, CS already held.
+    for (uint8_t i = 3; i < sizeof(packet); i++)
+      packet[i] = i ^ 0xA5;
+    for (uint8_t i = 0; i < bytes[0]; i++) {
+      Wire.beginTransmission(0x49);
+      Wire.write(packet, sizeof(packet));
+      uint8_t error = Wire.endTransmission();
+      if (error) {
+        Serial.print(F("ERR SPI burst I2C packet "));
+        Serial.print(i);
+        Serial.print(F(" code "));
+        Serial.print(error);
+        Serial.print(F("\n\r"));
+        return;
+      }
+    }
+    if (count == 2) {
+      // With the DUT's 10 ms queue hold, the burst leaves its queue full.
+      // A rejected HWID header must return zero even with a repeated START;
+      // an early first byte must not leak the otherwise-valid HWID (0x90).
+      Wire.beginTransmission(0x49);
+      Wire.write((uint8_t)0);
+      Wire.write((uint8_t)1);
+      if (Wire.endTransmission(false) != 0 ||
+          Wire.requestFrom((uint8_t)0x49, (uint8_t)1) != 1 || Wire.read() != 0) {
+        Serial.print(F("ERR full-queue repeated-start response\n\r"));
+        return;
+      }
+    }
+    Serial.println(F("OK"));
     return;
   }
   if (operation == 'C' && count == 1 &&

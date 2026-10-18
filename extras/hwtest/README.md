@@ -10,7 +10,7 @@ These are engineering tests, not production fixture firmware.
   the register definitions in `Adafruit_seesaw.h`, without instantiating a host
   seesaw or BusIO object. Serial-disabled builds use BusIO's existing global
   `NO_GLOBAL_SERIAL` guard. STM32duino's global `SPI` object is still linked by
-  that dependency, even though this backend does not use the SPI module.
+  that dependency, including in builds where the seesaw SPI module is disabled.
 - `metro_host/`: Metro Mini / Uno serial-to-seesaw test host. Its GPIO remain
   inputs except D4-D11, which only pull low or release to emulate encoders.
   It never enables 5 V pull-ups or drives those pins high.
@@ -19,7 +19,7 @@ These are engineering tests, not production fixture firmware.
 - `circuitpython_host.py`: the real CircuitPython seesaw library on CPython,
   using a Metro adapter for physical I2C rather than mocked register responses.
 - `build.ps1`: reproducible full, GPIO-only, four-encoder, address-strap,
-  opt-in UART, Metro, and AVR-example compilation targets. Supply an output
+  opt-in UART/SPI, SPI queue-fault injection, Metro, and AVR-example compilation targets. Supply an output
   directory outside this repository.
 - `cold_cycle.py`: human-gated power-off measurement, EEPROM retention check,
   and restoration from the original full-flash backup. Never switches a rail.
@@ -31,10 +31,10 @@ The dedicated I2C1 handler bypasses Wire/HAL callback setup, selects the first
 byte's source when the command header arrives, and reads that source live at
 the read address. The remaining response and read-to-clear effects still use
 the shared request handler. A full command queue must be resolved before the
-first byte, including when the controller uses an immediate repeated START.
+first byte; the queue-fault test includes that immediate repeated-START case.
 The address/byte interrupt body runs from `.RamFunc`; callbacks remain in flash.
 
-The final safe combined development build passed 100 ID/version/options cycles at each of
+The final safe SPI build passed 100 ID/version/options cycles at each of
 100/200/400 kHz and 1000 further cycles with immediate repeated START at
 400 kHz (3900 register reads total). Its overrun, bus-error, and first-byte
 mismatch counters all remained zero. At 10 MS/s, the captured address-ACK
@@ -51,7 +51,8 @@ measured normal STATUS paths, not worst-case guarantees for every operation.
 The original Wire/HAL read-address ACK lows at 400 kHz were 16.8-42.3 us on
 this same physical Nano fixture. Final 400 kHz electrical checks passed GPIO,
 ADC, PWM, EEPROM software-reset retention/restoration, address changes, GPIO
-IRQ, and encoder.
+IRQ, encoder, and the SPI mode/order/chunk matrix. The queue-fault build also
+passed rejection of an immediate repeated-START header while its queue was full.
 
 Default `CONFIG_I2C_NO_STRETCH=0` retains the hardware safety fallback. A forced
 no-stretch build passed normal reads at 100/200/400 kHz during development, but
@@ -126,8 +127,10 @@ routing disabled. The UART test waits four seconds, discards the Nano startup
 message, and reinitializes seesaw before transmitting.
 
 Pre-fast-transport host checks passed: Arduino GPIO/ADC on nine pins and PWM on eight,
-and the real CircuitPython driver on CPython through the physical Nano I2C bus.
-Native CircuitPython runtime remains untested.
+Arduino SPI's complete mode/order/chunk matrix and recovery, and the real
+CircuitPython driver on CPython through the physical Nano I2C bus. Native
+CircuitPython runtime remains untested. The independent raw SPI run also
+passed all 16 mode/order/clock cases and its 4736-byte held-CS frame.
 The GPIO-only build passed input/output/toggle/pull-up/pull-down on all 12
 exposed pins, all 11 ADC inputs at five voltages, all 11 PWM-capable pins at
 three frequency/duty settings, EEPROM software-reset retention/restoration,
@@ -142,7 +145,10 @@ complete runs. RX interrupt assert/clear/disable also passed. The first attempt 
 opening the Jumperless passthrough reset the Nano; a separate later I2C NACK
 was part of the switched-path investigation above. Its configuration precheck
 also needed a 4096-byte read rather than exhausting the MicroPython heap.
-
+The SPI queue-fault build passed its 400 kHz burst, error 3, measured CS release,
+abort, and successful new transaction with the physical I2C jumpers. Earlier
+switched-path attempts included both passes and I2C failures; they are not
+counted as reliable transport evidence.
 
 Cold-power EEPROM retention passed for eight nontrivial bytes, with measured
 power-off and restoration of the original bytes. An unpowered ST-Link clamped
@@ -152,6 +158,118 @@ powered while its reset lead is attached. All 2048 reserved EEPROM-page bytes
 matched the original pre-verification backup after the firmware tests.
 NeoPixel testing remains paused; no ring commands or power changes were made.
 
+## Historical post-refactor validation — 2026-09-10, incomplete
+
+The shared AVR/STM32 handlers were compiled and tested on 2026-09-10:
+
+- All 18 AVR examples, the minimal C011 example, and all eight C011 engineering
+  configurations compiled, including UART, four encoders, both strap polarities,
+  and the SPI queue-fault build. No AVR hardware run was performed.
+- Four-encoder firmware: all four physical channels passed -5/+3 motion,
+  position/delta clearing, interrupt-disable, isolation, and simultaneous -8
+  detents at 2 ms phase spacing.
+- Both programmed images passed byte verification. After the tests, all 2048
+  reserved EEPROM-page bytes matched the new pre-refactor full-flash backup;
+  the option register remained `0xfffffeaa`. The 24396-byte SPI image remains
+  loaded. No option-byte writes or mass erase were performed.
+- Final SPI firmware: identity/options/software reset passed 25 cycles each at
+  100/400 kHz; nine ADC pins passed five voltage points each; eight PWM pins
+  passed all three frequency/duty combinations. GPIO IRQ, eight EEPROM bytes
+  across software reset with restoration, and address 0x49->0x4A->0x49 passed.
+- **FAILED:** the general GPIO run passed PA2-PA4, then stopped during PA5's
+  high-output readback with `R 49 01 04 04: ERR I2C 3`. No GPIO retry was run.
+- **FAILED:** Arduino SPI mode/order pairs (0,0), (0,1), and (1,0) passed all
+  lengths 0/1/29/30/58/96; the next pair stopped with host result `FAIL FF`.
+  No SPI retry was run. The source review did not establish either failure's
+  cause; do not label them fixture faults or proven refactor defects.
+- Further bus testing stopped: raw SPI, CircuitPython, Arduino GPIO/ADC/PWM,
+  queue-overflow hardware, and physical strap combinations were not rerun on
+  this refactor. Prior passes below remain historical. UART is compile-only in
+  this sequence; NeoPixel ring commands and power changes remain stopped.
+
+## Pre-refactor hardware evidence
+
+2026-09-10 replacement-readiness checks before the shared-handler refactor,
+using the same C011F6Ux breakout. These are historical passes, not substitutes
+for the post-refactor checks below:
+
+| Area | Actual evidence | Result |
+|---|---|---|
+| Programming | Application byte verification after each firmware change; option register remains `0xfffffeaa` | PASS |
+| Preserved data | All 2048 reserved-page bytes compared with the original full-flash backup after EEPROM/address tests and firmware changes | PASS |
+| I2C identity/reset | HWID `0x90`, version `0x549a`, normal options `0x26303`; 25 repeated ID/version/options cycles at both 100 and 400 kHz, then software reset | PASS |
+| GPIO | Input/output, toggle, pull-up/down on all 12 exposed pins, including PA0/PA1/PC14 in the GPIO build | PASS |
+| ADC | All 11 analog inputs, five points each from nominal 0.2 to 3.0 V; physical reference comparison within 0.12 V | PASS |
+| PWM | All 11 PWM-capable pins; 200 Hz at 25%/75% and 500 Hz at 50%, measured independently | PASS within 8% frequency / 10 percentage-point duty limits |
+| GPIO interrupt | PC14 asserted on PA4 changes, cleared on flags read, stayed released when disabled | PASS |
+| Encoders | Four Metro-generated A/B pairs: physical voltage/readback, -5/+3 direction, delta and position clearing, IRQ disable, channel isolation, all four moving together | PASS at tested 2/5 ms phase spacing |
+| EEPROM software reset | Eight nontrivial bytes written/read, retained over software reset, original bytes restored | PASS |
+| EEPROM cold power | VDD 0.116 V / VIN 0.174 V measured off twice, five seconds apart; all eight pattern bytes retained after repowering through Jumperless, original bytes restored | PASS |
+| EEPROM I2C address | Move 0x49->0x4A and restore; saved byte read back | PASS |
+| Address straps | All 16 combinations each in active-low and inverted builds, with physical level checks; saved address byte unchanged | PASS |
+| UART | Earlier TX/RX binary-data and RX-IRQ functional passes at 9600/115200; disabled in current normal build | Prior PASS; not rerun in this sequence |
+| Arduino development host | Earlier full nine-pin GPIO/ADC and eight-pin PWM pass; final-image rerun passed pins PA0/PA1/PA4/PA5/PA6 then stopped at PA7 low-point ADC comparison | Final rerun incomplete: 54/1023 at VDD 3.418 V vs reference 0.303 V exceeds 0.12 V limit by about 0.003 V |
+| Arduino SPI host | All four modes, both orders, lengths 0/1/29/30/58/96, receive-only, write-only, held CS, invalid continuation and recovery | PASS on final SPI firmware |
+| CircuitPython development host | Real driver on CPython via physical Metro I2C: begin/map, GPIO/ADC/PWM, same SPI mode/chunk matrix and error recovery | PASS on final SPI firmware; native CircuitPython untested |
+| AVR regression | All 18 examples recompiled after final STM32 dependency separation; AVR implementation unchanged | PASS |
+| SPI wire protocol | Final image: all 16 mode/order/clock combinations decoded independently; 4736-byte held-CS loopback frame, D/C changes, write-only and invalid-command recovery | Passing rerun; one unresolved intermittent long-frame mismatch on preceding run |
+| SPI queue overflow | Final-code fault-injection build: 10 ms servicing hold, 400 kHz I2C burst, error 3, physical CS release, abort and successful new transaction | PASS; artificial overload, not an observed production traffic rate |
+| FHT/audio spectrum | AVR assembly implementation has no STM32 port; enabling it explicitly fails compilation | Unsupported |
+| NeoPixel | No ring commands or ring power changes during these checks | STOP: supervised testing only |
+
+After the shared-handler refactor, the normal UART-off build occupies
+**22252 flash bytes**, leaving **8468 bytes** before the reserved EEPROM page,
+and uses 1796 bytes of static RAM. The SPI build occupies **24396 flash bytes**
+and uses 1972 bytes of static RAM. The opt-in UART build occupies **30468 flash
+bytes** and uses 2364 bytes of static RAM: only **252 flash bytes** remain before
+EEPROM, so additional features require a new size check. The minimal example
+occupies 17004 flash bytes and 1400 static RAM bytes.
+The Arduino size summary omits 212 bytes of vectors/initialization sections;
+these flash figures use the binary size and programmer's byte verification.
+
+SPI is experimental: the first post-size-reduction long-frame run reported a
+loopback mismatch after all 16 short-frame combinations passed. One bounded
+diagnostic rerun (with explicit sent/received diagnostics added) passed the
+entire sequence, including 4736 bytes in 15.22 seconds. The original mismatch
+has not been explained; do not count this as a clean reliability qualification.
+
+The final Arduino host ADC rerun also stopped at PA7's low stimulus: the
+10-bit host result was 54 with VDD 3.418 V, versus a 0.303 V independent fixture
+reading. The difference is about 0.123 V against the unchanged 0.12 V limit.
+The raw ADC sweep and CircuitPython driver checks passed on the final image;
+the marginal Arduino comparison remains unresolved, and that rerun did not
+reach PA7 PWM or PA8/PA11/PA12. Earlier complete passes are not substitutes for
+this failed final rerun.
+
+One additional reset-release probe was inconclusive: the Jumperless weak-pull
+voltage did not establish a low level after software reset. Direct debugger
+reads did prove PA0 MODER changes from output (`01`) to input (`00`); the
+electrical high-impedance reset probe is **not** counted as passed. The initial
+probe also used an incorrect pull argument (`LOW` is no pull; down is `-1`),
+but correcting that did not resolve this fixture check. Further probing stopped.
+
+The first Metro encoder attempt used Nano-socket nodes and stopped during its
+electrical preflight, before quadrature generation. Ladyada then supplied the
+actual breadboard anchors (USB row 30, D13 row 60); the corrected row mapping
+below passed all four channels. No push-pull high is used on the Metro.
+
+Earlier UART testing encountered a USB cleanup stall and automatic Nano D0/D1
+passthrough routes. Ladyada reset the Jumperless; both ports subsequently
+responded and the extra routes were removed. Its root cause remains unknown.
+This sequence did not open the UART passthrough port. Serial drain waits in the
+test harness are now bounded; all completed phases exited normally.
+
+If the C011 flash controller is stuck with CFGBSY set despite working memory
+reads, the verified recovery is OpenOCD `cortex_m reset_config sysresetreq`,
+`reset_config none`, then `reset halt`. The adapter's physical reset pulse did
+not clear this session's stuck state. Preserve a full flash backup and option
+readout first, inspect each programming response, and verify before running.
+
+All 18 existing AVR examples compiled again after the shared-handler refactor
+with megaTinyCore 2.6.11, using their chip-specific test selections where present.
+The neodriver example retains its existing low-RAM warning. AVR hardware has not
+been rerun in this refactor; its protocol implementation is now shared.
+
 ## Shared protocol architecture
 
 The common header owns module defaults/state, register byte encoding, build-date
@@ -160,7 +278,7 @@ packing, address-strap polarity/weights, and the existing AVR detent decoder.
 responses for both targets. GPIO/PWM/NeoPixel hardware hooks, ADC acquisition,
 EEPROM storage, and transport scheduling remain target-specific. STM32 queues
 blocking work for `loop()`; AVR retains its callback dispatch and deferred UART TX.
-FHT remains AVR-only.
+FHT remains AVR-only and the experimental SPI controller remains STM32-only.
 
 Valid ordinary host commands keep their encoding. The common decoder also
 requires complete payloads, bounds-checks pin shifts and NeoPixel writes, and
@@ -248,13 +366,17 @@ interface, not its main terminal or MicroPython interface.
 ./extras/hwtest/build.ps1 -Target address_straps -OutputRoot <build-directory>
 ./extras/hwtest/build.ps1 -Target address_straps_inverted -OutputRoot <build-directory>
 ./extras/hwtest/build.ps1 -Target uart -OutputRoot <build-directory>
+./extras/hwtest/build.ps1 -Target spi -OutputRoot <build-directory>
+./extras/hwtest/build.ps1 -Target spi_queue -OutputRoot <build-directory>
 ./extras/hwtest/build.ps1 -Target avr -OutputRoot <build-directory>
 ```
 
 The Metro sketch now needs the companion development Arduino seesaw library;
 pass `-HostLibrary <Adafruit_Seesaw-checkout>` when building `metro`. Other
 peripheral targets do not need that development host checkout.
-Use `bench.py --phase host` for Arduino GPIO/ADC/PWM.
+Use `bench.py --phase host` for Arduino GPIO/ADC/PWM, `--phase spi_host` for
+Arduino SPI, `--phase spi` for independent raw-protocol SPI checks, and
+`--phase spi_queue` only with the fault-injection firmware.
 
 `circuitpython_host.py` takes `--library <Adafruit_CircuitPython_seesaw-checkout>`,
 `--metro`, `--jumperless`, and `--helper`; it uses the verified powered link.
@@ -295,6 +417,9 @@ than this RGB test. The firmware buffer is 192 bytes: 64 RGB or 48 RGBW pixels.
 
 ## Known limits / remaining work
 
+- The experimental SPI controller bridge is implemented. Its
+  [protocol and limits](SPI_PROTOCOL.md) describe chunking, held CS, errors,
+  clock range, and the remaining real-display integration work.
 - NeoPixel testing is a supervised stop point: do not connect, power, or run
   the ring until Ladyada and the operator review the wiring together.
 - Hardware ID 0x90 is provisional. Released Arduino/CircuitPython seesaw drivers

@@ -67,9 +67,11 @@ def main():
     from adafruit_seesaw.seesaw import Seesaw
     from adafruit_seesaw.analoginput import AnalogInput
     from adafruit_seesaw.pwmout import PWMOut
+    from adafruit_seesaw.spi import SPIBridge
 
     metro = Metro(args.metro)
     jl = None
+    bridge = None
     try:
         jl = Jumperless(args.jumperless, args.helper, metro_link=True, fixture=args.fixture)
         jl.connect_metro_link(args.physical_i2c)
@@ -118,13 +120,45 @@ def main():
                         jl.disconnect(row, node)
                 seesaw.pin_mode(pin, seesaw.INPUT)
 
+        bridge = SPIBridge(seesaw)
+        jl.connect(2, 3)
+        for mode in range(4):
+            for order in (False, True):
+                bridge.configure(1000000, mode, order)
+                check(0 < bridge.clock_frequency <= 1000000, "CircuitPython SPI clock mismatch")
+                for length in (0, 1, 29, 30, 58, 96):
+                    tx = bytes((i * 37 + 13) & 255 for i in range(length))
+                    rx = bytearray(length)
+                    bridge.transfer(tx, rx)
+                    check(rx == tx, "CircuitPython SPI physical loopback mismatch")
+                passed("circuitpython_spi_modes_and_chunks", mode=mode, lsb_first=order)
+        rx = bytearray(96)
+        bridge.transfer(rx=rx)
+        check(rx == bytes([255]) * len(rx), "CircuitPython SPI receive-only mismatch")
+        bridge.transfer(bytes(range(96)), end=False)
+        check(abs(jl.sense(5)) < 0.2, "CircuitPython SPI did not hold CS")
+        bridge.transfer(bytes(range(96)), begin=False)
+        check(jl.sense(5) > 2.8, "CircuitPython SPI did not release CS")
+        try:
+            bridge.transfer(b"x", begin=False)
+        except RuntimeError as error:
+            check("error 2" in str(error), "CircuitPython SPI reported an unexpected failure")
+        else:
+            raise AssertionError("CircuitPython SPI accepted an invalid continuation")
+        bridge.configure()
+        bridge.transfer(b"recovered")
+        passed("circuitpython_spi_receive_write_cs_error_recovery")
         passed("circuitpython_host_complete", runtime=f"CPython via physical {args.fixture} I2C")
     finally:
         try:
-            if jl is not None:
-                jl.close()
+            if bridge is not None:
+                bridge.abort()
         finally:
-            metro.serial.close()
+            try:
+                if jl is not None:
+                    jl.close()
+            finally:
+                metro.serial.close()
 
 
 if __name__ == "__main__":
