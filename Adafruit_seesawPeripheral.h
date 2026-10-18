@@ -8,7 +8,14 @@
 #include "Adafruit_seesaw.h"
 #include "Arduino.h"
 #include <Wire.h>
+#if defined(ARDUINO_ARCH_STM32)
+#include "Adafruit_seesawPeripheral_stm32_i2c.h"
+#else
+TwoWire &seesawWire = Wire; // AVR keeps its established Wire transport.
+#endif
+#if !defined(ARDUINO_ARCH_STM32)
 #include "wiring_private.h"
+#endif
 #include "pins_arduino.h"
 
 /*************** Common protocol configuration and state */
@@ -19,7 +26,11 @@
 #define CONFIG_PWM_16BIT 0
 #endif
 #ifndef CONFIG_PWM
+#if defined(ARDUINO_ARCH_STM32) && CONFIG_PWM_16BIT
+#define CONFIG_PWM 1
+#else
 #define CONFIG_PWM 0
+#endif
 #endif
 #ifndef CONFIG_NEOPIXEL
 #define CONFIG_NEOPIXEL 0
@@ -34,7 +45,11 @@
 #define CONFIG_FHT 0
 #endif
 #ifndef CONFIG_EEPROM
+#if defined(ARDUINO_ARCH_STM32)
+#define CONFIG_EEPROM 0 // Emulated flash requires an explicitly reserved page.
+#else
 #define CONFIG_EEPROM 1
+#endif
 #endif
 #if CONFIG_NEOPIXEL && !defined(CONFIG_NEOPIXEL_BUF_MAX)
 #define CONFIG_NEOPIXEL_BUF_MAX 192
@@ -60,7 +75,9 @@
 #define CONFIG_INTERRUPT 1
 #else
 #define CONFIG_INTERRUPT 0
+#if !defined(ARDUINO_ARCH_STM32)
 #define CONFIG_INTERRUPT_PIN 0
+#endif
 #endif
 #if defined(USE_PINCHANGE_INTERRUPT)
 #define USE_PINCHANGE_INTERRUPT 1
@@ -104,7 +121,9 @@
 #endif
 // clang-format on
 
-#if defined(ARDUINO_AVR_ATtiny806)
+#if defined(ARDUINO_ARCH_STM32)
+#define SEESAW_HW_ID 0x90 // Provisional STM32C011 hardware ID.
+#elif defined(ARDUINO_AVR_ATtiny806)
 #define SEESAW_HW_ID 0x84
 #elif defined(ARDUINO_AVR_ATtiny807)
 #define SEESAW_HW_ID 0x85
@@ -131,7 +150,7 @@ volatile uint8_t g_adcStatus = 0;        ///< ADC error status.
 #if CONFIG_PWM || CONFIG_PWM_16BIT
 volatile uint8_t g_pwmStatus = 0; ///< PWM error status.
 #endif
-#if CONFIG_INTERRUPT
+#if CONFIG_INTERRUPT || defined(ARDUINO_ARCH_STM32)
 volatile uint32_t g_irqGPIO = 0;  ///< GPIO change-interrupt mask.
 volatile uint32_t g_irqFlags = 0; ///< Read-to-clear GPIO flags.
 #endif
@@ -259,8 +278,17 @@ void Adafruit_seesawPeripheral_updateEncoder(uint8_t encodernum,
   g_enc_prev_pos[encodernum] = enc_cur_pos;
 
   if(enc_action != 0){
+#if defined(ARDUINO_ARCH_STM32)
+    // Only the counter publication races the I2C read-to-clear callback.
+    // Leave interrupts enabled during the detent decoding above.
+    uint32_t savedMask = __get_PRIMASK();
+    __disable_irq();
+#endif
     g_enc_value[encodernum] = (int32_t)((uint32_t)g_enc_value[encodernum] + enc_action);
     g_enc_delta[encodernum] = (int32_t)((uint32_t)g_enc_delta[encodernum] + enc_action);
+#if defined(ARDUINO_ARCH_STM32)
+    __set_PRIMASK(savedMask);
+#endif
   }
 }
 #endif
@@ -288,16 +316,16 @@ Adafruit_seesawPeripheral_read32(const uint8_t *data) {
 /*! Emit a big-endian 16-bit protocol value. */
 __attribute__((always_inline)) inline void
 Adafruit_seesawPeripheral_write16(uint16_t value) {
-  Wire.write((uint8_t)(value >> 8));
-  Wire.write((uint8_t)value);
+  seesawWire.write((uint8_t)(value >> 8));
+  seesawWire.write((uint8_t)value);
 }
 /*! Emit a big-endian 32-bit protocol value. */
 __attribute__((always_inline)) inline void
 Adafruit_seesawPeripheral_write32(uint32_t value) {
-  Wire.write((uint8_t)(value >> 24));
-  Wire.write((uint8_t)(value >> 16));
-  Wire.write((uint8_t)(value >> 8));
-  Wire.write((uint8_t)value);
+  seesawWire.write((uint8_t)(value >> 24));
+  seesawWire.write((uint8_t)(value >> 16));
+  seesawWire.write((uint8_t)(value >> 8));
+  seesawWire.write((uint8_t)value);
 }
 /*! Pack the build date in the seesaw day/month/year format. */
 void Adafruit_seesawPeripheral_setDatecode(void) {
@@ -339,6 +367,13 @@ uint8_t Adafruit_seesawPeripheral_applyAddressStraps(uint8_t address) {
   return address;
 }
 
+#if defined(ARDUINO_ARCH_STM32)
+#include "Adafruit_seesawPeripheral_stm32.h"
+#define ALL_GPIO SeesawSTM32::gpioMask
+#define VALID_GPIO SeesawSTM32::validGPIO()
+#define VALID_ADC (SeesawSTM32::adcMask & VALID_GPIO)
+#define VALID_PWM (SeesawSTM32::pwmMask & VALID_GPIO)
+#else
 
 void foo(void);
 
@@ -501,8 +536,8 @@ bool Adafruit_seesawPeripheral_begin(void) {
 
   Adafruit_seesawPeripheral_reset();
 
-  Wire.onReceive(receiveEvent);
-  Wire.onRequest(requestEvent);
+  seesawWire.onReceive(receiveEvent);
+  seesawWire.onRequest(requestEvent);
   return true;
 }
 
@@ -512,9 +547,9 @@ void Adafruit_seesawPeripheral_reset(void) {
   cli();
 
   SEESAW_DEBUGLN(F("Wire end"));
-  Wire.end();
+  seesawWire.end();
 
-  // Not referenced after Wire.begin(), so this is now local
+  // Not referenced after seesawWire.begin(), so this is now local
   uint8_t _i2c_addr = CONFIG_I2C_PERIPH_ADDR;
 
 #if CONFIG_EEPROM
@@ -652,7 +687,7 @@ void Adafruit_seesawPeripheral_reset(void) {
   CONFIG_UART_SERCOM.begin(g_uart_baud);
 #endif
 
-  Wire.begin(_i2c_addr);
+  seesawWire.begin(_i2c_addr);
   sei();
 }
 
@@ -699,7 +734,7 @@ uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
   return temp;
 }
 
-// AVR GPIO hardware hooks, separate from register decoding.
+// GPIO hardware hooks; register decoding is shared with STM32.
 void Adafruit_seesawPeripheral_gpioDirection(uint32_t mask, bool output) {
   for (uint8_t pin = 0; pin < 32; pin++)
     if (mask & (1UL << pin))
@@ -802,6 +837,7 @@ void Adafruit_seesawPeripheral_showPixels() {
 #endif
 
 #include "Adafruit_seesawPeripheral_main.h"
+#endif // ARDUINO_ARCH_STM32
 #include "Adafruit_seesawPeripheral_receive.h"
 #include "Adafruit_seesawPeripheral_request.h"
 #endif

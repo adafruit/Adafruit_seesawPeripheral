@@ -1,6 +1,7 @@
 /*!
  * @file Adafruit_seesawPeripheral_receive.h
- * Packet decoding is separate from the Wire callback and AVR hardware hooks.
+ * Shared seesaw command decoding. AVR dispatches in its Wire callback; STM32
+ * passes queued packets here from loop(), keeping blocking work out of IRQs.
  */
 
 #if CONFIG_FHT && defined(MEGATINYCORE)
@@ -29,14 +30,19 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
   uint8_t module_cmd = packet[1];
   const uint8_t *data = packet + 2;
   uint8_t length = howMany - 2;
+#if defined(ARDUINO_ARCH_STM32)
+  using namespace SeesawSTM32;
+#endif
 
   if (base_cmd == SEESAW_STATUS_BASE) {
     if (module_cmd == SEESAW_STATUS_SWRST && length == 1 && data[0] == 0xFF)
       Adafruit_seesawPeripheral_reset();
   } else if (base_cmd == SEESAW_GPIO_BASE) {
     if (module_cmd == SEESAW_GPIO_BULK && length == 0) {
+#if !defined(ARDUINO_ARCH_STM32)
       // The AVR port snapshots before the master's following read.
       g_bufferedBulkGPIORead = Adafruit_seesawPeripheral_readBulk(VALID_GPIO);
+#endif
       return;
     }
     if (length != 4)
@@ -82,7 +88,14 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
     g_adcStatus = 1;
     g_bufferedADCRead = 0;
     if (adcpin < 32 && (VALID_ADC & (1UL << adcpin))) {
+#if defined(ARDUINO_ARCH_STM32)
+      uint16_t value;
+      if (!readADC(adcpin, value))
+        return;
+      g_bufferedADCRead = value;
+#else
       g_bufferedADCRead = analogRead(adcpin);
+#endif
       g_adcStatus = 0;
     }
   }
@@ -152,7 +165,13 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
     case SEESAW_ENCODER_INTENSET:
     case SEESAW_ENCODER_INTENCLR: {
       bool enabled = (module_cmd & 0xF0) == SEESAW_ENCODER_INTENSET;
-      // The AVR edge detector owns the GPIO interrupt masks.
+#if defined(ARDUINO_ARCH_STM32)
+      if (enabled)
+        encoderInterrupts |= 1 << encoder_num;
+      else
+        encoderInterrupts &= ~(1 << encoder_num);
+#else
+      // AVR's edge detector owns GPIO IRQ masks; STM32 latches detent IRQs.
       uint32_t mask = 0;
       if (encoder_num == 0)
         mask = ENCODER0_INPUT_MASK;
@@ -166,11 +185,19 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
         g_irqGPIO |= mask;
       else
         g_irqGPIO &= ~mask;
+#endif
       break;
     }
     case SEESAW_ENCODER_POSITION:
       if (length == 4) {
+#if defined(ARDUINO_ARCH_STM32)
+        noInterrupts(); // AVR already executes inside the Wire callback.
+#endif
         g_enc_value[encoder_num] = (int32_t)Adafruit_seesawPeripheral_read32(data);
+#if defined(ARDUINO_ARCH_STM32)
+        g_enc_delta[encoder_num] = 0;
+        interrupts();
+#endif
       }
       break;
     }
@@ -179,12 +206,17 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
 
 #if CONFIG_EEPROM
   else if (base_cmd == SEESAW_EEPROM_BASE && length > 0) {
+#if defined(ARDUINO_ARCH_STM32)
+    // Flash erases/programs a reserved page; AVR has byte-addressable EEPROM.
+    writeEEPROM(module_cmd, data, length);
+#else
     if (module_cmd == 0xFF && length == 1)
       EEPROM.write(EEPROM.length()-1, data[0]);
     else
       for (uint8_t i=0; i< length; i++)
         if ((uint16_t)module_cmd + i < EEPROM.length())
           EEPROM.write(module_cmd + i, data[i]);
+#endif
   }
 #endif
 
@@ -198,12 +230,19 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
       g_uart_inten &= ~(data[0] & 1);
     else if (module_cmd == SEESAW_SERCOM_BAUD && length == 4) {
       uint32_t newBaud = Adafruit_seesawPeripheral_read32(data);
+#if defined(ARDUINO_ARCH_STM32)
+      if (newBaud < 300 || newBaud > 1000000)
+        return;
+#endif
       if (newBaud != g_uart_baud) {
         g_uart_baud = newBaud;
         CONFIG_UART_SERCOM.end();
         CONFIG_UART_SERCOM.begin(newBaud);
       }
     } else if (module_cmd == SEESAW_SERCOM_DATA && length > 0) {
+#if defined(ARDUINO_ARCH_STM32)
+      CONFIG_UART_SERCOM.write(data, length); // Already in the deferred queue.
+#else
       // AVR dispatches in IRQ context, so the main loop drains UART data.
       g_uart_tx_len = 0;
       if (length <= CONFIG_UART_BUF_MAX) {
@@ -211,6 +250,7 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
           g_uart_buf[i] = data[i];
         g_uart_tx_len = length;
       }
+#endif
     }
   }
 #endif
@@ -241,17 +281,21 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
 #endif
 }
 
-/*! Wire receive entry point for the AVR backend. */
+/*! Wire receive entry point. Only STM32 needs the deferred command queue. */
 void receiveEvent(int howMany) {
+#if defined(ARDUINO_ARCH_STM32)
+  SeesawSTM32::receive(howMany);
+#else
   if (howMany < 2 || (uint32_t)howMany > sizeof(i2c_buffer)) {
-    while (Wire.available())
-      Wire.read();
+    while (seesawWire.available())
+      seesawWire.read();
     return;
   }
   for (uint8_t i = 0; i < howMany; i++)
-    i2c_buffer[i] = Wire.read();
+    i2c_buffer[i] = seesawWire.read();
   // This callback owns the packet throughout decoding; it cannot be replaced
   // by a second receive callback while interrupts are disabled.
   Adafruit_seesawPeripheral_processCommand((const uint8_t *)i2c_buffer,
                                            howMany);
+#endif
 }
