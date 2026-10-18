@@ -47,6 +47,17 @@ TwoWire &seesawWire = Wire; // AVR keeps its established Wire transport.
 #ifndef CONFIG_SPI
 #define CONFIG_SPI 0
 #endif
+#ifndef CONFIG_BOOTLOADER
+#if defined(ARDUINO_ARCH_STM32)
+#define CONFIG_BOOTLOADER 1 ///< Enable the STM32 factory-ROM boot command.
+#else
+#define CONFIG_BOOTLOADER 0
+#endif
+#endif
+#if CONFIG_BOOTLOADER && !defined(ARDUINO_ARCH_STM32)
+#error "The ROM bootloader command currently requires STM32"
+#endif
+#define SEESAW_STATUS_BOOTLOADER 0x7E ///< Write 0xFF to enter STM32 system ROM.
 #if CONFIG_SPI && !defined(ARDUINO_ARCH_STM32)
 #error "The SPI controller backend currently requires STM32"
 #endif
