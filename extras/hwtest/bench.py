@@ -1,8 +1,8 @@
 """Electrical tests for c011_firmware through metro_host and Jumperless V5.
 
 Requires pyserial and the official Large-Breadboard-Model helper checkout.
-The C011 uses Metro power, via QT or the explicitly selected Jumperless link.
-Jumperless rail setpoints are never used to power the C011.
+The Metro fixture uses USB power. The Nano fixture uses a previously measured
+Jumperless rail and a physical ground jumper. Tests never change rail setpoints.
 """
 import argparse
 import ast
@@ -23,6 +23,13 @@ METRO_ENCODER_ROWS = [(51, 52), (53, 54), (55, 56), (57, 58)]
 BASELINE_BRIDGES = {frozenset(pair) for pair in
                     [(72, 137), (73, 138), (139, 106), (38, 100)]}
 METRO_LINK_ROUTES = ((30, 40), (17, 35), (18, 36))
+# The tests below retain their original fixture coordinates. Translate once at
+# the routing boundary for the Nano socket and the rotated C011 (VIN row 1).
+NANO_NODE_MAP = {**{9 - pin: 32 + pin for pin in range(9)},
+                 # QT SDA/SCL use the onboard level shifter; raw headers do not.
+                 10: 31, 31: 10, 32: 9, 33: 8, 34: 7, 35: 22, 36: 21,
+                 37: 4, 38: 3, 39: 2, 40: 1, 17: 91, 18: 90, 30: 101,
+                 **{51 + pin: 74 + pin for pin in range(10)}}
 
 
 class BoundedSerial(serial.Serial):
@@ -81,7 +88,12 @@ class Metro:
 
 
 class Jumperless:
-    def __init__(self, port, helper, metro_link=False):
+    def __init__(self, port, helper, metro_link=False, fixture="metro"):
+        self.fixture = fixture
+        self.node_map = NANO_NODE_MAP if fixture == "nano" else {}
+        self.adc_offset = [0.0] * 5
+        self.adc_gain = [1.0] * 5
+        self.dac_gain = 1.0
         spec = importlib.util.spec_from_file_location("jumperless_helper", helper)
         self.helper = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.helper)
@@ -90,14 +102,18 @@ class Jumperless:
         self.helper.enter_raw_repl(self.serial)
         bridges = ast.literal_eval(self.exec("print([get_bridge(i) for i in range(get_num_bridges())])"))
         self.existing_routes = {frozenset((a, b)) for a, b, *_ in bridges}
-        permitted = BASELINE_BRIDGES.copy()
-        if metro_link:
-            permitted.update(frozenset(pair) for pair in METRO_LINK_ROUTES)
+        permitted = {frozenset(self.node_map.get(node, node) for node in pair)
+                     for pair in BASELINE_BRIDGES}
+        if metro_link or fixture == "nano":
+            permitted.update(frozenset(self.node_map.get(node, node) for node in pair)
+                             for pair in METRO_LINK_ROUTES)
         for a, b, *_ in bridges:
             if frozenset((a, b)) not in permitted:
                 raise RuntimeError(f"Unexpected existing route {a}-{b}; inspect before testing")
         self.saved_dac = float(self.exec("print(dac_get(1))"))
         self.exec("bench_saved_state = get_state()")
+        if fixture == "nano":
+            self.calibrate()
 
     def exec(self, code):
         out, error = self.helper.raw_exec(self.serial, code, timeout=8)
@@ -106,16 +122,50 @@ class Jumperless:
         return out.strip()
 
     def connect(self, a, b):
-        self.exec(f"connect({a}, {b}); time.sleep_ms(50)")
-        if frozenset((a, b)) not in self.existing_routes:
+        physical_a, physical_b = self.node_map.get(a, a), self.node_map.get(b, b)
+        self.exec(f"connect({physical_a}, {physical_b}); time.sleep_ms(50)")
+        if frozenset((physical_a, physical_b)) not in self.existing_routes:
             self.routes.add((a, b))
 
     def disconnect(self, a, b):
-        self.exec(f"disconnect({a}, {b}); time.sleep_ms(10)")
+        self.exec(f"disconnect({self.node_map.get(a, a)}, {self.node_map.get(b, b)}); time.sleep_ms(10)")
         self.routes.discard((a, b))
 
     def voltage(self, channel=0):
-        return float(self.exec(f"print(sum(adc_get({channel}) for _ in range(16)) / 16)"))
+        raw = float(self.exec(f"print(sum(adc_get({channel}) for _ in range(16)) / 16)"))
+        return (raw - self.adc_offset[channel]) * self.adc_gain[channel]
+
+    def calibrate(self):
+        """Cross-check ADC0/1 against the separate INA0 voltage converter.
+
+        No DUT pins are driven. Keep this correction local to this test run;
+        never rewrite the Jumperless's persistent calibration.
+        """
+        try:
+            for channel in (0, 1):
+                self.exec(f"connect(ADC{channel}, GND); time.sleep_ms(100)")
+                self.adc_offset[channel] = float(self.exec(
+                    f"print(sum(adc_get({channel}) for _ in range(16)) / 16)"))
+                self.exec(f"disconnect(ADC{channel}, GND)")
+            self.exec("dac_set(DAC1, 3.0); connect(DAC1, ISENSE_MINUS); "
+                      "connect(DAC1, ADC0); connect(DAC1, ADC1); time.sleep_ms(100)")
+            reference = float(self.exec("print(ina_get_bus_voltage(0))"))
+            check(2.4 < reference < 3.4, f"INA calibration reference {reference:.3f} V")
+            self.dac_gain = reference / 3.0
+            for channel in (0, 1):
+                raw = float(self.exec(f"print(sum(adc_get({channel}) for _ in range(16)) / 16)"))
+                self.adc_gain[channel] = reference / (raw - self.adc_offset[channel])
+                check(0.8 < self.adc_gain[channel] < 1.2, "ADC calibration gain outside bounds")
+            passed("fixture_voltage_reference", ina_V=reference,
+                   adc_offsets=self.adc_offset[:2], adc_gains=self.adc_gain[:2],
+                   dac_gain=self.dac_gain)
+        finally:
+            self.exec("disconnect(DAC1, ADC0); disconnect(DAC1, ADC1); "
+                      "disconnect(DAC1, ISENSE_MINUS); disconnect(ADC0, GND); "
+                      f"disconnect(ADC1, GND); dac_set(DAC1, {self.saved_dac}); time.sleep_ms(50)")
+
+    def set_dac(self, volts):
+        self.exec(f"dac_set(1, {volts / self.dac_gain}); time.sleep_ms(50)")
 
     def sense(self, row, channel=0):
         self.connect(row, f"ADC{channel}")
@@ -124,7 +174,29 @@ class Jumperless:
         finally:
             self.disconnect(row, f"ADC{channel}")
 
-    def connect_metro_link(self):
+    def connect_metro_link(self, physical_i2c=False):
+        if physical_i2c:
+            check(self.fixture == "nano", "Physical I2C jumpers require the Nano fixture")
+            check(not any(21 in pair or 22 in pair or 5 in pair or 6 in pair
+                          for pair in self.existing_routes),
+                  "Remove switched I2C routes before using the physical jumpers")
+        if self.fixture == "nano":
+            # VIN is already powered by the independently verified rail setting.
+            # The Nano's 5 V pull-ups are on the QT side of the level shifter.
+            ground = self.sense(38)
+            check(abs(ground) < 0.05,
+                  f"DUT ground is {ground:.3f} V; add a physical row-3-to-GND jumper")
+            supply, vin = self.sense(39), self.sense(40)
+            check(3.0 < supply < 3.6 and 4.0 < vin < 5.3,
+                  f"Nano fixture supply outside limits: VDD={supply:.3f}, VIN={vin:.3f}")
+            for host, target in ((17, 35), (18, 36)):
+                if not physical_i2c:
+                    self.connect(host, target)
+                voltage = self.sense(target)
+                check(4.0 < voltage < vin + 0.3, f"Nano QT I2C idle voltage {voltage:.3f} V")
+            passed("nano_link_power_and_i2c", supply_V=supply, vin_V=vin,
+                   physical_i2c=physical_i2c)
+            return
         # PB6/PB7 are FT_f, configured AF open-drain without internal pulls.
         # DS13866 Rev 5 Table 23 note 2 permits this powered 5 V I2C bus.
         source = self.sense(30)
@@ -172,7 +244,10 @@ def preflight(metro, jl, args):
     supply = jl.sense(39)
     vin = jl.sense(40)
     check(3.1 < supply < 3.5, f"C011 supply is {supply:.3f} V")
-    check(4.4 < vin < 5.5, f"C011 VIN is {vin:.3f} V")
+    if jl.fixture == "nano":
+        check(4.0 < vin < 5.3, f"C011 VIN is {vin:.3f} V")
+    else:
+        check(4.4 < vin < 5.5, f"C011 VIN is {vin:.3f} V")
     check(metro.value(0, 1, 1) == 0x90, "Wrong hardware ID")
     passed("preflight", supply_V=supply, vin_V=vin,
            version=hex(metro.value(0, 2)), options=hex(metro.value(0, 3)))
@@ -186,10 +261,13 @@ def status_test(metro, jl):
     try:
         for speed in (1, 4):
             check(metro.command("C", [speed]) == "OK", "Could not select I2C clock")
-            for _ in range(25):
-                check(metro.value(0, 1, 1) == 0x90, "Hardware ID changed")
-                check(metro.value(0, 2) == version, "Version changed")
-                check(metro.value(0, 3) == options, "Options changed")
+            for cycle in range(500):
+                try:
+                    check(metro.value(0, 1, 1) == 0x90, "Hardware ID changed")
+                    check(metro.value(0, 2) == version, "Version changed")
+                    check(metro.value(0, 3) == options, "Options changed")
+                except RuntimeError as error:
+                    raise RuntimeError(f"I2C {speed * 100000} Hz, cycle {cycle}: {error}") from error
             # PA0 is available now that the UART bridge is disabled.
             metro.gpio(5, 1)
             metro.gpio(2, 1)
@@ -200,7 +278,7 @@ def status_test(metro, jl):
             # A separate debugger read verified PA0 MODER changed 01->00.
             # The Jumperless weak-pull voltage probe was inconclusive; do not
             # count it as an electrical high-impedance reset test here.
-            passed("status_reset", i2c_hz=speed * 100000, read_cycles=25,
+            passed("status_reset", i2c_hz=speed * 100000, read_cycles=500,
                    version=hex(version), options=hex(options), uart_disabled=True)
     finally:
         metro.command("C", [1])
@@ -428,10 +506,10 @@ def host_test(metro, jl, supply):
                       f"Host GPIO {pin} physical level {voltage:.3f} V")
             passed("arduino_host_gpio", pin=GPIO_NAMES[pin])
             host([2, pin, 0])  # INPUT
-            jl.exec("dac_set(1, 0.2); time.sleep_ms(50)")
+            jl.set_dac(0.2)
             jl.connect(row, "DAC1")
             for target in (0.2, 1.65, 3.0):
-                jl.exec(f"dac_set(1, {target}); time.sleep_ms(50)")
+                jl.set_dac(target)
                 reference = jl.sense(row)
                 adc_response = metro.command("H", [1, pin]).split()
                 check(len(adc_response) == 4 and adc_response[0] == "VALUE" and adc_response[2] == "RAW",
@@ -510,13 +588,13 @@ def adc_test(metro, jl, pins, supply):
     for pin in (p for p in pins if p != 15):
         row = ROWS[pin]
         metro.input(pin)
-        jl.exec("dac_set(1, 0.2); time.sleep_ms(50)")
+        jl.set_dac(0.2)
         jl.connect(row, "ADC0")
         jl.connect(row, "DAC1")
         try:
             last = -1
             for target in (0.2, 0.8, 1.65, 2.5, 3.0):
-                jl.exec(f"dac_set(1, {target}); time.sleep_ms(50)")
+                jl.set_dac(target)
                 measured = jl.voltage()
                 check(abs(measured - target) < 0.12, "DAC stimulus does not match setpoint")
                 readings = [metro.value(9, 7 + pin, 2) for _ in range(4)]
@@ -688,11 +766,23 @@ def encoder_test(metro, jl, count):
 
 def uart_test(metro, jl, port):
     # Jumperless UART is 3.3 V; do not use the Metro's 5 V UART.
+    if jl.fixture == "nano":
+        config = jl.exec("f = jfs.open('/config.txt', 'r'); c = jfs.read(f, 4096); "
+                         "jfs.close(f); c = c.split('[serial_1]')[1].split('[serial_2]')[0]; print(c)")
+        config = config.replace(" ", "")
+        check("autoconnect_flashing=0;" in config and "connect_on_boot=0;" in config,
+              "Disable Jumperless serial_1 automatic Nano routing before opening UART")
     jl.connect(9, "UART_RX")
     jl.connect(8, "UART_TX")
     jl.connect(37, "ADC0")
     try:
+        # The passthrough needs DTR, whose transition also resets the Nano.
+        # Wait through Jumperless's flash timeout and the Nano bootloader.
         with BoundedSerial(port, 9600, timeout=2, write_timeout=2) as uart:
+            if jl.fixture == "nano":
+                time.sleep(4)
+                metro.serial.reset_input_buffer()
+            metro.reset()
             for baud in (9600, 115200):
                 metro.write(2, 4, baud.to_bytes(4, "big"))
                 uart.baudrate = baud
@@ -701,16 +791,24 @@ def uart_test(metro, jl, port):
                 uart.reset_input_buffer()
                 message = b"C011 seesaw TX\x00\xA5"
                 metro.write(2, 5, message)
-                check(uart.read(len(message)) == message, "UART TX bytes mismatch")
+                received = uart.read(len(message))
+                check(received == message,
+                      f"UART TX bytes mismatch at {baud}: expected {message.hex()}, got {received.hex()}")
+                passed("uart_transmit", baud=baud, bytes=len(received))
                 message = b"Jumperless RX\x00\x5A"
                 uart.write(message)
                 uart.flush()
                 time.sleep(0.05)
                 check(metro.value(2, 0, 1) & 2, "UART RX-ready missing")
-                received = bytes(metro.value(2, 5, 1) for _ in message)
+                received = bytearray()
+                for index in range(len(message)):
+                    try:
+                        received.append(metro.value(2, 5, 1))
+                    except RuntimeError as error:
+                        raise RuntimeError(f"UART RX byte {index} at {baud}, received {received.hex()}: {error}") from error
                 check(received == message, "UART RX bytes mismatch")
                 check(not (metro.value(2, 0, 1) & 2), "UART RX-ready did not clear")
-                passed("uart", baud=baud, transmit_bytes=len(message), receive_bytes=len(received))
+                passed("uart", baud=baud, receive_bytes=len(received))
             metro.write(2, 2, [1])
             check(jl.voltage() > 2.4, "UART IRQ not idle")
             uart.write(b"X")
@@ -838,6 +936,8 @@ def main():
     parser.add_argument("--jumperless", required=True)
     parser.add_argument("--uart", help="Jumperless UART-passthrough serial port")
     parser.add_argument("--helper", required=True)
+    parser.add_argument("--fixture", choices=["metro", "nano"], default="metro")
+    parser.add_argument("--physical-i2c", action="store_true", help="Use physical Nano A4/A5 jumpers without switched I2C routes")
     parser.add_argument("--phase", choices=["preflight", "host", "spi", "spi_queue", "spi_host", "status", "gpio", "adc", "pwm", "irq", "encoder", "uart", "eeprom", "address", "straps", "neopixel", "all"], default="preflight")
     parser.add_argument("--jumperless-link", action="store_true", help="Use verified Metro VBUS/I2C breadboard routes")
     parser.add_argument("--keep-link", action="store_true", help="Keep the powered Metro link after successful preflight for SWD programming")
@@ -856,9 +956,9 @@ def main():
     metro.address = args.address
     jl = None
     try:
-        jl = Jumperless(args.jumperless, args.helper, args.jumperless_link)
-        if args.jumperless_link:
-            jl.connect_metro_link()
+        jl = Jumperless(args.jumperless, args.helper, args.jumperless_link, args.fixture)
+        if args.jumperless_link or args.fixture == "nano":
+            jl.connect_metro_link(args.physical_i2c)
         supply = preflight(metro, jl, args)
         if args.phase == "preflight":
             if args.keep_link:

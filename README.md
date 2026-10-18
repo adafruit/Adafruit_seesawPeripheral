@@ -11,13 +11,31 @@ response decoding, byte encoding, address-strap logic, and the encoder decoder.
 Target-specific code handles GPIO, ADC, timers, LED timing, EEPROM storage, and
 I2C execution (deferred on STM32, callback-based on AVR). Both use the register
 definitions from `Adafruit_seesaw.h`; no host seesaw or BusIO object is created.
-For STM32 builds with core Serial disabled, pass `-DNO_GLOBAL_SERIAL` globally,
-as shown in `extras/hwtest/build.ps1`; BusIO already supports this guard.
+For STM32 builds with core Serial disabled, pass `-DNO_GLOBAL_SERIAL` globally;
+BusIO already supports this guard.
 STM32duino's global `SPI` object is still linked through that dependency, so
 non-SPI builds have a measurable size cost despite not using host BusIO objects.
-Start with `examples/example_stm32c011`. The engineering firmware and measured
-feature/limitation matrix are in [extras/hwtest](extras/hwtest/README.md), including
-the optional [I2C-to-SPI controller bridge](extras/hwtest/SPI_PROTOCOL.md).
+Start with `examples/example_stm32c011`.
 Hardware ID `0x90` is provisional and needs the companion Arduino or
 CircuitPython host-library changes. This is not yet a drop-in ATtiny replacement.
+
+### STM32 factory-ROM bootloader
+
+The C011 backend enables `CONFIG_BOOTLOADER` by default. Write the three bytes
+`00 7E FF` to the current seesaw I2C address to reset into ST's factory ROM.
+This is separate from the normal seesaw software-reset command, `00 7F FF`.
+Define `CONFIG_BOOTLOADER 0` before including the library to omit ROM entry.
+
+The ROM speaks ST's [AN4221 I2C protocol](https://www.st.com/resource/en/application_note/an4221-i2c-protocol-used-in-the-stm32-bootloader-stmicroelectronics.pdf)
+at 7-bit address `0x64`, using PB6/SCL and PB7/SDA. It does not speak seesaw
+commands. Use pull-ups to the C011's 3.3 V supply: ROM enables internal pulls,
+so the application-mode exception for a 5 V bus does not apply. No BOOT0 wire
+or option-byte change is needed for software entry.
+With a 5 V host, use a bidirectional level shifter. On the Rev A breakout,
+the QT connectors are shifted; the `SDA_3V`/`SCL_3V` headers are not.
+
+When EEPROM emulation is enabled, reserve the last 2 KiB flash page at
+`0x08007800`, limit the application to 30720 bytes, and exclude that page from
+bootloader erases. Use ROM's Go command with address `0x08000000` to restart
+the application after verifying an update.
 

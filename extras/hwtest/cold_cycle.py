@@ -18,6 +18,8 @@ def main():
     parser.add_argument("--jumperless", required=True)
     parser.add_argument("--helper", required=True)
     parser.add_argument("--backup", required=True)
+    parser.add_argument("--fixture", choices=["metro", "nano"], default="metro")
+    parser.add_argument("--physical-i2c", action="store_true", help="Use physical Nano A4/A5 jumpers without switched I2C routes")
     parser.add_argument("--jumperless-link", action="store_true",
                         help="Temporarily route Metro VBUS/I2C through verified breadboard rows")
     args = parser.parse_args()
@@ -30,7 +32,7 @@ def main():
     pattern = bytes([0xA5, 0x5A, 0x00, 0xFF, 0x12, 0x34, 0x7E, 0x81])
     check(saved != pattern, "Choose a different pattern for this device")
     metro = None
-    jl = Jumperless(args.jumperless, args.helper)
+    jl = Jumperless(args.jumperless, args.helper, fixture=args.fixture)
     try:
         if args.step == "off":
             # No I2C transactions while the DUT is unpowered.
@@ -41,10 +43,13 @@ def main():
                 passed("cold_power_off", sample=sample, supply_V=supply, vin_V=vin)
                 if sample == 0:
                     time.sleep(5)
-            jl.exec("oled_clear(); oled_print('Cold off verified'); oled_print('Reconnect C011 QT')")
+            instruction = "Reconnect VIN + QT" if args.fixture == "nano" else "Reconnect C011 QT"
+            jl.exec(f"oled_clear(); oled_print('Cold off verified'); oled_print('{instruction}')")
             return
 
-        if args.jumperless_link:
+        if args.fixture == "nano":
+            jl.connect_metro_link(args.physical_i2c)
+        elif args.jumperless_link:
             # Metro anchors: VBUS row 30, D13 row 60. A4/A5 are rows 18/17.
             # C011 PB6/PB7 are FT_f; DS13866 Rev 5 Table 23 note 2 requires
             # internal pulls OFF above VDD+0.3 V. STM32duino's AF_OD mapping
@@ -75,10 +80,18 @@ def main():
                 time.sleep(0.1)
             check(bytes(metro.value(13, offset + i, 1) for i in range(8)) == pattern,
                   "Cold-cycle preparation write did not verify")
-            # Dim guide pixels: DUT supply and SWD connections.
-            jl.exec("overlay_set_pixel(8, 9, 0x403000); overlay_set_pixel(8, 10, 0x403000); "
-                    "overlay_set_pixel(8, 3, 0x301040); overlay_set_pixel(8, 4, 0x301040); "
-                    "oled_clear(); oled_print('Unplug C011 QT'); oled_print('Unplug STLink USB')")
+            if args.fixture == "nano":
+                # Remove possible routed back-power before the physical VIN wire.
+                jl.disconnect(17, 35)
+                jl.disconnect(18, 36)
+                jl.disconnect(30, 40)
+                jl.exec("overlay_clear_all(); overlay_set_pixel(3, 1, 0x403000); "
+                        "oled_clear(); oled_print('Unplug VIN + QT'); oled_print('Unplug STLink USB')")
+            else:
+                # Dim guide pixels: DUT supply and SWD connections.
+                jl.exec("overlay_set_pixel(8, 9, 0x403000); overlay_set_pixel(8, 10, 0x403000); "
+                        "overlay_set_pixel(8, 3, 0x301040); overlay_set_pixel(8, 4, 0x301040); "
+                        "oled_clear(); oled_print('Unplug C011 QT'); oled_print('Unplug STLink USB')")
             passed("cold_pattern_prepared", offset=offset, pattern=pattern.hex(), original=saved.hex())
             return
 
@@ -89,8 +102,7 @@ def main():
         time.sleep(0.1)
         check(bytes(metro.value(13, offset + i, 1) for i in range(8)) == saved,
               "Original EEPROM bytes did not restore")
-        jl.exec("overlay_set_pixel(8, 9, 0); overlay_set_pixel(8, 10, 0); "
-                "overlay_set_pixel(8, 3, 0); overlay_set_pixel(8, 4, 0); oled_clear()")
+        jl.exec("overlay_clear_all(); oled_clear()")
         passed("cold_original_restored", bytes=8)
         if args.step == "verify":
             check(retained, "EEPROM pattern did not survive the cold power cycle")

@@ -25,8 +25,138 @@ These are engineering tests, not production fixture firmware.
   and restoration from the original full-flash backup. Never switches a rail.
 - `openocd_command.py`: explicit commands to an already-running local OpenOCD
   server. It does not launch a debugger or change option bytes automatically.
+- `i2c_bootloader.py`: C011-specific factory-ROM updater through the existing
+  serial I2C host. Full-image programming and restart passed; see below.
 
-## Post-refactor validation — draft, incomplete
+## Nano fixture and ROM update (2026-10-18)
+
+Use `--fixture nano --physical-i2c` with `bench.py`, `circuitpython_host.py`, or
+`cold_cycle.py` for the physical-jumper setup below.
+The classic ATmega328P Nano is in the Nano socket, on its own USB connection;
+build it with `build.ps1 -Target nano`. Its internal 5 V I2C pull-ups are used
+only on the QT side of the onboard level shifter.
+Preserve the existing D2/D3 OLED connections. Leave the ST-Link power lead
+disconnected.
+
+The rotated breakout has VIN/3V/GND at rows 1/2/3, PC14 at row 4,
+raw SDA_3V/SCL_3V at rows 5/6, SWCLK/SWDIO at rows 7/8, PA12/PA11 at rows 9/10,
+RST at row 31, and PA0 through PA8 at rows 32 through 40. Use physical ground
+and VIN jumpers to the previously measured rails; crossbar resistance caused
+a measured 0.264 V ground offset without the ground jumper. The Nano fixture
+checks 3.0-3.6 V VDD and 4.0-5.3 V VIN without changing rail setpoints.
+
+For the 5 V Nano, connect QT SDA to row 21 and QT SCL to row 22, then add physical
+Nano A4-to-row-21 and A5-to-row-22 jumpers. Leave the corresponding switched
+routes disconnected; `--physical-i2c` checks this and does not create them.
+QT power/ground may use the same TOP-positive/GND rails as the
+physical VIN/GND jumpers; remove both QT and VIN when performing a cold cycle.
+The QT nets use the onboard shifter with high-side pull-ups to VIN. Do not use
+the raw 3.3 V headers for this fixture. The direct-header run passed 100 kHz
+status reads but failed at 400 kHz; full ROM programming also stopped with an
+I2C error. The first shifted-connection run with Nano pull-ups disabled also
+failed at 100 kHz. Enabling the Nano's normal pull-ups on the shifted side
+initially passed 25 ID/version/options cycles and software reset at both 100
+and 400 kHz, but longer tests still failed. RP2040 captures at 10/20 MS/s found
+extra short SCL pulses associated with NACKs and corrupted reads. The failure
+persisted with the debugger stopped. Direct 3.3 V STEMMA Friend control passed
+3000 register reads at each of 100/400 kHz. Keeping the original Nano and level
+shifter but bypassing the switched path with physical jumpers also passed
+3000 reads at each speed. This isolates the observed problem to the switched
+signal path or its loading/timing interaction, not a proven defective switch IC.
+
+`rp2040_capture/` is Arduino firmware for the STEMMA Friend, retaining USB reset
+and upload. On the verified GPIO28/29 connector revision, white SDA connects to
+raw row 5, green SCL to raw row 6, black to ground, and red stays unconnected.
+GPIO25 is also left input-only because it shares SDA on that revision.
+`capture_i2c.py --physical-nano` captures the Nano's reads without switched I2C
+routes; supply `--helper` and a new `--output` directory. The finite PIO buffer
+preserves the beginning of a failed transaction, not an unlimited recording.
+Only `--direct` enables the Friend's temporary open-drain controller: remove
+the Nano I2C jumpers and any other controller connections before using it.
+The Friend returns its pins to passive inputs after each direct transaction.
+
+The fixture cross-checks ADC0/1 and DAC1 against the independent INA0 converter
+for each run. These corrections are temporary; persistent calibration is not
+rewritten. Before a UART test, disable Jumperless `serial_1` automatic Nano
+routing (`autoconnect_flashing=0`, `connect_on_boot=0`), then restore the prior
+configuration when the passthrough port is closed.
+Opening the passthrough still resets the Nano through DTR, even with automatic
+routing disabled. The UART test waits four seconds, discards the Nano startup
+message, and reinitializes seesaw before transmitting.
+
+The ROM updater sends seesaw `00 7E FF`, checks C011 ID `0x0443` at address
+`0x64`, and uses the no-clock-stretch Write/Erase commands. Identification,
+flash reads, ROM Go, and the returning seesaw's software reset passed on the
+board. With QT and the Nano's normal pull-ups, a complete 24612-byte SPI image
+update passed: all programmed bytes verified, all 2048 EEPROM-page bytes and
+128 option-area bytes were unchanged, and Go plus seesaw software reset passed.
+The full update passed again with the physical Nano I2C jumpers: the 24612-byte
+image, all EEPROM bytes, and all option bytes verified, followed by ROM Go and
+seesaw software reset. The reserved bytes also matched the original backups
+from before the verification session. Empty, wrong-value, and overlong boot
+command payloads were ignored while the normal application kept responding.
+The earlier direct-header transfer failure remains recorded above; no blind
+programming retry was used.
+
+```powershell
+python extras/hwtest/i2c_bootloader.py --port <Nano-USB-port> --go
+python extras/hwtest/i2c_bootloader.py --port <Nano-USB-port> --image <application.bin> --backup <new-full-flash.bin> --go
+```
+
+With an image, the updater saves and checks a new 32768-byte backup before
+erasing, limits application writes to 30720 bytes, excludes EEPROM page 15,
+and compares the image, all 2048 EEPROM-page bytes, and the 128-byte option area
+before Go. It never writes option bytes, mass-erases, or automatically retries
+failed programming. Keep SWD recovery available: an interrupted ROM command
+can trigger the C011's two-second timeout reset into a partial application.
+Not issuing Go does not guarantee that the chip stays in ROM after an error.
+See ST [AN2606](https://www.st.com/resource/en/application_note/cd00167594-stm32-microcontroller-system-memory-boot-mode-stmicroelectronics.pdf),
+[AN4221](https://www.st.com/resource/en/application_note/an4221-i2c-protocol-used-in-the-stm32-bootloader-stmicroelectronics.pdf),
+and [RM0490](https://www.st.com/resource/en/reference_manual/dm00781702.pdf).
+
+The boot-command revision compiled all 18 AVR examples, the minimal C011
+example, all eight C011 engineering configurations, and both Nano/Metro hosts. Current
+sizes include the retained boot-request words and static RAM alignment:
+
+| Configuration | Flash image bytes | Static RAM extent | Flash remaining before EEPROM |
+|---|---:|---:|---:|
+| Normal, UART off | 22436 | 1804 | 8284 |
+| SPI | 24612 | 1984 | 6108 |
+| UART | 30656 | 2376 | 64 |
+
+Current host checks passed: Arduino GPIO/ADC on nine pins and PWM on eight,
+Arduino SPI's complete mode/order/chunk matrix and recovery, and the real
+CircuitPython driver on CPython through the physical Nano I2C bus. Native
+CircuitPython runtime remains untested. The independent raw SPI run also
+passed all 16 mode/order/clock cases and its 4736-byte held-CS frame.
+The GPIO-only build passed input/output/toggle/pull-up/pull-down on all 12
+exposed pins, all 11 ADC inputs at five voltages, all 11 PWM-capable pins at
+three frequency/duty settings, EEPROM software-reset retention/restoration,
+and address 0x49->0x4A->0x49. The four-encoder build passed direction,
+position/delta clearing, interrupt disable, channel isolation, and simultaneous
+-8 detents per channel at 2 ms phase spacing.
+Both address-strap builds passed all 16 combinations, including physical level
+checks and preservation of the saved address byte.
+
+UART passed 16-byte binary TX and 15-byte RX at 9600 and 115200 baud on two
+complete runs. RX interrupt assert/clear/disable also passed. The first attempt failed because
+opening the Jumperless passthrough reset the Nano; a separate later I2C NACK
+was part of the switched-path investigation above. Its configuration precheck
+also needed a 4096-byte read rather than exhausting the MicroPython heap.
+The SPI queue-fault build passed its 400 kHz burst, error 3, measured CS release,
+abort, and successful new transaction with the physical I2C jumpers. Earlier
+switched-path attempts included both passes and I2C failures; they are not
+counted as reliable transport evidence.
+
+Cold-power EEPROM retention passed for eight nontrivial bytes, with measured
+power-off and restoration of the original bytes. An unpowered ST-Link clamped
+RST near 1.28 V; reconnecting its USB released the target without a debugger
+command or reset, allowing the retention check to complete. Keep that adapter
+powered while its reset lead is attached. All 2048 reserved EEPROM-page bytes
+matched the original pre-verification backup after the firmware tests.
+NeoPixel testing remains paused; no ring commands or power changes were made.
+
+## Historical post-refactor validation — 2026-09-10, incomplete
 
 The shared AVR/STM32 handlers were compiled and tested on 2026-09-10:
 
@@ -305,5 +435,6 @@ than this RGB test. The firmware buffer is 192 bytes: 64 RGB or 48 RGBW pixels.
   remains untested.
 - The existing AVR-assembly FHT audio-spectrum module is not ported to STM32.
   `CONFIG_FHT` fails compilation explicitly instead of advertising a fake module.
-- ROM I2C bootloader programming remains unimplemented. No option bytes have
-  been changed. Host-library code is implemented but not in released libraries.
+- ROM I2C bootloader programming and restart passed on the Nano/QT fixture
+  described above, preserving the EEPROM page and option area. Host-library
+  code is implemented but not in released libraries.

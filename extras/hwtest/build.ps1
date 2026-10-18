@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('full', 'gpio', 'four_encoders', 'address_straps', 'address_straps_inverted', 'uart', 'spi', 'spi_queue', 'metro', 'avr')]
+  [ValidateSet('full', 'gpio', 'four_encoders', 'address_straps', 'address_straps_inverted', 'uart', 'spi', 'spi_queue', 'metro', 'nano', 'avr')]
   [string]$Target = 'full',
   [Parameter(Mandatory = $true)]
   [string]$OutputRoot,
@@ -10,8 +10,10 @@ $libraryRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $targetOutput = Join-Path $OutputRoot $Target
 $hostProperties = @()
 if ($HostLibrary) { $hostProperties = @('--library', $HostLibrary) }
-if ($Target -eq 'metro') {
-  & arduino-cli compile --fqbn arduino:avr:uno @hostProperties --build-path $targetOutput (Join-Path $PSScriptRoot 'metro_host')
+if ($Target -in @('metro', 'nano')) {
+  $hostFqbn = 'arduino:avr:uno'
+  if ($Target -eq 'nano') { $hostFqbn = 'arduino:avr:nano:cpu=atmega328' }
+  & arduino-cli compile --fqbn $hostFqbn @hostProperties --build-path $targetOutput (Join-Path $PSScriptRoot 'metro_host')
   exit $LASTEXITCODE
 }
 if ($Target -eq 'avr') {

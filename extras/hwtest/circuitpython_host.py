@@ -1,7 +1,7 @@
 """Run the real CircuitPython host library via a byte-preserving Metro I2C adapter.
 
 This exercises library code on CPython, not a native CircuitPython firmware build.
-No NeoPixel commands are issued. Only the verified Metro-powered fixture is used.
+No NeoPixel commands are issued. Supports the verified Metro and Nano fixtures.
 """
 import argparse
 import sys
@@ -60,6 +60,8 @@ def main():
     parser.add_argument("--metro", required=True)
     parser.add_argument("--jumperless", required=True)
     parser.add_argument("--helper", required=True)
+    parser.add_argument("--fixture", choices=["metro", "nano"], default="metro")
+    parser.add_argument("--physical-i2c", action="store_true", help="Use physical Nano A4/A5 jumpers without switched I2C routes")
     args = parser.parse_args()
     sys.path.insert(0, args.library)
     from adafruit_seesaw.seesaw import Seesaw
@@ -71,8 +73,8 @@ def main():
     jl = None
     bridge = None
     try:
-        jl = Jumperless(args.jumperless, args.helper, metro_link=True)
-        jl.connect_metro_link()
+        jl = Jumperless(args.jumperless, args.helper, metro_link=True, fixture=args.fixture)
+        jl.connect_metro_link(args.physical_i2c)
         supply = jl.sense(39)
         seesaw = Seesaw(MetroI2C(metro))
         check(seesaw.chip_id == 0x90, "CircuitPython did not recognize C011")
@@ -90,7 +92,7 @@ def main():
                     check(seesaw.digital_read(pin) == level, "CircuitPython GPIO readback mismatch")
                     check(voltage > 2.8 if level else abs(voltage) < 0.2, "CircuitPython GPIO voltage mismatch")
                 seesaw.pin_mode(pin, seesaw.INPUT)
-                jl.exec("dac_set(1, 1.65); time.sleep_ms(50)")
+                jl.set_dac(1.65)
                 jl.connect(row, "DAC1")
                 reference = jl.sense(row)
                 raw = seesaw.analog_read(pin)
@@ -146,7 +148,7 @@ def main():
         bridge.configure()
         bridge.transfer(b"recovered")
         passed("circuitpython_spi_receive_write_cs_error_recovery")
-        passed("circuitpython_host_complete", runtime="CPython via physical Metro I2C")
+        passed("circuitpython_host_complete", runtime=f"CPython via physical {args.fixture} I2C")
     finally:
         try:
             if bridge is not None:

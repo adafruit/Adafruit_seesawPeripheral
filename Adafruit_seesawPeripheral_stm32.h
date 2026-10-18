@@ -39,6 +39,53 @@ extern "C" uint8_t _sidata, _sdata, _edata;
 #endif
 
 namespace SeesawSTM32 {
+#if CONFIG_BOOTLOADER
+const uint32_t systemMemory = 0x1FFF0000; ///< C011 ROM vectors, ST AN2606.
+const uint32_t bootMagic = 0xB007C011;    ///< One-shot reset request signature.
+volatile uint32_t bootRequest[2]
+    __attribute__((section(".noinit"))); ///< Retained across a software reset.
+
+/*! Switch stacks only in assembly, with no compiler stack access afterward. */
+__attribute__((naked, noreturn)) void enterSystemMemory(uint32_t vectors) {
+  __asm volatile("ldr r1, [r0]\n"
+                 "ldr r2, [r0, #4]\n"
+                 "msr msp, r1\n"
+                 "cpsie i\n"
+                 "bx r2\n");
+}
+
+/*! Reset first so active seesaw peripherals cannot interfere with the ROM. */
+void requestBootloader() {
+  bootRequest[0] = bootMagic;
+  bootRequest[1] = ~bootMagic;
+  __DSB();
+  NVIC_SystemReset();
+}
+
+/*! Honor the request before C++ constructors or Arduino initialize hardware. */
+void checkBootloader() {
+  bool requested = __HAL_RCC_GET_FLAG(RCC_FLAG_SFTRST) &&
+                   bootRequest[0] == bootMagic && bootRequest[1] == ~bootMagic;
+  bootRequest[0] = bootRequest[1] = 0;
+  if (!requested)
+    return;
+
+  // This preinit hook runs directly after the software reset. Clocks,
+  // peripherals and interrupt enables still have their hardware reset state.
+  __disable_irq();
+  __HAL_RCC_SYSCFG_CLK_ENABLE();
+  __HAL_SYSCFG_REMAPMEMORY_SYSTEMFLASH();
+  SCB->VTOR = systemMemory;
+  __set_CONTROL(0);
+  __DSB();
+  __ISB();
+  enterSystemMemory(systemMemory);
+}
+void (*const bootloaderPreinit)()
+    __attribute__((section(".preinit_array"),
+                   used)) = checkBootloader; ///< Runs before Arduino main(),
+                                             ///< without replacing its hooks.
+#endif
 const uint32_t gpioMask = 0x000087FFUL; ///< PA0-PA8, PA11, PA12, PC14.
 const uint32_t adcMask = 0x000007FFUL;  ///< Eleven exposed analog inputs.
 const uint32_t pwmMask = 0x000083FFUL;  ///< All exposed pins except PA12.

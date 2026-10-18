@@ -47,6 +47,10 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
   if (base_cmd == SEESAW_STATUS_BASE) {
     if (module_cmd == SEESAW_STATUS_SWRST && length == 1 && data[0] == 0xFF)
       Adafruit_seesawPeripheral_reset();
+#if CONFIG_BOOTLOADER
+    else if (module_cmd == SEESAW_STATUS_BOOTLOADER && length == 1 && data[0] == 0xFF)
+      SeesawSTM32::requestBootloader();
+#endif
   } else if (base_cmd == SEESAW_GPIO_BASE) {
     if (module_cmd == SEESAW_GPIO_BULK && length == 0) {
 #if !defined(ARDUINO_ARCH_STM32)

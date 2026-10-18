@@ -211,8 +211,13 @@ void executeCommand() {
     for (uint8_t i = 0; i < bytes[0]; i++) {
       Wire.beginTransmission(0x49);
       Wire.write(packet, sizeof(packet));
-      if (Wire.endTransmission()) {
-        Serial.println(F("ERR SPI burst I2C"));
+      uint8_t error = Wire.endTransmission();
+      if (error) {
+        Serial.print(F("ERR SPI burst I2C packet "));
+        Serial.print(i);
+        Serial.print(F(" code "));
+        Serial.print(error);
+        Serial.print(F("\n\r"));
         return;
       }
     }
