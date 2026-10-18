@@ -271,22 +271,29 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
                                               uint8_t howMany);
 void Adafruit_seesawPeripheral_reset(void);
 
+// Keep byte packing in the callback: call overhead extends an I2C clock hold.
 /*! Decode a big-endian 16-bit protocol value. */
-uint16_t Adafruit_seesawPeripheral_read16(const uint8_t *data) {
+__attribute__((always_inline)) inline uint16_t
+Adafruit_seesawPeripheral_read16(const uint8_t *data) {
   return ((uint16_t)data[0] << 8) | data[1];
 }
 /*! Decode a big-endian 32-bit protocol value. */
-uint32_t Adafruit_seesawPeripheral_read32(const uint8_t *data) {
-  return ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) |
-         ((uint32_t)data[2] << 8) | data[3];
+__attribute__((always_inline)) inline uint32_t
+Adafruit_seesawPeripheral_read32(const uint8_t *data) {
+  uint32_t value = data[0];
+  value = (value << 8) | data[1];
+  value = (value << 8) | data[2];
+  return (value << 8) | data[3];
 }
 /*! Emit a big-endian 16-bit protocol value. */
-void Adafruit_seesawPeripheral_write16(uint16_t value) {
+__attribute__((always_inline)) inline void
+Adafruit_seesawPeripheral_write16(uint16_t value) {
   Wire.write((uint8_t)(value >> 8));
   Wire.write((uint8_t)value);
 }
 /*! Emit a big-endian 32-bit protocol value. */
-void Adafruit_seesawPeripheral_write32(uint32_t value) {
+__attribute__((always_inline)) inline void
+Adafruit_seesawPeripheral_write32(uint32_t value) {
   Wire.write((uint8_t)(value >> 24));
   Wire.write((uint8_t)(value >> 16));
   Wire.write((uint8_t)(value >> 8));
@@ -702,6 +709,15 @@ void Adafruit_seesawPeripheral_gpioWrite(uint32_t mask, bool high) {
   for (uint8_t pin = 0; pin < 32; pin++)
     if (mask & (1UL << pin))
       digitalWrite(pin, high ? HIGH : LOW);
+}
+/*! Write the whole GPIO value in one pass, as in the original AVR path. */
+void Adafruit_seesawPeripheral_gpioBulk(uint32_t value) {
+  uint32_t pinmask = 1;
+  for (uint8_t pin = 0; pin < 32; pin++) {
+    if (VALID_GPIO & pinmask)
+      digitalWrite(pin, (value & pinmask) ? HIGH : LOW);
+    pinmask <<= 1;
+  }
 }
 void Adafruit_seesawPeripheral_gpioToggle(uint32_t mask) {
   for (uint8_t pin = 0; pin < 32; pin++)

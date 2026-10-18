@@ -50,8 +50,7 @@ void Adafruit_seesawPeripheral_processCommand(const uint8_t *packet,
       Adafruit_seesawPeripheral_gpioDirection(temp, false);
       break;
     case SEESAW_GPIO_BULK:
-      Adafruit_seesawPeripheral_gpioWrite(VALID_GPIO & ~temp, false);
-      Adafruit_seesawPeripheral_gpioWrite(temp, true);
+      Adafruit_seesawPeripheral_gpioBulk(temp);
       break;
     case SEESAW_GPIO_BULK_SET:
       Adafruit_seesawPeripheral_gpioWrite(temp, true);

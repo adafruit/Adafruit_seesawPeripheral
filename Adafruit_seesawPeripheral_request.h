@@ -76,9 +76,11 @@ void requestEvent(void) {
     uint8_t command = module_cmd & 0xF0;
     if (encoder_num < CONFIG_NUM_ENCODERS && (command == SEESAW_ENCODER_POSITION ||
                                         command == SEESAW_ENCODER_DELTA)) {
-      int32_t value = g_enc_value[encoder_num];
+      int32_t value;
       if (command == SEESAW_ENCODER_DELTA)
         value = g_enc_delta[encoder_num];
+      else
+        value = g_enc_value[encoder_num];
       Adafruit_seesawPeripheral_write32(value);
       g_enc_delta[encoder_num] = 0;
     }
