@@ -6,8 +6,13 @@
 //#define USE_PINCHANGE_INTERRUPT    1
 
 // Can have up to 3 addresses
+#if defined(ARDUINO_GENERIC_C011F6UX)
+#define CONFIG_ADDR_0_PIN          6  // PA6
+#define CONFIG_ADDR_1_PIN          7  // PA7
+#else
 #define CONFIG_ADDR_0_PIN          16
 #define CONFIG_ADDR_1_PIN          17
+#endif
 
 #define CONFIG_ADC                 1
 #define CONFIG_PWM                 1
