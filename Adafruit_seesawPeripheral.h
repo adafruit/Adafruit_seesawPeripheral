@@ -670,6 +670,25 @@ void Adafruit_seesawPeripheral_setGPIOInterrupt(uint8_t pin, bool enabled) {
 }
 #endif
 
+/**
+ * @brief Enable or disable change interrupts for selected valid GPIO pins.
+ * @param mask GPIO bits to change; invalid pins are ignored.
+ * @param enabled True to enable interrupts, false to disable them.
+ */
+void Adafruit_seesawPeripheral_gpioInterrupt(uint32_t mask, bool enabled) {
+  mask &= VALID_GPIO;
+  for (uint8_t pin = 0; pin < 32; pin++) {
+    if ((mask >> pin) & 0x1) {
+      SEESAW_DEBUG(F("Set pin "));
+      SEESAW_DEBUG(pin);
+
+#if CONFIG_INTERRUPT
+      Adafruit_seesawPeripheral_setGPIOInterrupt(pin, enabled);
+#endif
+    }
+  }
+}
+
 #if CONFIG_ENCODER
 /**
  * @brief Look up the input pin mask for an encoder.

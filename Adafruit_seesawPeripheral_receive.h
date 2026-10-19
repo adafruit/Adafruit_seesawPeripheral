@@ -95,19 +95,10 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
         Adafruit_seesawPeripheral_gpioMode(temp, INPUT);
         break;
       case SEESAW_GPIO_INTENSET:
+        Adafruit_seesawPeripheral_gpioInterrupt(temp, true);
+        break;
       case SEESAW_GPIO_INTENCLR:
-        temp &= VALID_GPIO;
-        for (uint8_t pin = 0; pin < 32; pin++) {
-          if ((temp >> pin) & 0x1) {
-            SEESAW_DEBUG(F("Set pin "));
-            SEESAW_DEBUG(pin);
-
-#if CONFIG_INTERRUPT
-            Adafruit_seesawPeripheral_setGPIOInterrupt(
-                pin, module_cmd == SEESAW_GPIO_INTENSET);
-#endif
-          }
-        }
+        Adafruit_seesawPeripheral_gpioInterrupt(temp, false);
         break;
     }
   }
