@@ -11,6 +11,29 @@
 #include "wiring_private.h"
 #include "pins_arduino.h"
 
+/*************** Optional features default to disabled */
+#ifndef CONFIG_ADC
+#define CONFIG_ADC 0
+#endif
+#ifndef CONFIG_PWM_16BIT
+#define CONFIG_PWM_16BIT 0
+#endif
+#ifndef CONFIG_PWM
+#define CONFIG_PWM 0
+#endif
+#ifndef CONFIG_NEOPIXEL
+#define CONFIG_NEOPIXEL 0
+#endif
+#ifndef CONFIG_UART
+#define CONFIG_UART 0
+#endif
+#ifndef CONFIG_ENCODER
+#define CONFIG_ENCODER 0
+#endif
+#ifndef CONFIG_FHT
+#define CONFIG_FHT 0
+#endif
+
 #if defined(ARDUINO_AVR_ATtiny806)
 #define SEESAW_HW_ID 0x84
 #elif defined(ARDUINO_AVR_ATtiny807)
@@ -159,7 +182,7 @@ uint16_t DATE_CODE = 0;
 #define ALL_GPIO                                                               \
   0x1FFFFFUL // this is chip dependant, for 817 we have 21 GPIO avail (0~20 inc)
 #define ALL_ADC 0b1111000000110011001111 // pins that have ADC capability
-#ifdef CONFIG_PWM_16BIT
+#if CONFIG_PWM_16BIT
 #define ALL_PWM ((1UL << 6) | (1UL << 7) | (1UL << 8))  // alternate TCA0 WOx
 #else
 #define ALL_PWM                                                                \
@@ -175,7 +198,7 @@ uint16_t DATE_CODE = 0;
 #define ALL_GPIO                                                               \
   0x01FFFFUL // this is chip dependant, for 816 we have 17 GPIO avail
 #define ALL_ADC 0b11100001100111111 // pins that have ADC capability
-#ifdef CONFIG_PWM_16BIT
+#if CONFIG_PWM_16BIT
 #define ALL_PWM ((1UL << 4) | (1UL << 5) | (1UL << 6))  // alternate TCA0 WOx
 #else
 #define ALL_PWM                                                                \
