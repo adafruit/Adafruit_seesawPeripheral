@@ -1,13 +1,13 @@
 /*!
  * @file Adafruit_seesawPeripheral_stm32.h
- * @brief STM32C011 GPIO/ADC backend with deferred command execution.
+ * @brief STM32C011 GPIO/ADC/PWM backend with deferred command execution.
  */
 #ifndef ADAFRUIT_SEESAWPERIPHERAL_STM32_H
 #define ADAFRUIT_SEESAWPERIPHERAL_STM32_H
 
-#if CONFIG_PWM || CONFIG_PWM_16BIT || CONFIG_NEOPIXEL || CONFIG_UART ||        \
-    CONFIG_ENCODER || CONFIG_EEPROM || CONFIG_FHT
-#error "The STM32C011 core backend currently supports GPIO and ADC only"
+#if CONFIG_NEOPIXEL || CONFIG_UART || CONFIG_ENCODER || CONFIG_EEPROM ||       \
+    CONFIG_FHT
+#error "The STM32C011 backend currently supports GPIO, ADC, and PWM only"
 #endif
 #if USE_PINCHANGE_INTERRUPT
 #error "The STM32C011 backend polls GPIO changes from run()"
@@ -80,6 +80,40 @@ volatile uint8_t selectedBase = 0, selectedRegister = 0; ///< Read pointer.
 uint32_t direction = 0, output = 0, pull = 0; ///< GPIO register state.
 uint32_t lastGPIO = 0;                        ///< Previous GPIO sample.
 uint8_t address = CONFIG_I2C_PERIPH_ADDR;     ///< Effective I2C address.
+#if CONFIG_PWM || CONFIG_PWM_16BIT
+uint32_t pwmActive = 0; ///< Protocol pins currently using timers.
+uint16_t pwmValues[16] =
+    {}; ///< Duty settings retained across frequency changes.
+uint16_t pwmFrequency = 1000; ///< Shared PWM frequency in hertz.
+// Select non-complementary outputs. D3/D9 share TIM1_CH4, and D7/D15
+// share TIM3_CH2; use only one pin from each pair at a time.
+const uint16_t pwmPins[16] = {PA0_ALT1, PA1_ALT1, 2, PA3_ALT1, PA4_ALT1, 5,  6,
+                              PA7_ALT1, PA8_ALT3, 9, 10,       11,       12, 13,
+                              14,       15};
+
+/** @brief Restore active PWM outputs after changing their shared frequency. */
+void applyPWM() {
+  analogWriteFrequency(pwmFrequency);
+  for (uint8_t pin = 0; pin < 16; pin++) {
+    if (pwmActive & (1UL << pin)) {
+      analogWrite(pwmPins[pin], pwmValues[pin]);
+    }
+  }
+}
+
+/** @brief Release one PWM pin without stopping other active timer outputs. */
+void stopPWM(uint8_t pin) {
+  uint32_t bit = 1UL << pin;
+  if (!(pwmActive & bit)) {
+    return;
+  }
+  pwmActive &= ~bit;
+  // STM32duino 3.0.0 pinMode() stops the whole HardwareTimer. Use the exact
+  // alternate-function pin, then restore the other active channels.
+  pinMode(pwmPins[pin], INPUT);
+  applyPWM();
+}
+#endif
 #if CONFIG_ADC
 bool adcReady = false;                  ///< Calibration and enable completed.
 const uint32_t adcTimeoutMicros = 5000; ///< Calibration/conversion timeout.
@@ -129,6 +163,9 @@ void applyGPIO(uint32_t pins) {
     if (!(pins & VALID_GPIO & bit)) {
       continue;
     }
+#if CONFIG_PWM || CONFIG_PWM_16BIT
+    stopPWM(pin);
+#endif
     if (direction & bit) {
       digitalWrite(pin, (output & bit) ? HIGH : LOW);
       pinMode(pin, OUTPUT);
@@ -160,6 +197,12 @@ void prepareFirstByte() {
     } else if (selectedRegister == SEESAW_ADC_STATUS) {
       seesawWire.setFirstByte(&g_adcStatus);
     }
+  }
+#endif
+#if CONFIG_PWM || CONFIG_PWM_16BIT
+  else if (selectedBase == SEESAW_TIMER_BASE &&
+           selectedRegister == SEESAW_TIMER_STATUS) {
+    seesawWire.setFirstByte(&g_pwmStatus);
   }
 #endif
 }
@@ -234,6 +277,12 @@ void reset() {
   g_irqGPIO = g_irqFlags = 0;
 #endif
   applyGPIO(VALID_GPIO);
+#if CONFIG_PWM || CONFIG_PWM_16BIT
+  g_pwmStatus = 0;
+  pwmFrequency = 1000;
+  analogWriteResolution(16);
+  analogWriteFrequency(pwmFrequency);
+#endif
 #if CONFIG_ADC
   g_bufferedADCRead = g_adcStatus = 0;
   adcReady = beginADC();
@@ -357,6 +406,9 @@ int32_t Adafruit_seesawPeripheral_readADC(uint8_t pin) {
   using namespace SeesawSTM32;
   if (!adcReady)
     return -1;
+#if CONFIG_PWM || CONFIG_PWM_16BIT
+  stopPWM(pin);
+#endif
   pinMode(pin, INPUT_ANALOG);
   uint8_t channel = pin;
   if (pin == 9)
@@ -381,6 +433,34 @@ int32_t Adafruit_seesawPeripheral_readADC(uint8_t pin) {
       return -1;
   }
   return LL_ADC_REG_ReadConversionData12(ADC1);
+}
+#endif
+
+#if CONFIG_PWM || CONFIG_PWM_16BIT
+/**
+ * @brief Set PWM duty on a validated timer pin using the Arduino core.
+ * @param pin Protocol GPIO index with PWM support.
+ * @param value Duty setting from 0 through 65535.
+ */
+void Adafruit_seesawPeripheral_setPWM(uint8_t pin, uint16_t value) {
+  using namespace SeesawSTM32;
+  pwmValues[pin] = value;
+  analogWriteFrequency(pwmFrequency);
+  analogWrite(pwmPins[pin], value);
+  pwmActive |= 1UL << pin;
+}
+
+/**
+ * @brief Change the shared PWM frequency and retain active duty settings.
+ * @param pin Validated PWM pin; frequency applies to all active outputs.
+ * @param frequency Nonzero frequency in hertz.
+ */
+void Adafruit_seesawPeripheral_setPWMFrequency(uint8_t pin,
+                                               uint16_t frequency) {
+  using namespace SeesawSTM32;
+  (void)pin;
+  pwmFrequency = frequency;
+  applyPWM();
 }
 #endif
 
@@ -409,7 +489,7 @@ void Adafruit_seesawPeripheral_reset(void) {
   }
 }
 
-/** @brief Initialize the GPIO/ADC backend and dedicated I2C target. */
+/** @brief Initialize the GPIO/ADC/PWM backend and dedicated I2C target. */
 bool Adafruit_seesawPeripheral_begin(void) {
   using namespace SeesawSTM32;
   Adafruit_seesawPeripheral_setDatecode();

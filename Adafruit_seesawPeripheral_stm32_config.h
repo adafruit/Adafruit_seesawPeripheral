@@ -11,7 +11,7 @@
 #define SEESAW_HW_ID 0x90     ///< Provisional STM32C011 hardware ID.
 #define ALL_GPIO 0x000087FFUL ///< D0..10 and D15; SWD/I2C/LED stay reserved.
 #define ALL_ADC 0x000007FFUL  ///< D0..8 = PA0..8, D9/10 = PA11/12.
-#define ALL_PWM 0             ///< PWM is not part of the core STM32 backend.
+#define ALL_PWM 0x000083FFUL  ///< Exposed timer outputs; PA12 has no PWM.
 #define UART_DEBUG_RXD 1
 #define UART_DEBUG_TXD 0
 
