@@ -619,6 +619,16 @@ uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
 }
 
 /**
+ * @brief Read a 16-bit command value, most significant byte first.
+ * @param data Pointer to two bytes in the command buffer.
+ * @return Decoded value.
+ */
+__attribute__((always_inline)) inline uint16_t
+Adafruit_seesawPeripheral_read16(const volatile uint8_t *data) {
+  return ((uint16_t)data[0] << 8) | data[1];
+}
+
+/**
  * @brief Write a 16-bit value to the I2C reply, most significant byte
  * first.
  * @param value Value to send.
