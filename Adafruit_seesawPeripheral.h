@@ -812,6 +812,17 @@ void Adafruit_seesawPeripheral_showPixels(void) {
 }
 #endif
 
+#if CONFIG_ADC
+/**
+ * @brief Read an ADC pin already checked by the command decoder.
+ * @param pin Arduino pin number.
+ * @return Raw ADC reading.
+ */
+uint16_t Adafruit_seesawPeripheral_readADC(uint8_t pin) {
+  return analogRead(pin);
+}
+#endif
+
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
   uint32_t temp = 0;
 
