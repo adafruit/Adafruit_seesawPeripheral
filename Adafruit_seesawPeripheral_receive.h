@@ -1,20 +1,3 @@
-#if CONFIG_FHT && defined(MEGATINYCORE)
-// If ADC sampling rate or MUX channel is changed, this function gets
-// called to discard a couple of initial ADC readings (which are invalid
-// immdiately after such a change) and reset the FHT buffer counter to
-// the beginning.
-static void restart_sampling(void) {
-  for(uint8_t i=0; i<3; i++) {             // Discard initial readings
-    while(!ADC0.INTFLAGS & ADC_RESRDY_bm); // In the INTFLAG register,
-    ADC0.INTFLAGS |= ADC_RESRDY_bm;        // setting bit clears flag!
-    // (ADC is still free-running and will set RESRDY bit,
-    // it's just not triggering interrupts right now.)
-  }
-  fht_counter = 0;                         // Restart at beginning of buf
-  ADC0.INTCTRL |= ADC_RESRDY_bm;           // Enable result-ready IRQ
-}
-#endif
-
 /***************************** data write */
 
 void receiveEvent(int howMany) {
@@ -278,7 +261,7 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
       uint8_t rate = packet[2];            // Requested rate index
       if (rate > 31) rate = 31;                // Clip rate between 0-31
       ADC0.SAMPCTRL = rate & 31;               // Set ADC sample control
-      restart_sampling();                      // Purge recording, start over
+      Adafruit_seesawPeripheral_restartSampling(); // Purge recording, start over
     } else if ((module_cmd == SEESAW_SPECTRUM_CHANNEL) && (howMany == 3)) {
       ADC0.INTCTRL &= ~ADC_RESRDY_bm;          // Disable result-ready IRQ
       uint8_t channel = packet[2];         // Requested ADC channel
@@ -291,7 +274,7 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
       // direct ADC MUX value, valid or not. Final changes are only needed
       // here, not in the Adafruit_Seesaw library.
       ADC0.MUXPOS = channel;                   // Set ADC input MUX
-      restart_sampling();                      // Purge recording, start over
+      Adafruit_seesawPeripheral_restartSampling(); // Purge recording, start over
     }
   }
 #endif

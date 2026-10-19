@@ -673,6 +673,22 @@ ISR(ADC0_RESRDY_vect) { // ADC conversion complete
   }
   // Interrupt flag is cleared automatically when reading ADC0.RES
 }
+
+/**
+ * @brief Restart FHT capture after an ADC sampling rate or MUX channel change.
+ * Discard three initial readings, then reset the FHT buffer counter.
+ */
+static void Adafruit_seesawPeripheral_restartSampling(void) {
+  for (uint8_t i = 0; i < 3; i++) { // Discard initial readings
+    while (!ADC0.INTFLAGS & ADC_RESRDY_bm)
+      ;                             // Wait for a conversion.
+    ADC0.INTFLAGS |= ADC_RESRDY_bm; // Setting the bit clears the flag.
+    // ADC is still free-running and will set RESRDY;
+    // only its interrupts are disabled right now.
+  }
+  fht_counter = 0;               // Restart at beginning of buffer.
+  ADC0.INTCTRL |= ADC_RESRDY_bm; // Enable result-ready IRQ.
+}
 #endif
 
 
