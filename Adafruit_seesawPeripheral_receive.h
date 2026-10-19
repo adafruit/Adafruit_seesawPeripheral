@@ -21,15 +21,15 @@ void receiveEvent(int howMany) {
   SEESAW_DEBUG(F("Received "));
   SEESAW_DEBUG(howMany);
   SEESAW_DEBUG(F(" bytes:"));
-  for (uint8_t i=howMany; i<sizeof(i2c_buffer); i++) {
-    i2c_buffer[i] = 0;
-  }
-
-  if ((uint32_t)howMany > sizeof(i2c_buffer)) {
+  // Reject invalid packets before changing the selected module/register.
+  if (howMany < 2 || (uint32_t)howMany > sizeof(i2c_buffer)) {
+    while (Wire.available()) {
+      Wire.read();
+    }
     SEESAW_DEBUGLN();
     return;
   }
-  for (uint8_t i=0; i<howMany; i++) {
+  for (uint8_t i = 0; i < howMany; i++) {
     i2c_buffer[i] = Wire.read();
     //SEESAW_DEBUG(F("0x"));
     //SEESAW_DEBUG(i2c_buffer[i], HEX);
@@ -37,12 +37,13 @@ void receiveEvent(int howMany) {
   }
   //SEESAW_DEBUG("\n");
 
+  // Each command validates its length before accessing payload bytes.
   Adafruit_seesawPeripheral_processCommand(i2c_buffer, howMany);
 }
 
 /**
  * @brief Decode a command already loaded by a transport.
- * @param packet Zero-padded command buffer, including module and register.
+ * @param packet Command buffer, including module and register.
  * @param howMany Number of received bytes.
  */
 void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
@@ -54,12 +55,12 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
   uint8_t module_cmd = packet[1];
 
   if (base_cmd == SEESAW_STATUS_BASE) {
-    if (module_cmd == SEESAW_STATUS_SWRST) {
+    if (module_cmd == SEESAW_STATUS_SWRST && howMany == 3 &&
+        packet[2] == 0xFF) {
       Adafruit_seesawPeripheral_reset();
       SEESAW_DEBUGLN(F("Resetting"));
     }
-  }
-  else if (base_cmd == SEESAW_GPIO_BASE) {
+  } else if (base_cmd == SEESAW_GPIO_BASE) {
     if (module_cmd == SEESAW_GPIO_BULK && howMany == 2) {
       // Snapshot the pins before the master's following read.
       g_bufferedBulkGPIORead = Adafruit_seesawPeripheral_readBulk(VALID_GPIO);
