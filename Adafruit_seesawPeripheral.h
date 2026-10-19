@@ -34,13 +34,21 @@
 #define CONFIG_FHT 0
 #endif
 
+#if defined(ARDUINO_ARCH_STM32)
+#include "Adafruit_seesawPeripheral_stm32_config.h"
+#else
 #include "Adafruit_seesawPeripheral_avr_config.h"
+#endif
 
 void foo(void);
 
 
 #if !defined(CONFIG_EEPROM)
+#if defined(ARDUINO_ARCH_STM32)
+#define CONFIG_EEPROM 0
+#else
 #define CONFIG_EEPROM 1
+#endif
 #endif
 
 #if CONFIG_EEPROM
@@ -113,15 +121,21 @@ uint16_t DATE_CODE = 0;
 
 /********************** Available/taken GPIO configuration macros */
 
-#define INVALID_GPIO ((1UL << SDA) | (1UL << SCL) | \
-                      ((uint32_t)CONFIG_UART_DEBUG << UART_DEBUG_RXD) | \
-                      ((uint32_t)CONFIG_UART_DEBUG << UART_DEBUG_TXD)   |   \
-                      ((uint32_t)CONFIG_INTERRUPT << CONFIG_INTERRUPT_PIN) | \
-                      ((uint32_t)CONFIG_ADDR_0 << CONFIG_ADDR_0_PIN) | \
-                      ((uint32_t)CONFIG_ADDR_1 << CONFIG_ADDR_1_PIN) | \
-                      ((uint32_t)CONFIG_ADDR_2 << CONFIG_ADDR_2_PIN) | \
-                      ((uint32_t)CONFIG_ADDR_3 << CONFIG_ADDR_3_PIN) | \
-                      0)
+#if defined(ARDUINO_ARCH_STM32)
+#define SEESAW_I2C_PIN_MASK                                                    \
+  ((1UL << CONFIG_I2C_SDA_PIN) | (1UL << CONFIG_I2C_SCL_PIN))
+#else
+#define SEESAW_I2C_PIN_MASK ((1UL << SDA) | (1UL << SCL))
+#endif
+
+#define INVALID_GPIO                                                           \
+  (SEESAW_I2C_PIN_MASK | ((uint32_t)CONFIG_UART_DEBUG << UART_DEBUG_RXD) |     \
+   ((uint32_t)CONFIG_UART_DEBUG << UART_DEBUG_TXD) |                           \
+   ((uint32_t)CONFIG_INTERRUPT << CONFIG_INTERRUPT_PIN) |                      \
+   ((uint32_t)CONFIG_ADDR_0 << CONFIG_ADDR_0_PIN) |                            \
+   ((uint32_t)CONFIG_ADDR_1 << CONFIG_ADDR_1_PIN) |                            \
+   ((uint32_t)CONFIG_ADDR_2 << CONFIG_ADDR_2_PIN) |                            \
+   ((uint32_t)CONFIG_ADDR_3 << CONFIG_ADDR_3_PIN) | 0)
 
 #define VALID_GPIO (ALL_GPIO & ~INVALID_GPIO)
 #define VALID_ADC (ALL_ADC & VALID_GPIO)
@@ -139,7 +153,11 @@ void Adafruit_seesawPeripheral_processRequest(uint8_t base_cmd,
 void Adafruit_seesawPeripheral_run(void);
 void Adafruit_seesawPeripheral_changedGPIO(void);
 
+#if defined(ARDUINO_ARCH_STM32)
+#include "Adafruit_seesawPeripheral_stm32_i2c.h"
+#else
 #include "Adafruit_seesawPeripheral_i2c.h"
+#endif
 
 /****************************************************** global state */
 
@@ -316,6 +334,9 @@ void Adafruit_seesawPeripheral_setDatecode(void) {
       ((uint16_t)day << 11) | ((uint16_t)month << 7) | ((year - 2000) & 0x3F);
 }
 
+#if defined(ARDUINO_ARCH_STM32)
+#include "Adafruit_seesawPeripheral_stm32.h"
+#else
 #include "Adafruit_seesawPeripheral_avr.h"
 
 bool Adafruit_seesawPeripheral_begin(void) {
@@ -402,8 +423,7 @@ void Adafruit_seesawPeripheral_reset(void) {
   Adafruit_seesawPeripheral_enableInterrupts(true);
 }
 
-
-
+#endif // ARDUINO_ARCH_STM32
 
 /**
  * @brief Enable or disable change interrupts for selected valid GPIO pins.
@@ -484,8 +504,9 @@ void Adafruit_seesawPeripheral_queueUARTData(const volatile uint8_t *data,
 
 #endif
 
-
+#if !defined(ARDUINO_ARCH_STM32)
 #include "Adafruit_seesawPeripheral_main.h"
+#endif
 #include "Adafruit_seesawPeripheral_receive.h"
 #include "Adafruit_seesawPeripheral_request.h"
 #endif

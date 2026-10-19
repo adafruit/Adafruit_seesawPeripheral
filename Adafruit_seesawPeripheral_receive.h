@@ -57,10 +57,10 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
         Adafruit_seesawPeripheral_gpioBulk(temp);
         break;
       case SEESAW_GPIO_DIRSET_BULK:
-        Adafruit_seesawPeripheral_gpioMode(temp, OUTPUT);
+        Adafruit_seesawPeripheral_gpioDirection(temp, true);
         break;
       case SEESAW_GPIO_DIRCLR_BULK:
-        Adafruit_seesawPeripheral_gpioMode(temp, INPUT);
+        Adafruit_seesawPeripheral_gpioDirection(temp, false);
         break;
       case SEESAW_GPIO_BULK_SET:
         Adafruit_seesawPeripheral_gpioWrite(temp, HIGH);
@@ -69,11 +69,16 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
         Adafruit_seesawPeripheral_gpioWrite(temp, LOW);
         break;
       case SEESAW_GPIO_PULLENSET:
-        Adafruit_seesawPeripheral_gpioMode(temp, INPUT_PULLUP);
+        Adafruit_seesawPeripheral_gpioPull(temp, true);
         break;
       case SEESAW_GPIO_PULLENCLR:
-        Adafruit_seesawPeripheral_gpioMode(temp, INPUT);
+        Adafruit_seesawPeripheral_gpioPull(temp, false);
         break;
+#if defined(ARDUINO_ARCH_STM32)
+      case SEESAW_GPIO_BULK_TOGGLE:
+        Adafruit_seesawPeripheral_gpioToggle(temp);
+        break;
+#endif
       case SEESAW_GPIO_INTENSET:
       case SEESAW_GPIO_INTENCLR: {
         // Keep one call site to limit code growth on 8 KB targets.
@@ -100,7 +105,13 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
         SEESAW_DEBUG(F("ADC read "));
         SEESAW_DEBUG(adcpin);
         SEESAW_DEBUG(F(": "));
-        g_bufferedADCRead = Adafruit_seesawPeripheral_readADC(adcpin);
+        int32_t value = Adafruit_seesawPeripheral_readADC(adcpin);
+        if (value < 0) {
+          g_bufferedADCRead = 0;
+          g_adcStatus = 0x1; // Hardware initialization or conversion failed.
+          return;
+        }
+        g_bufferedADCRead = value;
         SEESAW_DEBUGLN(g_bufferedADCRead);
         g_adcStatus = 0x0;
       }
