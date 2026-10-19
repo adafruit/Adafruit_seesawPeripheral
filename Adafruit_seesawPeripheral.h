@@ -304,8 +304,16 @@ void Adafruit_seesawPeripheral_updateEncoder(uint8_t encodernum,
   g_enc_prev_pos[encodernum] = enc_cur_pos;
 
   if(enc_action != 0){
+#if defined(ARDUINO_ARCH_STM32)
+    // Do not lose a read-to-clear I2C callback between the delta load/store.
+    uint32_t savedMask = __get_PRIMASK();
+    __disable_irq();
+#endif
     g_enc_value[encodernum] += enc_action;
     g_enc_delta[encodernum] += enc_action;
+#if defined(ARDUINO_ARCH_STM32)
+    __set_PRIMASK(savedMask);
+#endif
   }
 }
 #endif
@@ -449,7 +457,7 @@ void Adafruit_seesawPeripheral_gpioInterrupt(uint32_t mask, bool enabled) {
   }
 }
 
-#if CONFIG_ENCODER
+#if CONFIG_ENCODER && !defined(ARDUINO_ARCH_STM32)
 /**
  * @brief Look up the input pin mask for an encoder.
  * @param encoder Encoder index, from 0 through 3.

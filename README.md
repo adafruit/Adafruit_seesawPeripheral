@@ -9,7 +9,7 @@ To install, use the Arduino Library Manager and search for 'Adafruit seesaw Peri
 Select STM32duino's generic **STM32C011F6Ux** target and start with
 `examples/example_stm32c011`. This backend supports GPIO direction, bulk
 read/write/toggle, pull-up/pull-down selection, optional active-low GPIO change
-interrupts, 12-bit ADC reads, PWM, and NeoPixel. UART, encoder, EEPROM, FHT, SPI,
+interrupts, 12-bit ADC reads, PWM, NeoPixel, and encoders. UART, EEPROM, FHT, SPI,
 and ROM-bootloader features are not included in this core port.
 
 I2C uses PB7 (SDA) and PB6 (SCL), with address `0x49` in the example. The target
@@ -40,3 +40,18 @@ buffer writes preserve only the portion that fits. Storage is allocated once;
 `begin()` fails if allocation fails. Software reset clears the buffer and pin
 selection. SHOW releases its selected pin from PWM and temporarily masks
 interrupts while sending data, delaying I2C service and GPIO-change polling.
+
+Enable `CONFIG_ENCODER` and set `CONFIG_NUM_ENCODERS` from 1 through 4, with
+`CONFIG_ENCODER0_A_PIN` / `CONFIG_ENCODER0_B_PIN` and corresponding pairs for
+additional encoders. Each input must be a distinct valid GPIO. Inputs start with
+pull-ups; connect a mechanical encoder's common terminal to ground. Keep these
+pins configured as inputs while using the encoder.
+
+Position and delta are signed 32-bit values. Reading either clears that
+encoder's delta. With `CONFIG_INTERRUPT_PIN` configured, enable interrupts per
+encoder to assert the shared active-low output while its delta is nonzero;
+reading one encoder does not clear another encoder's pending interrupt. Counting
+also works without an interrupt pin. `CONFIG_ENCODER_2TICKS` selects the shared
+decoder's two-tick mode. Encoders are polled by `run()`, so long NeoPixel shows
+or slow application code can miss transitions. Reset clears counts and interrupt
+enables and samples each input's current phase.
