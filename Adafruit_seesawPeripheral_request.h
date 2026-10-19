@@ -104,6 +104,9 @@ void Adafruit_seesawPeripheral_processRequest(uint8_t base_cmd,
       Adafruit_seesawPeripheral_write32(value);
       // Reading either register clears the accumulated delta.
       g_enc_delta[encoder_num] = 0;
+#if defined(ARDUINO_ARCH_STM32) && CONFIG_INTERRUPT
+      Adafruit_seesawPeripheral_clearIRQ();
+#endif
     }
   }
 #endif

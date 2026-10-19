@@ -5,9 +5,8 @@
 #ifndef ADAFRUIT_SEESAWPERIPHERAL_STM32_H
 #define ADAFRUIT_SEESAWPERIPHERAL_STM32_H
 
-#if CONFIG_UART || CONFIG_ENCODER || CONFIG_EEPROM || CONFIG_FHT
-#error                                                                         \
-    "The STM32C011 backend currently supports GPIO, ADC, PWM, and NeoPixel only"
+#if CONFIG_UART || CONFIG_EEPROM || CONFIG_FHT
+#error "UART, EEPROM, and FHT are not yet supported on STM32C011"
 #endif
 #if USE_PINCHANGE_INTERRUPT
 #error "The STM32C011 backend polls GPIO changes from run()"
@@ -71,6 +70,42 @@ uint8_t Adafruit_seesawPeripheral_applyAddressStraps(uint8_t address) {
 }
 
 namespace SeesawSTM32 {
+#if CONFIG_ENCODER
+static_assert(CONFIG_NUM_ENCODERS >= 1 && CONFIG_NUM_ENCODERS <= 4,
+              "Configure between one and four encoders");
+constexpr uint8_t encoderPins[CONFIG_NUM_ENCODERS][2] = {
+    {CONFIG_ENCODER0_A_PIN, CONFIG_ENCODER0_B_PIN},
+#if CONFIG_NUM_ENCODERS > 1
+    {CONFIG_ENCODER1_A_PIN, CONFIG_ENCODER1_B_PIN},
+#endif
+#if CONFIG_NUM_ENCODERS > 2
+    {CONFIG_ENCODER2_A_PIN, CONFIG_ENCODER2_B_PIN},
+#endif
+#if CONFIG_NUM_ENCODERS > 3
+    {CONFIG_ENCODER3_A_PIN, CONFIG_ENCODER3_B_PIN},
+#endif
+}; ///< Protocol pin indices for each encoder's A/B inputs.
+
+/** @brief Require distinct encoder inputs on exposed, unreserved GPIOs. */
+constexpr bool validEncoderPins() {
+  uint32_t used = 0;
+  for (uint8_t encoder = 0; encoder < CONFIG_NUM_ENCODERS; encoder++) {
+    for (uint8_t channel = 0; channel < 2; channel++) {
+      uint8_t pin = encoderPins[encoder][channel];
+      if (pin >= 32 || !(VALID_GPIO & (1UL << pin)) || (used & (1UL << pin))) {
+        return false;
+      }
+      used |= 1UL << pin;
+    }
+  }
+  return true;
+}
+static_assert(validEncoderPins(), "Encoder pins must be distinct valid GPIOs");
+#if CONFIG_INTERRUPT
+volatile uint8_t encoderInterrupts =
+    0; ///< Per-encoder interrupt-enable bitmap.
+#endif
+#endif
 #if CONFIG_NEOPIXEL
 static_assert(CONFIG_NEOPIXEL_BUF_MAX > 0 && CONFIG_NEOPIXEL_BUF_MAX <= 65532,
               "NeoPixel capacity must fit the library's 16-bit byte count");
@@ -141,16 +176,28 @@ GPIO_TypeDef *irqPort;           ///< Cached open-drain interrupt port.
 uint32_t irqPinMask;             ///< Interrupt pin bit.
 volatile bool irqActive = false; ///< Last published IRQ state.
 
-/** @brief Publish latched GPIO changes on the active-low interrupt pin. */
-void updateIRQ() {
+/** @brief Check all sources sharing the active-low interrupt output. */
+bool pendingIRQ() {
   bool active = g_irqFlags != 0;
+#if CONFIG_ENCODER
+  for (uint8_t encoder = 0; encoder < CONFIG_NUM_ENCODERS; encoder++) {
+    active |=
+        (encoderInterrupts & (1U << encoder)) && g_enc_delta[encoder] != 0;
+  }
+#endif
+  return active;
+}
+
+/** @brief Publish pending GPIO or encoder changes on the interrupt pin. */
+void updateIRQ() {
+  bool active = pendingIRQ();
   if (active == irqActive) {
     return;
   }
   uint32_t savedMask = __get_PRIMASK();
   __disable_irq();
   // A read-to-clear callback may have run before interrupts were masked.
-  active = g_irqFlags != 0;
+  active = pendingIRQ();
   if (active) {
     irqPort->BSRR = irqPinMask << 16;
   } else {
@@ -220,6 +267,21 @@ void prepareFirstByte() {
   else if (selectedBase == SEESAW_TIMER_BASE &&
            selectedRegister == SEESAW_TIMER_STATUS) {
     seesawWire.setFirstByte(&g_pwmStatus);
+  }
+#endif
+#if CONFIG_ENCODER
+  else if (selectedBase == SEESAW_ENCODER_BASE) {
+    uint8_t encoder = selectedRegister & 0x0F;
+    uint8_t command = selectedRegister & 0xF0;
+    if (encoder < CONFIG_NUM_ENCODERS) {
+      if (command == SEESAW_ENCODER_POSITION) {
+        seesawWire.setFirstByte(
+            (const volatile uint8_t *)&g_enc_value[encoder] + 3);
+      } else if (command == SEESAW_ENCODER_DELTA) {
+        seesawWire.setFirstByte(
+            (const volatile uint8_t *)&g_enc_delta[encoder] + 3);
+      }
+    }
   }
 #endif
 }
@@ -294,6 +356,24 @@ void reset() {
   g_irqGPIO = g_irqFlags = 0;
 #endif
   applyGPIO(VALID_GPIO);
+#if CONFIG_ENCODER
+#if CONFIG_INTERRUPT
+  encoderInterrupts = 0;
+#endif
+  for (uint8_t encoder = 0; encoder < CONFIG_NUM_ENCODERS; encoder++) {
+    pinMode(encoderPins[encoder][0], INPUT_PULLUP);
+    pinMode(encoderPins[encoder][1], INPUT_PULLUP);
+    uint32_t bits =
+        (1UL << encoderPins[encoder][0]) | (1UL << encoderPins[encoder][1]);
+    pull |= bits;
+    output |= bits;
+    // The shared decoder uses active-low phases; sample the actual idle state.
+    g_enc_prev_pos[encoder] = 3 ^ (digitalRead(encoderPins[encoder][0]) |
+                                   (digitalRead(encoderPins[encoder][1]) << 1));
+    g_enc_value[encoder] = g_enc_delta[encoder] = 0;
+    g_enc_flags[encoder] = 0;
+  }
+#endif
 #if CONFIG_NEOPIXEL
   g_neopixel_pin = 0xFF;
   g_neopixel_bufsize = 0;
@@ -329,7 +409,8 @@ void reset() {
   lastGPIO = readGPIO();
 }
 
-/** @brief Apply address straps, falling back to the base on reserved addresses. */
+/** @brief Apply address straps, falling back to the base on reserved addresses.
+ */
 uint8_t configuredAddress() {
   uint8_t result =
       Adafruit_seesawPeripheral_applyAddressStraps(CONFIG_I2C_PERIPH_ADDR);
@@ -397,11 +478,8 @@ void Adafruit_seesawPeripheral_gpioPull(uint32_t mask, bool enabled) {
 }
 
 #if CONFIG_INTERRUPT
-/** @brief Release the active-low open-drain interrupt output. */
-void Adafruit_seesawPeripheral_clearIRQ(void) {
-  SeesawSTM32::irqPort->BSRR = SeesawSTM32::irqPinMask;
-  SeesawSTM32::irqActive = false;
-}
+/** @brief Release the interrupt only after all enabled sources are cleared. */
+void Adafruit_seesawPeripheral_clearIRQ(void) { SeesawSTM32::updateIRQ(); }
 
 /** @brief Enable or disable change reporting for one valid GPIO pin. */
 void Adafruit_seesawPeripheral_setGPIOInterrupt(uint8_t pin, bool enabled) {
@@ -419,6 +497,24 @@ void Adafruit_seesawPeripheral_setGPIOInterrupt(uint8_t pin, bool enabled) {
     __set_PRIMASK(savedMask);
     updateIRQ();
   }
+}
+#endif
+
+#if CONFIG_ENCODER
+/** @brief Enable or disable one encoder's contribution to the shared IRQ. */
+void Adafruit_seesawPeripheral_setEncoderInterrupt(uint8_t encoder,
+                                                   bool enabled) {
+#if CONFIG_INTERRUPT
+  if (enabled) {
+    SeesawSTM32::encoderInterrupts |= 1U << encoder;
+  } else {
+    SeesawSTM32::encoderInterrupts &= ~(1U << encoder);
+  }
+  SeesawSTM32::updateIRQ();
+#else
+  (void)encoder;
+  (void)enabled;
+#endif
 }
 #endif
 
@@ -578,8 +674,16 @@ void Adafruit_seesawPeripheral_run(void) {
     tail = (tail + 1) % queueSize;
     Adafruit_seesawPeripheral_processCommand(command.data, command.length);
   }
-#if CONFIG_INTERRUPT
+#if CONFIG_INTERRUPT || CONFIG_ENCODER
   uint32_t current = readGPIO();
+#if CONFIG_ENCODER
+  for (uint8_t encoder = 0; encoder < CONFIG_NUM_ENCODERS; encoder++) {
+    uint8_t phase = 3 ^ (((current >> encoderPins[encoder][0]) & 1U) |
+                         (((current >> encoderPins[encoder][1]) & 1U) << 1));
+    Adafruit_seesawPeripheral_updateEncoder(encoder, phase);
+  }
+#endif
+#if CONFIG_INTERRUPT
   uint32_t changed = (current ^ lastGPIO) & g_irqGPIO;
   lastGPIO = current;
   if (changed) {
@@ -589,6 +693,7 @@ void Adafruit_seesawPeripheral_run(void) {
     __set_PRIMASK(savedMask);
   }
   updateIRQ();
+#endif
 #endif
 }
 #endif
