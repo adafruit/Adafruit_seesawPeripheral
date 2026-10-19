@@ -1102,6 +1102,7 @@ Adafruit_seesawPeripheral_write32(uint32_t value) {
 }
 
 #include "Adafruit_seesawPeripheral_main.h"
+#include "Adafruit_seesawPeripheral_i2c.h"
 #include "Adafruit_seesawPeripheral_receive.h"
 #include "Adafruit_seesawPeripheral_request.h"
 #endif
