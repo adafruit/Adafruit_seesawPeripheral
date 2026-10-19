@@ -132,32 +132,12 @@ void receiveEvent(int howMany) {
       g_pwmStatus = 0x1; // error, invalid pin!
     } else if (module_cmd == SEESAW_TIMER_PWM) {
       // its valid!
-#if CONFIG_PWM
-      value >>= 8;  // we only support 8 bit analogwrites
-#endif
       SEESAW_DEBUG(F("PWM "));
       SEESAW_DEBUG(pin);
       SEESAW_DEBUG(F(": "));
       SEESAW_DEBUGLN(value);
 
-      pinMode(pin, OUTPUT);
-#if CONFIG_PWM
-      analogWrite(pin, value);
-#elif CONFIG_PWM_16BIT
-      // set duty cycle via CMPx
-      uint16_t duty_cycle = map(value, 0, 0xFFFF, 0, TCA0.SINGLE.PER);
-      pin -= PWM_WO_OFFSET;
-      if (pin == 0) {
-        TCA0.SINGLE.CTRLB |= TCA_SINGLE_CMP2EN_bm;
-        TCA0.SINGLE.CMP2 = duty_cycle;
-      } else if (pin == 1) {
-        TCA0.SINGLE.CTRLB |= TCA_SINGLE_CMP1EN_bm;
-        TCA0.SINGLE.CMP1 = duty_cycle;
-      } else if (pin == 2) {
-        TCA0.SINGLE.CTRLB |= TCA_SINGLE_CMP0EN_bm;
-        TCA0.SINGLE.CMP0 = duty_cycle;
-      }
-#endif
+      Adafruit_seesawPeripheral_setPWM(pin, value);
       g_pwmStatus = 0x0;
     }
     else if (module_cmd == SEESAW_TIMER_FREQ) {
