@@ -257,11 +257,7 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
 #if CONFIG_FHT && defined(MEGATINYCORE)
   else if (base_cmd == SEESAW_SPECTRUM_BASE) {
     if ((module_cmd == SEESAW_SPECTRUM_RATE) && (howMany == 3)) {
-      ADC0.INTCTRL &= ~ADC_RESRDY_bm;          // Disable result-ready IRQ
-      uint8_t rate = packet[2];            // Requested rate index
-      if (rate > 31) rate = 31;                // Clip rate between 0-31
-      ADC0.SAMPCTRL = rate & 31;               // Set ADC sample control
-      Adafruit_seesawPeripheral_restartSampling(); // Purge recording, start over
+      Adafruit_seesawPeripheral_setSpectrumRate(packet[2]);
     } else if ((module_cmd == SEESAW_SPECTRUM_CHANNEL) && (howMany == 3)) {
       ADC0.INTCTRL &= ~ADC_RESRDY_bm;          // Disable result-ready IRQ
       uint8_t channel = packet[2];         // Requested ADC channel
