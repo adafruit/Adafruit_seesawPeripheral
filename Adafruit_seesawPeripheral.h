@@ -392,32 +392,27 @@ void Adafruit_seesawPeripheral_updateEncoder(uint8_t encodernum,
 uint8_t _i2c_addr = CONFIG_I2C_PERIPH_ADDR;
 
 void Adafruit_seesawPeripheral_setDatecode(void) {
-
-  char buf[12];
-  char *bufp = buf;
-  int month = 0, day = 0, year = 2000;
-  static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
-
-  strncpy(buf, __DATE__, 11);
-  buf[11] = 0;
-
-  bufp[3] = 0;
-  month = (strstr(month_names, bufp)-month_names)/3 + 1;
-
-  bufp += 4;
-  bufp[2] = 0;
-  day = atoi(bufp);
-
-  bufp += 3;
-  year = atoi(bufp);
-
-  DATE_CODE = day & 0x1F; // top 5 bits are day of month
-
-  DATE_CODE <<= 4;
-  DATE_CODE |= month & 0xF; // middle 4 bits are month
-
-  DATE_CODE <<= 7;
-  DATE_CODE |= (year - 2000) & 0x3F; // bottom 7 bits are year
+  const char *date = __DATE__;
+  const char *months = "JanFebMarAprMayJunJulAugSepOctNovDec";
+  uint8_t month = 1;
+  for (; month <= 12; month++) {
+    uint8_t pos = (month - 1) * 3;
+    if (date[0] == months[pos] && date[1] == months[pos + 1] &&
+        date[2] == months[pos + 2]) {
+      break;
+    }
+  }
+  uint8_t day = date[5] - '0';
+  if (date[4] != ' ') {
+    day += (date[4] - '0') * 10;
+  }
+  uint16_t year = 0;
+  for (uint8_t i = 7; i < 11; i++) {
+    year = year * 10 + date[i] - '0';
+  }
+  // Preserve the day/month/year layout and legacy 6-bit year mask.
+  DATE_CODE =
+      ((uint16_t)day << 11) | ((uint16_t)month << 7) | ((year - 2000) & 0x3F);
 }
 
 
