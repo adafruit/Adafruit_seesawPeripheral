@@ -629,6 +629,19 @@ Adafruit_seesawPeripheral_read16(const volatile uint8_t *data) {
 }
 
 /**
+ * @brief Read a 32-bit command value, most significant byte first.
+ * @param data Pointer to four bytes in the command buffer.
+ * @return Decoded value.
+ */
+__attribute__((always_inline)) inline uint32_t
+Adafruit_seesawPeripheral_read32(const volatile uint8_t *data) {
+  uint32_t value = data[0];
+  value = (value << 8) | data[1];
+  value = (value << 8) | data[2];
+  return (value << 8) | data[3];
+}
+
+/**
  * @brief Write a 16-bit value to the I2C reply, most significant byte
  * first.
  * @param value Value to send.
