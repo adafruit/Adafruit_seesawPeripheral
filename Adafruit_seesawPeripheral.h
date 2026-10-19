@@ -880,6 +880,31 @@ void Adafruit_seesawPeripheral_setUARTBaud(uint32_t baud) {
     CONFIG_UART_SERCOM.begin(g_uart_baud);
   }
 }
+
+/**
+ * @brief Copy a UART write into the buffer drained by the main loop.
+ * @param data Payload bytes to transmit.
+ * @param length Payload length; oversized writes clear the pending length.
+ */
+void Adafruit_seesawPeripheral_queueUARTData(const volatile uint8_t *data,
+                                             uint8_t length) {
+  g_uart_tx_len = length;
+  if (g_uart_tx_len <= CONFIG_UART_BUF_MAX) {
+    for (uint8_t i = 0; i < g_uart_tx_len; i++) {
+      g_uart_buf[i] = data[i];
+    }
+  } else {
+    g_uart_tx_len = 0;
+  }
+}
+
+/**
+ * @brief Read one byte from the UART receive buffer.
+ * @return Byte value, or -1 if no data is available.
+ */
+int Adafruit_seesawPeripheral_readUARTData(void) {
+  return CONFIG_UART_SERCOM.read();
+}
 #endif
 
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {

@@ -265,14 +265,7 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
       uint32_t newBaud = Adafruit_seesawPeripheral_read32(&packet[2]);
       Adafruit_seesawPeripheral_setUARTBaud(newBaud);
     } else if (module_cmd == SEESAW_SERCOM_DATA) {
-      g_uart_tx_len = howMany - 2;
-      if (g_uart_tx_len <= CONFIG_UART_BUF_MAX) {
-        for (uint8_t i=0; i<g_uart_tx_len; i++) {
-          g_uart_buf[i] = packet[i+2];
-        }
-      } else {
-        g_uart_tx_len = 0;
-      }
+      Adafruit_seesawPeripheral_queueUARTData(&packet[2], howMany - 2);
     }
   }
 #endif
