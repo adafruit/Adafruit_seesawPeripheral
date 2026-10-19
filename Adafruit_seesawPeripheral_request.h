@@ -111,10 +111,7 @@ void requestEvent(void) {
     } else if (module_cmd == SEESAW_SERCOM_INTEN) {
       Wire.write(g_uart_inten);
     } else if (module_cmd == SEESAW_SERCOM_BAUD) {
-      Wire.write((g_uart_baud >> 24) & 0xFF);
-      Wire.write((g_uart_baud >> 16) & 0xFF);
-      Wire.write((g_uart_baud >> 8) & 0xFF);
-      Wire.write(g_uart_baud & 0xFF);
+      Adafruit_seesawPeripheral_write32(g_uart_baud);
     } else if (module_cmd == SEESAW_SERCOM_DATA) {
       Wire.write(CONFIG_UART_SERCOM.read());
     }
