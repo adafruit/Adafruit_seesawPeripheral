@@ -226,8 +226,11 @@ uint16_t DATE_CODE = 0;
 void Adafruit_seesawPeripheral_reset(void);
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins);
 void receiveEvent(int howMany);
+// Keep the decoder separate under LTO. Inlining it can trigger short
+// interrupt-vector jump overflows with the 8 KB tinyAVR linker.
 void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
-                                              int howMany);
+                                              int howMany)
+    __attribute__((noinline));
 void requestEvent(void);
 void Adafruit_seesawPeripheral_run(void);
 void Adafruit_seesawPeripheral_changedGPIO(void);
