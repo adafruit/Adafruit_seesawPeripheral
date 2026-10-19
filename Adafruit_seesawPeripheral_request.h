@@ -10,6 +10,17 @@ void requestEvent(void) {
     }
     if (module_cmd == SEESAW_STATUS_VERSION) {
       Adafruit_seesawPeripheral_write32(CONFIG_VERSION | DATE_CODE); // instant reply
+    } else if (module_cmd == SEESAW_STATUS_OPTIONS) {
+      uint32_t options =
+          (1UL << SEESAW_STATUS_BASE) | (1UL << SEESAW_GPIO_BASE) |
+          ((uint32_t)CONFIG_ADC << SEESAW_ADC_BASE) |
+          ((uint32_t)(CONFIG_PWM || CONFIG_PWM_16BIT) << SEESAW_TIMER_BASE) |
+          ((uint32_t)CONFIG_EEPROM << SEESAW_EEPROM_BASE) |
+          ((uint32_t)CONFIG_NEOPIXEL << SEESAW_NEOPIXEL_BASE) |
+          ((uint32_t)CONFIG_UART << SEESAW_SERCOM0_BASE) |
+          ((uint32_t)CONFIG_ENCODER << SEESAW_ENCODER_BASE) |
+          ((uint32_t)CONFIG_FHT << SEESAW_SPECTRUM_BASE);
+      Adafruit_seesawPeripheral_write32(options);
     }
   } else if (base_cmd == SEESAW_GPIO_BASE) {
     if (module_cmd == SEESAW_GPIO_BULK) {
