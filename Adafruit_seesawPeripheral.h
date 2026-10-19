@@ -75,32 +75,6 @@ void foo(void);
 #define USE_PINCHANGE_INTERRUPT 0
 #endif
 
-/******** FHT (audio spectrum) */
-// FHT is ONLY supported on megaTinyCore (AVR), and will only fit if NO OTHER
-// seesaw variants are enabled (i.e. NO GPIO or ADC at same time). Mostly due
-// to flash space and/or RAM (literally zero overhead on ATtiny816/817), but
-// also because ADC for audio-in requires free-run mode which takes exclusive
-// use of the ADC MUX anyway. Input pin is currently #defined here, not
-// passed over via Seesaw lib. That might be possible if needed, but since
-// there's zero RAM remaining, might have to rely on dirty pool like using
-// one of the other ADC registers not in use (TEMP or CTRLE) as a temporary
-// holding spot to get that value into Adafruit_seesawPeripheral_reset().
-// Also FYI, this depends on the FHT library which is NOT available via the
-// Arduino Library Manager and must be separately installed.
-#if CONFIG_FHT && defined(MEGATINYCORE)
-#if CONFIG_ADC
-#error("Cannot enable both CONFIG_ADC and CONFIG_FHT")
-#endif
-// Currently set up for size 128 FHT (64 spectrum outputs). 256 (128 out)
-// is an option IF a larger chip (1K RAM or better) is used; won't fit on
-// smaller parts. For now, is set for small part...
-#define FHT_N 128
-#define LOG_OUT 1
-#include <FHT.h>
-#define FHT_DEFAULT_PIN 0 // Arduino pin # for input (if no channel select)
-#define DISABLE_MILLIS    // FHT is exclusive (no GPIO, etc.), can do this
-#endif
-
 uint16_t DATE_CODE = 0;
 
 #define CONFIG_VERSION (((uint32_t)PRODUCT_CODE << 16) | DATE_CODE)
@@ -171,10 +145,6 @@ void Adafruit_seesawPeripheral_changedGPIO(void);
 
 volatile uint32_t g_bufferedBulkGPIORead =
     0; ///< GPIO snapshot for the next read.
-
-#if CONFIG_FHT && defined(MEGATINYCORE)
-volatile uint8_t fht_counter; // For filling FHT input buffer
-#endif
 
 #if CONFIG_INTERRUPT
 volatile uint32_t g_irqGPIO = 0;
@@ -370,7 +340,7 @@ bool Adafruit_seesawPeripheral_begin(void) {
 void Adafruit_seesawPeripheral_reset(void) {
   Adafruit_seesawPeripheral_setDatecode();
 
-  cli();
+  Adafruit_seesawPeripheral_enableInterrupts(false);
 
   SEESAW_DEBUGLN(F("Wire end"));
   Adafruit_seesawPeripheral_endI2C();
@@ -392,16 +362,7 @@ void Adafruit_seesawPeripheral_reset(void) {
   SEESAW_DEBUG(F("I2C 0x"));
   SEESAW_DEBUGLN(_i2c_addr, HEX);
 
-  uint32_t pins = VALID_GPIO;
-  for (uint8_t pin = 0; pin < 32; pin++) {
-    if ((pins >> pin) & 0x1) {
-      pinMode(pin, INPUT);
-      digitalWrite(pin, 0);
-#if USE_PINCHANGE_INTERRUPT
-      detachInterrupt(digitalPinToInterrupt(pin));
-#endif
-    }
-  }
+  Adafruit_seesawPeripheral_initializeGPIO();
 #if CONFIG_INTERRUPT
   g_irqGPIO = 0;
   g_irqFlags = 0;
@@ -409,18 +370,8 @@ void Adafruit_seesawPeripheral_reset(void) {
 #if CONFIG_ADC
   g_adcStatus = 0;
 #endif
-#if CONFIG_PWM
-  g_pwmStatus = 0;
-  // PWM is provided by BSP's analogWrite() and tone()
-#elif CONFIG_PWM_16BIT
-  g_pwmStatus = 0;
-  // TCA0 is used for 16 bit PWM support
-  takeOverTCA0();
-  PORTMUX.CTRLC |= 0b111;    // Alternate WOx output pin locations
-  TCA0.SINGLE.PER = 0xFFFF;  // Set TOP to MAX
-  TCA0.SINGLE.CTRLB = 0x03;  // Single-slope PWM, WG outputs off
-  TCA0.SINGLE.CTRLD = 0x00;  // Disable Split Mode
-  TCA0.SINGLE.CTRLA = 0x01;  // Enable TCA0 peripheral
+#if CONFIG_PWM || CONFIG_PWM_16BIT
+  Adafruit_seesawPeripheral_initializePWM();
 #endif
 #if CONFIG_NEOPIXEL
   for (uint16_t i = 0; i < CONFIG_NEOPIXEL_BUF_MAX; i++) {
@@ -429,30 +380,7 @@ void Adafruit_seesawPeripheral_reset(void) {
   g_neopixel_bufsize = 0;
 #endif
 #if CONFIG_ENCODER
-#if defined(CONFIG_ENCODER0_A_PIN)
-  pinMode(CONFIG_ENCODER0_A_PIN, INPUT_PULLUP);
-#endif
-#if defined(CONFIG_ENCODER0_B_PIN)
-  pinMode(CONFIG_ENCODER0_B_PIN, INPUT_PULLUP);
-#endif
-#if defined(CONFIG_ENCODER1_A_PIN)
-  pinMode(CONFIG_ENCODER1_A_PIN, INPUT_PULLUP);
-#endif
-#if defined(CONFIG_ENCODER1_B_PIN)
-  pinMode(CONFIG_ENCODER1_B_PIN, INPUT_PULLUP);
-#endif
-#if defined(CONFIG_ENCODER2_A_PIN)
-  pinMode(CONFIG_ENCODER2_A_PIN, INPUT_PULLUP);
-#endif
-#if defined(CONFIG_ENCODER2_B_PIN)
-  pinMode(CONFIG_ENCODER2_B_PIN, INPUT_PULLUP);
-#endif
-#if defined(CONFIG_ENCODER3_A_PIN)
-  pinMode(CONFIG_ENCODER3_A_PIN, INPUT_PULLUP);
-#endif
-#if defined(CONFIG_ENCODER3_B_PIN)
-  pinMode(CONFIG_ENCODER3_B_PIN, INPUT_PULLUP);
-#endif
+  Adafruit_seesawPeripheral_initializeEncoderPins();
 
   for (uint8_t encodernum=0; encodernum<CONFIG_NUM_ENCODERS; encodernum++) {
     g_enc_value[encodernum] = 0;
@@ -463,58 +391,15 @@ void Adafruit_seesawPeripheral_reset(void) {
 #endif
 
 #if CONFIG_FHT && defined(MEGATINYCORE)
-#ifdef DISABLE_MILLIS
-#if defined(MILLIS_USE_TIMERA0)
-  TCA0.SPLIT.INTCTRL &= ~TCA_SPLIT_HUNF_bm;
-#elif defined(MILLIS_USE_TIMERA1)
-  TCA1.SPLIT.INTCTRL &= ~TCA_SPLIT_HUNF_bm;
-#elif defined(MILLIS_USE_TIMERB0)
-  TCB0.INTCTRL &= ~TCB_CAPT_bm;
-#elif defined(MILLIS_USE_TIMERB1)
-  TCB1.INTCTRL &= ~TCB_CAPT_bm;
-#elif defined(MILLIS_USE_TIMERD0)
-  TCD0.INTCTRL &= ~TCD_OVF_bm;
-#endif
-#endif // end DISABLE_MILLIS
-
-  // ADC is configured for free-run mode with result-ready interrupt. 10-bit
-  // w/4X accumulation for 12-bit result (0-4092, NOT 4095, because it's the
-  // sum of four 10-bit values, not "true" 12-bit ADC reading).
-  // Assuming 10 MHz or 20 MHz F_CPU, possible sampling rates are:
-  // 1.25 MHz / 4X samples / 25 ADC cycles/sample -> 12500 Hz sample rate.
-  // Highest frequency is 1/2 sampling rate, or 6250 Hz (just under G8 at
-  // 6272 Hz). That’s a default that looks nice, but there's some adjustability
-  // if needed, with the following top frequency range:
-  // 1.25 MHz / 4X / (13+0)  = 24038 sample rate = 12019 peak freq
-  // 1.25 MHz / 4X / (13+31) = 7102 sample rate = 3551 peak freq
-  // Other F_CPU values (8, 12, 16) will result in different ranges.
-  // Depending on what mic is used and its outpot voltage range, might want
-  // to change AREF to another source. Right now it's the default VDD.
-
-  fht_counter = 0; // For filling FHT input buffer
-
-  ADC0.CTRLA = ADC_FREERUN_bm | ADC_ENABLE_bm; // 10-bit, free-run, enable ADC
-  ADC0.CTRLB = ADC_SAMPNUM_ACC4_gc;   // Accumulate 4X (0-4092 (sic.) result)
-  ADC0.CTRLC = ADC_SAMPCAP_bm |       // Reduced capacitance for >1V AREF
-               ADC_REFSEL_VDDREF_gc | // VDD as AREF
-#if F_CPU > 12000000
-               ADC_PRESC_DIV16_gc; // 16:1 timer prescale (20->1.25 MHz)
-#else
-               ADC_PRESC_DIV8_gc; // 8:1 timer prescale (10->1.25 MHz)
-#endif
-  ADC0.CTRLD = 0; // No init or sample delay
-  ADC0.MUXPOS = digitalPinToAnalogInput(FHT_DEFAULT_PIN);
-  ADC0.SAMPCTRL = 12; // Add to usu. 13 ADC cycles for 25 cycles/sample
-  ADC0.INTCTRL |= ADC_RESRDY_bm; // Enable result-ready interrupt
-  ADC0.COMMAND |= ADC_STCONV_bm; // Start free-run conversion
+  Adafruit_seesawPeripheral_initializeSpectrum();
 #endif
 
 #if CONFIG_UART
-  CONFIG_UART_SERCOM.begin(g_uart_baud);
+  Adafruit_seesawPeripheral_initializeUART();
 #endif
 
   Adafruit_seesawPeripheral_beginI2C(_i2c_addr);
-  sei();
+  Adafruit_seesawPeripheral_enableInterrupts(true);
 }
 
 

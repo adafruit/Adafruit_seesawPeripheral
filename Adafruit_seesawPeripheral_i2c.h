@@ -94,4 +94,19 @@ void requestEvent(void) {
   Adafruit_seesawPeripheral_processRequest(base_cmd, module_cmd);
 }
 
+#if CONFIG_FHT && defined(MEGATINYCORE)
+/**
+ * @brief Control I2C peripheral interrupts while updating the FHT reply buffer.
+ * @param enabled True to resume replies, false to defer them.
+ */
+__attribute__((always_inline)) inline void
+Adafruit_seesawPeripheral_enableI2CInterrupts(bool enabled) {
+  if (enabled) {
+    TWI0.SCTRLA |= TWI_DIEN_bm | TWI_APIEN_bm | TWI_PIEN_bm;
+  } else {
+    TWI0.SCTRLA &= ~(TWI_DIEN_bm | TWI_APIEN_bm | TWI_PIEN_bm);
+  }
+}
+#endif
+
 #endif
