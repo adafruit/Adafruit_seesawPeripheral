@@ -225,35 +225,13 @@ void receiveEvent(int howMany) {
     if ((module_cmd & 0xF0) ==  SEESAW_ENCODER_INTENSET) {
       encoder_num = module_cmd & 0x0F;
       if (encoder_num < CONFIG_NUM_ENCODERS) {
-        if (encoder_num == 0) {
-          g_irqGPIO |= ENCODER0_INPUT_MASK;
-        }
-        if (encoder_num == 1) {
-          g_irqGPIO |= ENCODER1_INPUT_MASK;
-        }
-        if (encoder_num == 2) {
-          g_irqGPIO |= ENCODER2_INPUT_MASK;
-        }
-        if (encoder_num == 3) {
-          g_irqGPIO |= ENCODER3_INPUT_MASK;
-        }
+        g_irqGPIO |= Adafruit_seesawPeripheral_encoderInputMask(encoder_num);
       }
     }
     else if ((module_cmd & 0xF0) ==  SEESAW_ENCODER_INTENCLR) {
       encoder_num = module_cmd & 0x0F;
       if (encoder_num < CONFIG_NUM_ENCODERS) {
-        if (encoder_num == 0) {
-          g_irqGPIO &= ~ENCODER0_INPUT_MASK;
-        }
-        if (encoder_num == 1) {
-          g_irqGPIO &= ~ENCODER1_INPUT_MASK;
-        }
-        if (encoder_num == 2) {
-          g_irqGPIO &= ~ENCODER2_INPUT_MASK;
-        }
-        if (encoder_num == 3) {
-          g_irqGPIO &= ~ENCODER3_INPUT_MASK;
-        }
+        g_irqGPIO &= ~Adafruit_seesawPeripheral_encoderInputMask(encoder_num);
       }
     }
     else if ((module_cmd & 0xF0) ==  SEESAW_ENCODER_POSITION) {
