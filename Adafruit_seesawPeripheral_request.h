@@ -101,16 +101,14 @@ void Adafruit_seesawPeripheral_processRequest(uint8_t base_cmd,
     // this will only be possible if using an ATtiny part with 1K RAM
     // or better; won't fit on smaller devices.
     if (module_cmd == SEESAW_SPECTRUM_RESULTS_LOWER) {
-      Adafruit_seesawPeripheral_writeBuffer(fht_log_out, 32);
+      Adafruit_seesawPeripheral_writeBuffer(
+          Adafruit_seesawPeripheral_spectrumBuffer(), 32);
     } else if (module_cmd == SEESAW_SPECTRUM_RESULTS_UPPER) {
-      Adafruit_seesawPeripheral_writeBuffer(&fht_log_out[32], 32);
+      Adafruit_seesawPeripheral_writeBuffer(
+          Adafruit_seesawPeripheral_spectrumBuffer() + 32, 32);
     } else if (module_cmd == SEESAW_SPECTRUM_CHANNEL) {
-      // TO DO: this should re-map the current MUXPOS setting to the same
-      // channel mapping as is used in Adafruit_seesawPeripheral_receive.h --
-      // see notes over there. Prob just two values. For now though, for the
-      // sake of initial testing, this just returns the raw MUXPOS setting.
       Adafruit_seesawPeripheral_write8(
-          ADC0.MUXPOS); // Return current ADC channel
+          Adafruit_seesawPeripheral_readSpectrumChannel());
     } else if (module_cmd == SEESAW_SPECTRUM_RATE) {
       Adafruit_seesawPeripheral_write8(
           Adafruit_seesawPeripheral_readSpectrumRate());
