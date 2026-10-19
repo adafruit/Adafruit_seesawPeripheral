@@ -641,6 +641,20 @@ ISR(ADC0_RESRDY_vect) { // ADC conversion complete
 #endif
 
 
+/**
+ * @brief Write all valid GPIO pins from a bulk value.
+ * @param value Pin levels, with bit N controlling GPIO N.
+ */
+void Adafruit_seesawPeripheral_gpioBulk(uint32_t value) {
+  uint32_t pinmask = 0x1;
+  for (uint8_t pin = 0; pin < 32; pin++) {
+    if (VALID_GPIO & pinmask) {
+      digitalWrite(pin, (value >> pin) & 0x1);
+    }
+    pinmask <<= 1;
+  }
+}
+
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
   uint32_t temp = 0;
 
