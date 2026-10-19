@@ -1033,54 +1033,7 @@ uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
   return temp;
 }
 
-/**
- * @brief Read a 16-bit command value, most significant byte first.
- * @param data Pointer to two bytes in the command buffer.
- * @return Decoded value.
- */
-__attribute__((always_inline)) inline uint16_t
-Adafruit_seesawPeripheral_read16(const volatile uint8_t *data) {
-  return ((uint16_t)data[0] << 8) | data[1];
-}
-
-/**
- * @brief Read a 32-bit command value, most significant byte first.
- * @param data Pointer to four bytes in the command buffer.
- * @return Decoded value.
- */
-__attribute__((always_inline)) inline uint32_t
-Adafruit_seesawPeripheral_read32(const volatile uint8_t *data) {
-  uint32_t value = data[0];
-  value = (value << 8) | data[1];
-  value = (value << 8) | data[2];
-  return (value << 8) | data[3];
-}
-
 #include "Adafruit_seesawPeripheral_i2c.h"
-
-/**
- * @brief Write a 16-bit value to the I2C reply, most significant byte
- * first.
- * @param value Value to send.
- */
-__attribute__((always_inline)) inline void
-Adafruit_seesawPeripheral_write16(uint16_t value) {
-  Adafruit_seesawPeripheral_write8((uint8_t)(value >> 8));
-  Adafruit_seesawPeripheral_write8((uint8_t)value);
-}
-
-/**
- * @brief Write a 32-bit I2C reply, most significant byte first.
- * @param value Value to send.
- */
-__attribute__((always_inline)) inline void
-Adafruit_seesawPeripheral_write32(uint32_t value) {
-  Adafruit_seesawPeripheral_write8((uint8_t)(value >> 24));
-  Adafruit_seesawPeripheral_write8((uint8_t)(value >> 16));
-  Adafruit_seesawPeripheral_write8((uint8_t)(value >> 8));
-  Adafruit_seesawPeripheral_write8((uint8_t)value);
-}
-
 #include "Adafruit_seesawPeripheral_main.h"
 #include "Adafruit_seesawPeripheral_receive.h"
 #include "Adafruit_seesawPeripheral_request.h"
