@@ -710,6 +710,39 @@ void Adafruit_seesawPeripheral_setSpectrumRate(uint8_t rate) {
 uint8_t Adafruit_seesawPeripheral_readSpectrumRate(void) {
   return ADC0.SAMPCTRL;
 }
+
+/**
+ * @brief Select the FHT ADC input and restart capture.
+ * @param channel Raw ADC MUX value, passed through without validation.
+ */
+void Adafruit_seesawPeripheral_setSpectrumChannel(uint8_t channel) {
+  ADC0.INTCTRL &= ~ADC_RESRDY_bm; // Disable result-ready IRQ.
+  // TO DO: clip channel to valid range. Most likely this will just be
+  // 0 or 1 for mic vs. line-in. Value should then be mapped through a
+  // const table to either an Arduino pin number (which is then mapped
+  // through digitalPinToAnalogInput()) or an ADC MUX value directly
+  // (via the datasheet and how the corresponding board gets routed).
+  // For now, preserve the raw ADC MUX value, valid or not. Any future
+  // channel mapping must also be used by readSpectrumChannel().
+  ADC0.MUXPOS = channel;
+  Adafruit_seesawPeripheral_restartSampling();
+}
+
+/**
+ * @brief Read the FHT ADC input selection without channel remapping.
+ * @return Raw ADC MUX value.
+ */
+uint8_t Adafruit_seesawPeripheral_readSpectrumChannel(void) {
+  return ADC0.MUXPOS;
+}
+
+/**
+ * @brief Get the current logarithmic FHT output buffer.
+ * @return Read-only pointer to the FHT_N / 2 result bytes.
+ */
+const uint8_t *Adafruit_seesawPeripheral_spectrumBuffer(void) {
+  return fht_log_out;
+}
 #endif
 
 

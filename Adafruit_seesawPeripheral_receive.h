@@ -259,18 +259,7 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
     if ((module_cmd == SEESAW_SPECTRUM_RATE) && (howMany == 3)) {
       Adafruit_seesawPeripheral_setSpectrumRate(packet[2]);
     } else if ((module_cmd == SEESAW_SPECTRUM_CHANNEL) && (howMany == 3)) {
-      ADC0.INTCTRL &= ~ADC_RESRDY_bm;          // Disable result-ready IRQ
-      uint8_t channel = packet[2];         // Requested ADC channel
-      // TO DO: clip channel to valid range. Most likely this will just be
-      // 0 or 1 for mic vs. line-in. Value should then be mapped through a
-      // const table to either an Arduino pin number (which is then mapped
-      // through digitalPinToAnalogInput()) or an ADC MUX value directly
-      // (via the datasheet and how the corresponding board gets routed).
-      // For now though, for the sake of initial testing, it's taken as a
-      // direct ADC MUX value, valid or not. Final changes are only needed
-      // here, not in the Adafruit_Seesaw library.
-      ADC0.MUXPOS = channel;                   // Set ADC input MUX
-      Adafruit_seesawPeripheral_restartSampling(); // Purge recording, start over
+      Adafruit_seesawPeripheral_setSpectrumChannel(packet[2]);
     }
   }
 #endif
