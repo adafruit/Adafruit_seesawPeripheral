@@ -226,6 +226,8 @@ uint16_t DATE_CODE = 0;
 void Adafruit_seesawPeripheral_reset(void);
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins);
 void receiveEvent(int howMany);
+void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
+                                              int howMany);
 void requestEvent(void);
 void Adafruit_seesawPeripheral_run(void);
 void Adafruit_seesawPeripheral_changedGPIO(void);
