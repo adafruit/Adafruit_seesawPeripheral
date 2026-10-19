@@ -676,6 +676,9 @@ void Adafruit_seesawPeripheral_setGPIOInterrupt(uint8_t pin, bool enabled) {
  * @param enabled True to enable interrupts, false to disable them.
  */
 void Adafruit_seesawPeripheral_gpioInterrupt(uint32_t mask, bool enabled) {
+#if !CONFIG_INTERRUPT
+  (void)enabled;
+#endif
   mask &= VALID_GPIO;
   for (uint8_t pin = 0; pin < 32; pin++) {
     if ((mask >> pin) & 0x1) {
