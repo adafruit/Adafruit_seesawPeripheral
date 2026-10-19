@@ -57,20 +57,20 @@ void requestEvent(void) {
 
 #if CONFIG_ENCODER
   else if (base_cmd == SEESAW_ENCODER_BASE) {
-    uint8_t encoder_num = 0;
-    if ((module_cmd & 0xF0) == SEESAW_ENCODER_POSITION) {
-      encoder_num = module_cmd & 0x0F;
-      if (encoder_num < CONFIG_NUM_ENCODERS){
-        Adafruit_seesawPeripheral_write32(g_enc_value[encoder_num]);
-        g_enc_delta[encoder_num] = 0;
+    uint8_t encoder_num = module_cmd & 0x0F;
+    uint8_t command = module_cmd & 0xF0;
+    if (encoder_num < CONFIG_NUM_ENCODERS &&
+        (command == SEESAW_ENCODER_POSITION ||
+         command == SEESAW_ENCODER_DELTA)) {
+      int32_t value;
+      if (command == SEESAW_ENCODER_DELTA) {
+        value = g_enc_delta[encoder_num];
+      } else {
+        value = g_enc_value[encoder_num];
       }
-    }
-    else if ((module_cmd & 0xF0) == SEESAW_ENCODER_DELTA) {
-      encoder_num = module_cmd & 0x0F;
-      if (encoder_num < CONFIG_NUM_ENCODERS){
-        Adafruit_seesawPeripheral_write32(g_enc_delta[encoder_num]);
-        g_enc_delta[encoder_num] = 0;
-      }
+      Adafruit_seesawPeripheral_write32(value);
+      // Reading either register clears the accumulated delta.
+      g_enc_delta[encoder_num] = 0;
     }
   }
 #endif
