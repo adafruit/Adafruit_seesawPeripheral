@@ -1,6 +1,3 @@
-volatile uint32_t g_bufferedBulkGPIORead = 0;
-volatile uint16_t g_bufferedADCRead = 0;
-
 #if CONFIG_FHT && defined(MEGATINYCORE)
 // If ADC sampling rate or MUX channel is changed, this function gets
 // called to discard a couple of initial ADC readings (which are invalid

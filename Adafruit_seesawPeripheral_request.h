@@ -14,8 +14,6 @@
 #error "Unsupported chip variant selected"
 #endif
 
-extern volatile uint32_t g_bufferedBulkGPIORead;
-
 /***************************** data read */
 void requestEvent(void) {
   // SEESAW_DEBUGLN(F("Requesting data"));
