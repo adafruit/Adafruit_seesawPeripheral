@@ -95,18 +95,10 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
 
 #if CONFIG_INTERRUPT
               if (module_cmd == SEESAW_GPIO_INTENSET) {
-                g_irqGPIO |= 1UL << pin;
-                SEESAW_DEBUGLN(F(" INTEN"));
-#if USE_PINCHANGE_INTERRUPT
-                attachInterrupt(digitalPinToInterrupt(pin), Adafruit_seesawPeripheral_changedGPIO, CHANGE);
-#endif
+                Adafruit_seesawPeripheral_setGPIOInterrupt(pin, true);
               }
               else if (module_cmd == SEESAW_GPIO_INTENCLR) {
-                g_irqGPIO &= ~(1UL << pin);
-                SEESAW_DEBUGLN(F(" INTCLR"));
-#if USE_PINCHANGE_INTERRUPT
-                detachInterrupt(digitalPinToInterrupt(pin));
-#endif
+                Adafruit_seesawPeripheral_setGPIOInterrupt(pin, false);
               }
 #endif
             }
