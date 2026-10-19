@@ -297,6 +297,60 @@ uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
 }
 
 #if CONFIG_FHT && defined(MEGATINYCORE)
+#include "fht_tables.h"
+
+volatile uint8_t fht_counter; // For filling FHT input buffer
+
+/**
+ * @brief Configure free-running ADC capture with the existing FHT defaults.
+ */
+void Adafruit_seesawPeripheral_initializeSpectrum(void) {
+#ifdef DISABLE_MILLIS
+#if defined(MILLIS_USE_TIMERA0)
+  TCA0.SPLIT.INTCTRL &= ~TCA_SPLIT_HUNF_bm;
+#elif defined(MILLIS_USE_TIMERA1)
+  TCA1.SPLIT.INTCTRL &= ~TCA_SPLIT_HUNF_bm;
+#elif defined(MILLIS_USE_TIMERB0)
+  TCB0.INTCTRL &= ~TCB_CAPT_bm;
+#elif defined(MILLIS_USE_TIMERB1)
+  TCB1.INTCTRL &= ~TCB_CAPT_bm;
+#elif defined(MILLIS_USE_TIMERD0)
+  TCD0.INTCTRL &= ~TCD_OVF_bm;
+#endif
+#endif // end DISABLE_MILLIS
+
+  // ADC is configured for free-run mode with result-ready interrupt. 10-bit
+  // w/4X accumulation for 12-bit result (0-4092, NOT 4095, because it's the
+  // sum of four 10-bit values, not "true" 12-bit ADC reading).
+  // Assuming 10 MHz or 20 MHz F_CPU, possible sampling rates are:
+  // 1.25 MHz / 4X samples / 25 ADC cycles/sample -> 12500 Hz sample rate.
+  // Highest frequency is 1/2 sampling rate, or 6250 Hz (just under G8 at
+  // 6272 Hz). That’s a default that looks nice, but there's some adjustability
+  // if needed, with the following top frequency range:
+  // 1.25 MHz / 4X / (13+0)  = 24038 sample rate = 12019 peak freq
+  // 1.25 MHz / 4X / (13+31) = 7102 sample rate = 3551 peak freq
+  // Other F_CPU values (8, 12, 16) will result in different ranges.
+  // Depending on what mic is used and its outpot voltage range, might want
+  // to change AREF to another source. Right now it's the default VDD.
+
+  fht_counter = 0; // For filling FHT input buffer
+
+  ADC0.CTRLA = ADC_FREERUN_bm | ADC_ENABLE_bm; // 10-bit, free-run, enable ADC
+  ADC0.CTRLB = ADC_SAMPNUM_ACC4_gc;   // Accumulate 4X (0-4092 (sic.) result)
+  ADC0.CTRLC = ADC_SAMPCAP_bm |       // Reduced capacitance for >1V AREF
+               ADC_REFSEL_VDDREF_gc | // VDD as AREF
+#if F_CPU > 12000000
+               ADC_PRESC_DIV16_gc; // 16:1 timer prescale (20->1.25 MHz)
+#else
+               ADC_PRESC_DIV8_gc; // 8:1 timer prescale (10->1.25 MHz)
+#endif
+  ADC0.CTRLD = 0; // No init or sample delay
+  ADC0.MUXPOS = digitalPinToAnalogInput(FHT_DEFAULT_PIN);
+  ADC0.SAMPCTRL = 12; // Add to usu. 13 ADC cycles for 25 cycles/sample
+  ADC0.INTCTRL |= ADC_RESRDY_bm; // Enable result-ready interrupt
+  ADC0.COMMAND |= ADC_STCONV_bm; // Start free-run conversion
+}
+
 ISR(ADC0_RESRDY_vect) { // ADC conversion complete
   // Convert 12-bit ADC reading to signed value (+/-2K) and scale to 16-bit
   // space (scaling up isn't strictly required but FHT results look cleaner).
@@ -379,6 +433,170 @@ uint8_t Adafruit_seesawPeripheral_readSpectrumChannel(void) {
  */
 const uint8_t *Adafruit_seesawPeripheral_spectrumBuffer(void) {
   return fht_log_out;
+}
+
+/**
+ * @brief Process one captured FHT frame and resume sampling.
+ */
+void Adafruit_seesawPeripheral_runSpectrum(void) {
+  while (ADC0.INTCTRL & ADC_RESRDY_bm)
+    ; // Wait for sampling to finish
+
+  fht_window();
+  fht_reorder();
+  fht_run();
+
+  // I2C interrupts are temporarily disabled so we don't return spectrum
+  // data in the middle of it being processed. If an I2C event occurs,
+  // the corresponding interrupt flag will still get set, it just won't
+  // act on it until later when the interrupts are re-enabled.
+  // Up to this point though, everything's happening in fht_input[].
+  Adafruit_seesawPeripheral_enableI2CInterrupts(false);
+
+  // FHT has various output modes, after much testing settled on this...
+  fht_mag_log(); // -> fht_log_out[], if using this, define LOG_OUT to 1
+
+  // Resume sampling at earliest opportunity...
+  fht_counter = 0;
+  ADC0.INTCTRL |= ADC_RESRDY_bm; // Enable result-ready interrupt
+
+  // Process and/or dump FHT output
+  for (uint8_t i = 0; i < FHT_N / 2; i++) {
+    if (fht_log_out[i] > noise[i]) {
+      fht_log_out[i] -= noise[i];
+      if (fht_log_out[i] < peak[i]) {
+        // Scale column to make up for range lost to noise subtraction.
+        // Initially thought some additional per-column scaling would be
+        // needed to boost the highs, but when testing with pure tones
+        // the response across the graph looks reasonably linear-ish
+        // enough, the lower peaks at the top are really just a function
+        // of how music is. Host-side code can do some auto-scale
+        // massaging of the data if really desired (a little frame-to-
+        // frame filtering there looks nice anyway).
+        fht_log_out[i] = (fht_log_out[i] * scale[i]) >> 8;
+      } else {
+        fht_log_out[i] = 255; // At or above peak
+      }
+    } else {
+      fht_log_out[i] = 0; // At or below noise threshold
+    }
+    // Note to future self: noise and peak are a function of the
+    // microphone, and they do seem to vary with sampling rate.
+    // There's ample flash remaining, one possibility is to use
+    // different tables depending on the active rate setting.
+    // Would want to record those on final hardware.
+  }
+
+  // Re-enable I2C interrupts -- safe to issue spectrum data
+  Adafruit_seesawPeripheral_enableI2CInterrupts(true);
+}
+#endif
+
+/**
+ * @brief Enable or disable global interrupts during peripheral reset.
+ * @param enabled True to enable interrupts, false to disable them.
+ */
+__attribute__((always_inline)) inline void
+Adafruit_seesawPeripheral_enableInterrupts(bool enabled) {
+  if (enabled) {
+    sei();
+  } else {
+    cli();
+  }
+}
+
+/**
+ * @brief Reset valid GPIO pins and detach configured change interrupts.
+ */
+void Adafruit_seesawPeripheral_initializeGPIO(void) {
+  uint32_t pins = VALID_GPIO;
+  for (uint8_t pin = 0; pin < 32; pin++) {
+    if ((pins >> pin) & 0x1) {
+      pinMode(pin, INPUT);
+      digitalWrite(pin, 0);
+#if USE_PINCHANGE_INTERRUPT
+      detachInterrupt(digitalPinToInterrupt(pin));
+#endif
+    }
+  }
+}
+
+#if CONFIG_PWM || CONFIG_PWM_16BIT
+/**
+ * @brief Reset PWM status and configure the selected hardware PWM mode.
+ */
+void Adafruit_seesawPeripheral_initializePWM(void) {
+#if CONFIG_PWM
+  g_pwmStatus = 0;
+  // PWM is provided by BSP's analogWrite() and tone()
+#elif CONFIG_PWM_16BIT
+  g_pwmStatus = 0;
+  // TCA0 is used for 16 bit PWM support
+  takeOverTCA0();
+  PORTMUX.CTRLC |= 0b111;   // Alternate WOx output pin locations
+  TCA0.SINGLE.PER = 0xFFFF; // Set TOP to MAX
+  TCA0.SINGLE.CTRLB = 0x03; // Single-slope PWM, WG outputs off
+  TCA0.SINGLE.CTRLD = 0x00; // Disable Split Mode
+  TCA0.SINGLE.CTRLA = 0x01; // Enable TCA0 peripheral
+#endif
+}
+#endif
+
+#if CONFIG_ENCODER
+/**
+ * @brief Enable pull-ups on configured encoder input pins.
+ */
+void Adafruit_seesawPeripheral_initializeEncoderPins(void) {
+#if defined(CONFIG_ENCODER0_A_PIN)
+  pinMode(CONFIG_ENCODER0_A_PIN, INPUT_PULLUP);
+#endif
+#if defined(CONFIG_ENCODER0_B_PIN)
+  pinMode(CONFIG_ENCODER0_B_PIN, INPUT_PULLUP);
+#endif
+#if defined(CONFIG_ENCODER1_A_PIN)
+  pinMode(CONFIG_ENCODER1_A_PIN, INPUT_PULLUP);
+#endif
+#if defined(CONFIG_ENCODER1_B_PIN)
+  pinMode(CONFIG_ENCODER1_B_PIN, INPUT_PULLUP);
+#endif
+#if defined(CONFIG_ENCODER2_A_PIN)
+  pinMode(CONFIG_ENCODER2_A_PIN, INPUT_PULLUP);
+#endif
+#if defined(CONFIG_ENCODER2_B_PIN)
+  pinMode(CONFIG_ENCODER2_B_PIN, INPUT_PULLUP);
+#endif
+#if defined(CONFIG_ENCODER3_A_PIN)
+  pinMode(CONFIG_ENCODER3_A_PIN, INPUT_PULLUP);
+#endif
+#if defined(CONFIG_ENCODER3_B_PIN)
+  pinMode(CONFIG_ENCODER3_B_PIN, INPUT_PULLUP);
+#endif
+}
+#endif
+
+#if CONFIG_UART
+/**
+ * @brief Start the UART with the current baud setting.
+ */
+void Adafruit_seesawPeripheral_initializeUART(void) {
+  CONFIG_UART_SERCOM.begin(g_uart_baud);
+}
+
+/**
+ * @brief Update the UART interrupt output and drain queued transmit bytes.
+ */
+void Adafruit_seesawPeripheral_runUART(void) {
+  if (g_uart_inten) {
+    if (CONFIG_UART_SERCOM.available()) {
+      Adafruit_seesawPeripheral_setIRQ();
+    } else {
+      Adafruit_seesawPeripheral_clearIRQ();
+    }
+  }
+  if (g_uart_tx_len > 0) {
+    CONFIG_UART_SERCOM.write((char *)g_uart_buf, (size_t)g_uart_tx_len);
+    g_uart_tx_len = 0;
+  }
 }
 #endif
 

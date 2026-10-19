@@ -57,4 +57,30 @@
 #define PWM_WO_OFFSET (4)
 #endif
 
+/******** FHT (audio spectrum) */
+// FHT is ONLY supported on megaTinyCore (AVR), and will only fit if NO OTHER
+// seesaw variants are enabled (i.e. NO GPIO or ADC at same time). Mostly due
+// to flash space and/or RAM (literally zero overhead on ATtiny816/817), but
+// also because ADC for audio-in requires free-run mode which takes exclusive
+// use of the ADC MUX anyway. Input pin is currently #defined here, not
+// passed over via Seesaw lib. That might be possible if needed, but since
+// there's zero RAM remaining, might have to rely on dirty pool like using
+// one of the other ADC registers not in use (TEMP or CTRLE) as a temporary
+// holding spot to get that value into Adafruit_seesawPeripheral_reset().
+// Also FYI, this depends on the FHT library which is NOT available via the
+// Arduino Library Manager and must be separately installed.
+#if CONFIG_FHT && defined(MEGATINYCORE)
+#if CONFIG_ADC
+#error ("Cannot enable both CONFIG_ADC and CONFIG_FHT")
+#endif
+// Currently set up for size 128 FHT (64 spectrum outputs). 256 (128 out)
+// is an option IF a larger chip (1K RAM or better) is used; won't fit on
+// smaller parts. For now, is set for small part...
+#define FHT_N 128
+#define LOG_OUT 1
+#include <FHT.h>
+#define FHT_DEFAULT_PIN 0 // Arduino pin # for input (if no channel select)
+#define DISABLE_MILLIS    // FHT is exclusive (no GPIO, etc.), can do this
+#endif
+
 #endif
