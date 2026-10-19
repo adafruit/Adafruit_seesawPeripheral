@@ -641,6 +641,27 @@ ISR(ADC0_RESRDY_vect) { // ADC conversion complete
 #endif
 
 
+#if CONFIG_ENCODER
+/**
+ * @brief Look up the input pin mask for an encoder.
+ * @param encoder Encoder index, from 0 through 3.
+ * @return Input pin mask, or zero for an unknown encoder index.
+ */
+uint32_t Adafruit_seesawPeripheral_encoderInputMask(uint8_t encoder) {
+  switch (encoder) {
+  case 0:
+    return ENCODER0_INPUT_MASK;
+  case 1:
+    return ENCODER1_INPUT_MASK;
+  case 2:
+    return ENCODER2_INPUT_MASK;
+  case 3:
+    return ENCODER3_INPUT_MASK;
+  }
+  return 0;
+}
+#endif
+
 /**
  * @brief Set the pin mode of selected valid GPIO pins.
  * @param mask GPIO bits to change; invalid pins are ignored.
