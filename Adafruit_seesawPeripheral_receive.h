@@ -47,6 +47,9 @@ void receiveEvent(int howMany) {
  */
 void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
                                               int howMany) {
+  if (howMany < 2) {
+    return;
+  }
   uint8_t base_cmd = packet[0];
   uint8_t module_cmd = packet[1];
 
@@ -57,16 +60,20 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
     }
   }
   else if (base_cmd == SEESAW_GPIO_BASE) {
+    if (module_cmd == SEESAW_GPIO_BULK && howMany == 2) {
+      // Snapshot the pins before the master's following read.
+      g_bufferedBulkGPIORead = Adafruit_seesawPeripheral_readBulk(VALID_GPIO);
+      return;
+    }
+    // GPIO writes require the module/register prefix plus a 32-bit value.
+    if (howMany != 6) {
+      return;
+    }
     uint32_t temp = Adafruit_seesawPeripheral_read32(&packet[2]);
 
     switch (module_cmd) {
       case SEESAW_GPIO_BULK:
-        if (howMany == 2) {
-          // we're about to request the data next so we'll do the read now
-          g_bufferedBulkGPIORead = Adafruit_seesawPeripheral_readBulk(VALID_GPIO);
-        } else {
-          Adafruit_seesawPeripheral_gpioBulk(temp);
-        }
+        Adafruit_seesawPeripheral_gpioBulk(temp);
         break;
       case SEESAW_GPIO_DIRSET_BULK:
         Adafruit_seesawPeripheral_gpioMode(temp, OUTPUT);
