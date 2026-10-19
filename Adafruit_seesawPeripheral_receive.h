@@ -113,16 +113,21 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
 
 #if CONFIG_ADC
   else if (base_cmd == SEESAW_ADC_BASE) {
+    // ADC reads contain only the module/register prefix.
+    if (howMany != 2) {
+      return;
+    }
     if (module_cmd >= SEESAW_ADC_CHANNEL_OFFSET) {
       uint8_t adcpin = module_cmd - SEESAW_ADC_CHANNEL_OFFSET;
-      if (!((VALID_ADC) & (1UL << adcpin))) {
+      if (adcpin >= 32 || !(VALID_ADC & (1UL << adcpin))) {
+        g_bufferedADCRead = 0;
         g_adcStatus = 0x1; // error, invalid pin!
       } else {
         // its valid!
         SEESAW_DEBUG(F("ADC read "));
         SEESAW_DEBUG(adcpin);
         SEESAW_DEBUG(F(": "));
-        g_bufferedADCRead = analogRead(adcpin);
+        g_bufferedADCRead = Adafruit_seesawPeripheral_readADC(adcpin);
         SEESAW_DEBUGLN(g_bufferedADCRead);
         g_adcStatus = 0x0;
       }
