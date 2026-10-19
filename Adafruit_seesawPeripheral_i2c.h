@@ -1,15 +1,44 @@
 /*!
  * @file Adafruit_seesawPeripheral_i2c.h
- * @brief I2C state, callbacks, and reply writers for the shared seesaw protocol.
+ * @brief I2C transport lifecycle, state, callbacks, and reply writers.
  */
 #ifndef ADAFRUIT_SEESAW_PERIPHERAL_I2C_H
 #define ADAFRUIT_SEESAW_PERIPHERAL_I2C_H
+
+#include <Wire.h>
+
+void receiveEvent(int howMany);
+void requestEvent(void);
+
+// global address
+uint8_t _i2c_addr = CONFIG_I2C_PERIPH_ADDR;
 
 #if CONFIG_FHT && defined(MEGATINYCORE)
 volatile uint8_t i2c_buffer[3]; // Minimal I2C buffer w/FHT because RAM
 #else
 volatile uint8_t i2c_buffer[32];
 #endif
+
+/**
+ * @brief Register the I2C receive and request callbacks after initial reset.
+ */
+void Adafruit_seesawPeripheral_attachI2CCallbacks(void) {
+  Wire.onReceive(receiveEvent);
+  Wire.onRequest(requestEvent);
+}
+
+/**
+ * @brief Start the I2C peripheral at the selected address.
+ * @param address I2C peripheral address.
+ */
+void Adafruit_seesawPeripheral_beginI2C(uint8_t address) {
+  Wire.begin(address);
+}
+
+/**
+ * @brief Stop I2C before resetting the peripheral hardware.
+ */
+void Adafruit_seesawPeripheral_endI2C(void) { Wire.end(); }
 
 /**
  * @brief Write one byte to the I2C reply.

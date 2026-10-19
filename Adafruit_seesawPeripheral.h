@@ -7,7 +7,6 @@
 
 #include "Adafruit_seesaw.h"
 #include "Arduino.h"
-#include <Wire.h>
 #include "wiring_private.h"
 #include "pins_arduino.h"
 
@@ -225,17 +224,17 @@ uint16_t DATE_CODE = 0;
 
 void Adafruit_seesawPeripheral_reset(void);
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins);
-void receiveEvent(int howMany);
 // Keep the decoder separate under LTO. Inlining it can trigger short
 // interrupt-vector jump overflows with the 8 KB tinyAVR linker.
 void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
                                               int howMany)
     __attribute__((noinline));
-void requestEvent(void);
 void Adafruit_seesawPeripheral_processRequest(uint8_t base_cmd,
                                               uint8_t module_cmd);
 void Adafruit_seesawPeripheral_run(void);
 void Adafruit_seesawPeripheral_changedGPIO(void);
+
+#include "Adafruit_seesawPeripheral_i2c.h"
 
 /****************************************************** global state */
 
@@ -392,9 +391,6 @@ void Adafruit_seesawPeripheral_updateEncoder(uint8_t encodernum,
 
 /****************************************************** code */
 
-// global address
-uint8_t _i2c_addr = CONFIG_I2C_PERIPH_ADDR;
-
 void Adafruit_seesawPeripheral_setDatecode(void) {
   const char *date = __DATE__;
   const char *months = "JanFebMarAprMayJunJulAugSepOctNovDec";
@@ -473,8 +469,8 @@ bool Adafruit_seesawPeripheral_begin(void) {
 
   Adafruit_seesawPeripheral_reset();
 
-  Wire.onReceive(receiveEvent);
-  Wire.onRequest(requestEvent);
+  // Register callbacks after reset has started the transport.
+  Adafruit_seesawPeripheral_attachI2CCallbacks();
   return true;
 }
 
@@ -512,9 +508,9 @@ void Adafruit_seesawPeripheral_reset(void) {
   cli();
 
   SEESAW_DEBUGLN(F("Wire end"));
-  Wire.end();
+  Adafruit_seesawPeripheral_endI2C();
 
-  // Not referenced after Wire.begin(), so this is now local
+  // Not referenced after starting I2C, so this is now local
   uint8_t _i2c_addr = CONFIG_I2C_PERIPH_ADDR;
 
 #if CONFIG_EEPROM
@@ -652,7 +648,7 @@ void Adafruit_seesawPeripheral_reset(void) {
   CONFIG_UART_SERCOM.begin(g_uart_baud);
 #endif
 
-  Wire.begin(_i2c_addr);
+  Adafruit_seesawPeripheral_beginI2C(_i2c_addr);
   sei();
 }
 
@@ -1033,7 +1029,6 @@ uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
   return temp;
 }
 
-#include "Adafruit_seesawPeripheral_i2c.h"
 #include "Adafruit_seesawPeripheral_main.h"
 #include "Adafruit_seesawPeripheral_receive.h"
 #include "Adafruit_seesawPeripheral_request.h"
