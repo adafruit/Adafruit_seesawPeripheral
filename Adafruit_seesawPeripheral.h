@@ -11,6 +11,22 @@
 #include "wiring_private.h"
 #include "pins_arduino.h"
 
+#if defined(ARDUINO_AVR_ATtiny806)
+#define SEESAW_HW_ID 0x84
+#elif defined(ARDUINO_AVR_ATtiny807)
+#define SEESAW_HW_ID 0x85
+#elif defined(ARDUINO_AVR_ATtiny816)
+#define SEESAW_HW_ID 0x86
+#elif defined(ARDUINO_AVR_ATtiny817)
+#define SEESAW_HW_ID 0x87
+#elif defined(ARDUINO_AVR_ATtiny1616)
+#define SEESAW_HW_ID 0x88
+#elif defined(ARDUINO_AVR_ATtiny1617)
+#define SEESAW_HW_ID 0x89
+#else
+#error "Unsupported chip variant selected"
+#endif
+
 void foo(void);
 
 #if CONFIG_NEOPIXEL && defined(MEGATINYCORE)
