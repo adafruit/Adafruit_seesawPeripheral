@@ -600,4 +600,30 @@ void Adafruit_seesawPeripheral_runUART(void) {
 }
 #endif
 
+/**
+ * @brief Set GPIO direction using the established AVR pin-mode behavior.
+ * @param mask GPIO bits to change.
+ * @param enabled True for output, false for input.
+ */
+void Adafruit_seesawPeripheral_gpioDirection(uint32_t mask, bool enabled) {
+  if (enabled) {
+    Adafruit_seesawPeripheral_gpioMode(mask, OUTPUT);
+  } else {
+    Adafruit_seesawPeripheral_gpioMode(mask, INPUT);
+  }
+}
+
+/**
+ * @brief Set GPIO pulls using the established AVR pin-mode behavior.
+ * @param mask GPIO bits to change.
+ * @param enabled True for pull-up input, false for plain input.
+ */
+void Adafruit_seesawPeripheral_gpioPull(uint32_t mask, bool enabled) {
+  if (enabled) {
+    Adafruit_seesawPeripheral_gpioMode(mask, INPUT_PULLUP);
+  } else {
+    Adafruit_seesawPeripheral_gpioMode(mask, INPUT);
+  }
+}
+
 #endif
