@@ -232,6 +232,8 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
                                               int howMany)
     __attribute__((noinline));
 void requestEvent(void);
+void Adafruit_seesawPeripheral_processRequest(uint8_t base_cmd,
+                                              uint8_t module_cmd);
 void Adafruit_seesawPeripheral_run(void);
 void Adafruit_seesawPeripheral_changedGPIO(void);
 
@@ -994,6 +996,16 @@ Adafruit_seesawPeripheral_read32(const volatile uint8_t *data) {
 __attribute__((always_inline)) inline void
 Adafruit_seesawPeripheral_write8(uint8_t value) {
   Wire.write(value);
+}
+
+/**
+ * @brief Write a byte buffer to the I2C reply.
+ * @param data Bytes to send.
+ * @param length Number of bytes to send.
+ */
+__attribute__((always_inline)) inline void
+Adafruit_seesawPeripheral_writeBuffer(const uint8_t *data, size_t length) {
+  Wire.write(data, length);
 }
 
 /**

@@ -4,6 +4,16 @@ void requestEvent(void) {
   uint8_t base_cmd = i2c_buffer[0];
   uint8_t module_cmd = i2c_buffer[1];
 
+  Adafruit_seesawPeripheral_processRequest(base_cmd, module_cmd);
+}
+
+/**
+ * @brief Encode a register reply using the transport's reply helpers.
+ * @param base_cmd Module selected by the transport.
+ * @param module_cmd Register selected by the transport.
+ */
+void Adafruit_seesawPeripheral_processRequest(uint8_t base_cmd,
+                                              uint8_t module_cmd) {
   if (base_cmd == SEESAW_STATUS_BASE) {
     if (module_cmd == SEESAW_STATUS_HW_ID) {
       Adafruit_seesawPeripheral_write8(SEESAW_HW_ID); // instant reply
@@ -91,9 +101,9 @@ void requestEvent(void) {
     // this will only be possible if using an ATtiny part with 1K RAM
     // or better; won't fit on smaller devices.
     if (module_cmd == SEESAW_SPECTRUM_RESULTS_LOWER) {
-      Wire.write(fht_log_out, 32);
+      Adafruit_seesawPeripheral_writeBuffer(fht_log_out, 32);
     } else if (module_cmd == SEESAW_SPECTRUM_RESULTS_UPPER) {
-      Wire.write(&fht_log_out[32], 32);
+      Adafruit_seesawPeripheral_writeBuffer(&fht_log_out[32], 32);
     } else if (module_cmd == SEESAW_SPECTRUM_CHANNEL) {
       // TO DO: this should re-map the current MUXPOS setting to the same
       // channel mapping as is used in Adafruit_seesawPeripheral_receive.h --
