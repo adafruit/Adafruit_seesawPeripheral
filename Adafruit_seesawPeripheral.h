@@ -49,7 +49,6 @@ void foo(void);
 #endif
 
 #if CONFIG_EEPROM
-#include <EEPROM.h>
 #define EEPROM_I2C_ADDR (Adafruit_seesawPeripheral_eepromLength() - 1)
 #endif
 
@@ -411,33 +410,7 @@ bool Adafruit_seesawPeripheral_begin(void) {
   return true;
 }
 
-#if CONFIG_EEPROM
-/**
- * @brief Get the hardware EEPROM capacity.
- * @return Capacity in bytes.
- */
-uint16_t Adafruit_seesawPeripheral_eepromLength(void) {
-  return EEPROM.length();
-}
-
-/**
- * @brief Read one byte from hardware EEPROM.
- * @param address EEPROM byte address.
- * @return Stored byte.
- */
-uint8_t Adafruit_seesawPeripheral_readEEPROM(uint16_t address) {
-  return EEPROM.read(address);
-}
-
-/**
- * @brief Write one byte to hardware EEPROM.
- * @param address EEPROM byte address.
- * @param value Byte to store.
- */
-void Adafruit_seesawPeripheral_writeEEPROM(uint16_t address, uint8_t value) {
-  EEPROM.write(address, value);
-}
-#endif
+#include "Adafruit_seesawPeripheral_avr.h"
 
 void Adafruit_seesawPeripheral_reset(void) {
   Adafruit_seesawPeripheral_setDatecode();
@@ -876,17 +849,6 @@ void Adafruit_seesawPeripheral_showPixels(void) {
   pinMode(g_neopixel_pin, OUTPUT);
   tinyNeoPixel_show(g_neopixel_pin, g_neopixel_bufsize,
                     (uint8_t *)g_neopixel_buf);
-}
-#endif
-
-#if CONFIG_ADC
-/**
- * @brief Read an ADC pin already checked by the command decoder.
- * @param pin Arduino pin number.
- * @return Raw ADC reading.
- */
-uint16_t Adafruit_seesawPeripheral_readADC(uint8_t pin) {
-  return analogRead(pin);
 }
 #endif
 
