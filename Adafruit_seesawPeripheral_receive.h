@@ -65,9 +65,17 @@ void receiveEvent(int howMany) {
         Adafruit_seesawPeripheral_gpioMode(temp, INPUT);
         break;
       case SEESAW_GPIO_BULK_SET:
+        Adafruit_seesawPeripheral_gpioWrite(temp, HIGH);
+        break;
       case SEESAW_GPIO_BULK_CLR:
+        Adafruit_seesawPeripheral_gpioWrite(temp, LOW);
+        break;
       case SEESAW_GPIO_PULLENSET:
+        Adafruit_seesawPeripheral_gpioMode(temp, INPUT_PULLUP);
+        break;
       case SEESAW_GPIO_PULLENCLR:
+        Adafruit_seesawPeripheral_gpioMode(temp, INPUT);
+        break;
       case SEESAW_GPIO_INTENSET:
           temp &= VALID_GPIO;
           for (uint8_t pin=0; pin<32; pin++) {
@@ -75,24 +83,8 @@ void receiveEvent(int howMany) {
               SEESAW_DEBUG(F("Set pin "));
               SEESAW_DEBUG(pin);
 
-              if (module_cmd == SEESAW_GPIO_BULK_SET) {
-                digitalWrite(pin, 1);
-                SEESAW_DEBUGLN(F(" HIGH"));
-              }
-              else if (module_cmd == SEESAW_GPIO_BULK_CLR) {
-                digitalWrite(pin, 0);
-                SEESAW_DEBUGLN(F(" LOW"));
-              }
-              else if (module_cmd == SEESAW_GPIO_PULLENSET) {
-                pinMode(pin, INPUT_PULLUP);
-                SEESAW_DEBUGLN(F(" PULL"));
-              }
-              else if (module_cmd == SEESAW_GPIO_PULLENCLR) {
-                pinMode(pin, INPUT);
-                SEESAW_DEBUGLN(F(" NOPULL"));
-              }
 #if CONFIG_INTERRUPT
-              else if (module_cmd == SEESAW_GPIO_INTENSET) {
+              if (module_cmd == SEESAW_GPIO_INTENSET) {
                 g_irqGPIO |= 1UL << pin;
                 SEESAW_DEBUGLN(F(" INTEN"));
 #if USE_PINCHANGE_INTERRUPT

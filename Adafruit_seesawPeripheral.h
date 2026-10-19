@@ -660,6 +660,24 @@ void Adafruit_seesawPeripheral_gpioMode(uint32_t mask, uint8_t mode) {
 }
 
 /**
+ * @brief Write a level to selected valid GPIO pins.
+ * @param mask GPIO bits to change; invalid pins are ignored.
+ * @param value Arduino pin level, HIGH or LOW.
+ */
+void Adafruit_seesawPeripheral_gpioWrite(uint32_t mask, uint8_t value) {
+  mask &= VALID_GPIO;
+  for (uint8_t pin = 0; pin < 32; pin++) {
+    if ((mask >> pin) & 0x1) {
+      SEESAW_DEBUG(F("Set pin "));
+      SEESAW_DEBUG(pin);
+      digitalWrite(pin, value);
+      SEESAW_DEBUG(F(" value "));
+      SEESAW_DEBUGLN(value);
+    }
+  }
+}
+
+/**
  * @brief Write all valid GPIO pins from a bulk value.
  * @param value Pin levels, with bit N controlling GPIO N.
  */
