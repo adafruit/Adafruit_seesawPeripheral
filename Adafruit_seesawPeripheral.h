@@ -243,10 +243,7 @@ volatile uint32_t g_bufferedBulkGPIORead =
     0; ///< GPIO snapshot for the next read.
 
 #if CONFIG_FHT && defined(MEGATINYCORE)
-volatile uint8_t i2c_buffer[3]; // Minimal I2C buffer w/FHT because RAM
-volatile uint8_t fht_counter;   // For filling FHT input buffer
-#else
-volatile uint8_t i2c_buffer[32];
+volatile uint8_t fht_counter; // For filling FHT input buffer
 #endif
 
 #if CONFIG_INTERRUPT
@@ -1059,24 +1056,7 @@ Adafruit_seesawPeripheral_read32(const volatile uint8_t *data) {
   return (value << 8) | data[3];
 }
 
-/**
- * @brief Write one byte to the I2C reply.
- * @param value Byte to send.
- */
-__attribute__((always_inline)) inline void
-Adafruit_seesawPeripheral_write8(uint8_t value) {
-  Wire.write(value);
-}
-
-/**
- * @brief Write a byte buffer to the I2C reply.
- * @param data Bytes to send.
- * @param length Number of bytes to send.
- */
-__attribute__((always_inline)) inline void
-Adafruit_seesawPeripheral_writeBuffer(const uint8_t *data, size_t length) {
-  Wire.write(data, length);
-}
+#include "Adafruit_seesawPeripheral_i2c.h"
 
 /**
  * @brief Write a 16-bit value to the I2C reply, most significant byte
@@ -1102,7 +1082,6 @@ Adafruit_seesawPeripheral_write32(uint32_t value) {
 }
 
 #include "Adafruit_seesawPeripheral_main.h"
-#include "Adafruit_seesawPeripheral_i2c.h"
 #include "Adafruit_seesawPeripheral_receive.h"
 #include "Adafruit_seesawPeripheral_request.h"
 #endif
