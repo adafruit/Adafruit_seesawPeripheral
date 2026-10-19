@@ -50,14 +50,7 @@ void receiveEvent(int howMany) {
     }
   }
   else if (base_cmd == SEESAW_GPIO_BASE) {
-    uint32_t temp;
-    temp = i2c_buffer[2];
-    temp <<= 8;
-    temp |= i2c_buffer[3];
-    temp <<= 8;
-    temp |= i2c_buffer[4];
-    temp <<= 8;
-    temp |= i2c_buffer[5];
+    uint32_t temp = Adafruit_seesawPeripheral_read32(&i2c_buffer[2]);
 
     switch (module_cmd) {
       case SEESAW_GPIO_BULK:
@@ -292,13 +285,7 @@ void receiveEvent(int howMany) {
       if (howMany == 6) { 
       encoder_num = module_cmd & 0x0F;
         if (encoder_num < CONFIG_NUM_ENCODERS){
-          uint32_t value = i2c_buffer[2];
-          value <<= 8;
-          value |= i2c_buffer[3];
-          value <<= 8;
-          value |= i2c_buffer[4];
-          value <<=8;
-          value |= i2c_buffer[5];
+          uint32_t value = Adafruit_seesawPeripheral_read32(&i2c_buffer[2]);
           g_enc_value[encoder_num] = value;
         }
       }
@@ -346,11 +333,7 @@ void receiveEvent(int howMany) {
         g_uart_inten = 0;
       }
     } else if ((module_cmd == SEESAW_SERCOM_BAUD) && (howMany == 6)){
-      uint32_t newBaud =
-        uint32_t(i2c_buffer[2]) << 24 |
-        uint32_t(i2c_buffer[3]) << 16 |
-        uint32_t(i2c_buffer[4]) << 8 |
-        i2c_buffer[5];
+      uint32_t newBaud = Adafruit_seesawPeripheral_read32(&i2c_buffer[2]);
       if (newBaud != g_uart_baud) {
         g_uart_baud = newBaud;
         CONFIG_UART_SERCOM.end();
