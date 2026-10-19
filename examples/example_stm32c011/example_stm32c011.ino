@@ -1,8 +1,9 @@
-// Adafruit STM32C011 seesaw: I2C, GPIO, 12-bit ADC, and PWM.
+// Adafruit STM32C011 seesaw: I2C, GPIO, 12-bit ADC, PWM, and NeoPixel.
 #define PRODUCT_CODE 0
 #define CONFIG_I2C_PERIPH_ADDR 0x49
 #define CONFIG_ADC 1
 #define CONFIG_PWM 1
+#define CONFIG_NEOPIXEL 1
 #define CONFIG_EEPROM 0
 
 // Optional active-low GPIO change interrupt on D15 / PC14:
@@ -12,6 +13,7 @@
 // Only D0..10 support ADC; configured address/interrupt pins are excluded.
 // PWM: D0..9 and D15, with 16-bit duty commands and a shared frequency.
 // D3/D9 and D7/D15 share timer channels: use one pin from each pair at a time.
+// NeoPixel: 800 kHz raw bytes, with a default 192-byte buffer.
 
 #include "Adafruit_seesawPeripheral.h"
 
