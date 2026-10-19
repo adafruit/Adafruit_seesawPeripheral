@@ -766,6 +766,25 @@ void Adafruit_seesawPeripheral_setPWMFrequency(uint8_t pin,
 }
 #endif
 
+#if CONFIG_NEOPIXEL
+/**
+ * @brief Get the fixed NeoPixel buffer.
+ * @return Writable pixel buffer.
+ */
+volatile uint8_t *Adafruit_seesawPeripheral_pixelBuffer(void) {
+  return g_neopixel_buf;
+}
+
+/**
+ * @brief Send the configured NeoPixel buffer to the selected output pin.
+ */
+void Adafruit_seesawPeripheral_showPixels(void) {
+  pinMode(g_neopixel_pin, OUTPUT);
+  tinyNeoPixel_show(g_neopixel_pin, g_neopixel_bufsize,
+                    (uint8_t *)g_neopixel_buf);
+}
+#endif
+
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
   uint32_t temp = 0;
 

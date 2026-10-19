@@ -182,17 +182,16 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
     }
     if (module_cmd == SEESAW_NEOPIXEL_BUF) {
       uint16_t offset = Adafruit_seesawPeripheral_read16(&packet[2]);
+      volatile uint8_t *buffer = Adafruit_seesawPeripheral_pixelBuffer();
 
       for (uint8_t i=0; i<howMany-4; i++) {
         if (offset+i < CONFIG_NEOPIXEL_BUF_MAX) {
-          g_neopixel_buf[offset+i] = packet[4+i];
+          buffer[offset+i] = packet[4+i];
         }
       }
     }
     if (module_cmd == SEESAW_NEOPIXEL_SHOW) {
-      //SEESAW_DEBUGLN(F("Neo show!"));
-      pinMode(g_neopixel_pin, OUTPUT);
-      tinyNeoPixel_show(g_neopixel_pin, g_neopixel_bufsize, (uint8_t *)g_neopixel_buf);
+      Adafruit_seesawPeripheral_showPixels();
     }
   }
 #endif
