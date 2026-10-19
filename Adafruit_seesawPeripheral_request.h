@@ -113,7 +113,7 @@ void Adafruit_seesawPeripheral_processRequest(uint8_t base_cmd,
           ADC0.MUXPOS); // Return current ADC channel
     } else if (module_cmd == SEESAW_SPECTRUM_RATE) {
       Adafruit_seesawPeripheral_write8(
-          ADC0.SAMPCTRL); // Return current sample rate index
+          Adafruit_seesawPeripheral_readSpectrumRate());
     }
   }
 #endif

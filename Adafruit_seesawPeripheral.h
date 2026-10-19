@@ -689,6 +689,27 @@ static void Adafruit_seesawPeripheral_restartSampling(void) {
   fht_counter = 0;               // Restart at beginning of buffer.
   ADC0.INTCTRL |= ADC_RESRDY_bm; // Enable result-ready IRQ.
 }
+
+/**
+ * @brief Set the FHT sample-rate index and restart capture.
+ * @param rate Sample-rate index, clamped to 0-31.
+ */
+void Adafruit_seesawPeripheral_setSpectrumRate(uint8_t rate) {
+  ADC0.INTCTRL &= ~ADC_RESRDY_bm; // Disable result-ready IRQ.
+  if (rate > 31) {
+    rate = 31;
+  }
+  ADC0.SAMPCTRL = rate & 31;
+  Adafruit_seesawPeripheral_restartSampling();
+}
+
+/**
+ * @brief Read the current FHT sample-rate index.
+ * @return Raw ADC sample-control value.
+ */
+uint8_t Adafruit_seesawPeripheral_readSpectrumRate(void) {
+  return ADC0.SAMPCTRL;
+}
 #endif
 
 
