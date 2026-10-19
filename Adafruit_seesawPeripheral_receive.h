@@ -138,9 +138,18 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
 
 #if (CONFIG_PWM | CONFIG_PWM_16BIT)
   else if (base_cmd == SEESAW_TIMER_BASE) {
+    // Status reads and unknown registers do not contain a PWM payload.
+    if (module_cmd != SEESAW_TIMER_PWM && module_cmd != SEESAW_TIMER_FREQ) {
+      return;
+    }
+    // PWM writes contain the prefix, pin, and a 16-bit value.
+    if (howMany != 5) {
+      g_pwmStatus = 0x1;
+      return;
+    }
     uint8_t pin = packet[2];
     uint16_t value = Adafruit_seesawPeripheral_read16(&packet[3]);
-    if (! (VALID_PWM & (1UL << pin))) {
+    if (pin >= 32 || !(VALID_PWM & (1UL << pin))) {
       g_pwmStatus = 0x1; // error, invalid pin!
     } else if (module_cmd == SEESAW_TIMER_PWM) {
       // its valid!
@@ -151,16 +160,20 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
 
       Adafruit_seesawPeripheral_setPWM(pin, value);
       g_pwmStatus = 0x0;
-    }
-    else if (module_cmd == SEESAW_TIMER_FREQ) {
+    } else if (module_cmd == SEESAW_TIMER_FREQ) {
+#if CONFIG_PWM_16BIT && !CONFIG_PWM
+      // The 16-bit timer period calculation divides by the frequency.
+      if (value == 0) {
+        g_pwmStatus = 0x1;
+        return;
+      }
+#endif
       SEESAW_DEBUG(F("Freq "));
       SEESAW_DEBUG(pin);
       SEESAW_DEBUG(F(": "));
       SEESAW_DEBUGLN(value);
       Adafruit_seesawPeripheral_setPWMFrequency(pin, value);
-#if CONFIG_PWM_16BIT && !CONFIG_PWM
       g_pwmStatus = 0x0;
-#endif
     }
   }
 #endif
