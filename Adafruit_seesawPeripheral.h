@@ -643,6 +643,30 @@ ISR(ADC0_RESRDY_vect) { // ADC conversion complete
 #endif
 
 
+#if CONFIG_INTERRUPT
+/**
+ * @brief Enable or disable change interrupts for one GPIO pin.
+ * @param pin GPIO pin to configure.
+ * @param enabled True to enable interrupts, false to disable them.
+ */
+void Adafruit_seesawPeripheral_setGPIOInterrupt(uint8_t pin, bool enabled) {
+  if (enabled) {
+    g_irqGPIO |= 1UL << pin;
+    SEESAW_DEBUGLN(F(" INTEN"));
+#if USE_PINCHANGE_INTERRUPT
+    attachInterrupt(digitalPinToInterrupt(pin),
+                    Adafruit_seesawPeripheral_changedGPIO, CHANGE);
+#endif
+  } else {
+    g_irqGPIO &= ~(1UL << pin);
+    SEESAW_DEBUGLN(F(" INTCLR"));
+#if USE_PINCHANGE_INTERRUPT
+    detachInterrupt(digitalPinToInterrupt(pin));
+#endif
+  }
+}
+#endif
+
 #if CONFIG_ENCODER
 /**
  * @brief Look up the input pin mask for an encoder.
