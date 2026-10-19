@@ -192,6 +192,9 @@ void Adafruit_seesawPeripheral_changedGPIO(void);
 
 /****************************************************** global state */
 
+volatile uint32_t g_bufferedBulkGPIORead =
+    0; ///< GPIO snapshot for the next read.
+
 #if CONFIG_FHT && defined(MEGATINYCORE)
 volatile uint8_t i2c_buffer[3]; // Minimal I2C buffer w/FHT because RAM
 volatile uint8_t fht_counter;   // For filling FHT input buffer
@@ -207,6 +210,7 @@ volatile uint8_t IRQ_debounce_cntr = 0;
 #endif
 
 #if CONFIG_ADC
+volatile uint16_t g_bufferedADCRead = 0; ///< ADC result for the next read.
 volatile uint8_t g_adcStatus = 0;
 #endif
 #if (CONFIG_PWM | CONFIG_PWM_16BIT)
