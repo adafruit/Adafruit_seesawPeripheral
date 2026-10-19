@@ -95,11 +95,12 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
         Adafruit_seesawPeripheral_gpioMode(temp, INPUT);
         break;
       case SEESAW_GPIO_INTENSET:
-        Adafruit_seesawPeripheral_gpioInterrupt(temp, true);
+      case SEESAW_GPIO_INTENCLR: {
+        // Keep one call site to limit code growth on 8 KB targets.
+        bool enabled = module_cmd == SEESAW_GPIO_INTENSET;
+        Adafruit_seesawPeripheral_gpioInterrupt(temp, enabled);
         break;
-      case SEESAW_GPIO_INTENCLR:
-        Adafruit_seesawPeripheral_gpioInterrupt(temp, false);
-        break;
+      }
     }
   }
 
