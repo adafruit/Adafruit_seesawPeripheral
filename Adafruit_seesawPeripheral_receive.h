@@ -59,7 +59,11 @@ void receiveEvent(int howMany) {
         }
         break;
       case SEESAW_GPIO_DIRSET_BULK:
+        Adafruit_seesawPeripheral_gpioMode(temp, OUTPUT);
+        break;
       case SEESAW_GPIO_DIRCLR_BULK:
+        Adafruit_seesawPeripheral_gpioMode(temp, INPUT);
+        break;
       case SEESAW_GPIO_BULK_SET:
       case SEESAW_GPIO_BULK_CLR:
       case SEESAW_GPIO_PULLENSET:
@@ -71,15 +75,7 @@ void receiveEvent(int howMany) {
               SEESAW_DEBUG(F("Set pin "));
               SEESAW_DEBUG(pin);
 
-              if (module_cmd == SEESAW_GPIO_DIRSET_BULK) {
-                pinMode(pin, OUTPUT);
-                SEESAW_DEBUGLN(F(" OUTPUT"));
-              }
-              else if (module_cmd == SEESAW_GPIO_DIRCLR_BULK) {
-                pinMode(pin, INPUT);
-                SEESAW_DEBUGLN(F(" INPUT"));
-              }
-              else if (module_cmd == SEESAW_GPIO_BULK_SET) {
+              if (module_cmd == SEESAW_GPIO_BULK_SET) {
                 digitalWrite(pin, 1);
                 SEESAW_DEBUGLN(F(" HIGH"));
               }
