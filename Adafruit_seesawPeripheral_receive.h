@@ -159,9 +159,7 @@ void receiveEvent(int howMany) {
 #if (CONFIG_PWM | CONFIG_PWM_16BIT)
   else if (base_cmd == SEESAW_TIMER_BASE) {
     uint8_t pin = i2c_buffer[2];
-    uint16_t value = i2c_buffer[3];
-    value <<= 8;
-    value |= i2c_buffer[4];
+    uint16_t value = Adafruit_seesawPeripheral_read16(&i2c_buffer[3]);
     if (! (VALID_PWM & (1UL << pin))) {
       g_pwmStatus = 0x1; // error, invalid pin!
     } else if (module_cmd == SEESAW_TIMER_PWM) {
@@ -225,9 +223,7 @@ void receiveEvent(int howMany) {
       // we only support 800khz anyways
     }
     else if (module_cmd == SEESAW_NEOPIXEL_BUF_LENGTH) {
-      uint16_t value = i2c_buffer[2];
-      value <<= 8;
-      value |= i2c_buffer[3];
+      uint16_t value = Adafruit_seesawPeripheral_read16(&i2c_buffer[2]);
       // dont let it be larger than the internal buffer, of course
       g_neopixel_bufsize = min((uint16_t)CONFIG_NEOPIXEL_BUF_MAX, value);
       SEESAW_DEBUG(F("Neolen "));
@@ -239,9 +235,7 @@ void receiveEvent(int howMany) {
       SEESAW_DEBUGLN(g_neopixel_pin);
     }
     if (module_cmd == SEESAW_NEOPIXEL_BUF) {
-      uint16_t offset = i2c_buffer[2];
-      offset <<= 8;
-      offset |= i2c_buffer[3];
+      uint16_t offset = Adafruit_seesawPeripheral_read16(&i2c_buffer[2]);
 
       for (uint8_t i=0; i<howMany-4; i++) {
         if (offset+i < CONFIG_NEOPIXEL_BUF_MAX) {
