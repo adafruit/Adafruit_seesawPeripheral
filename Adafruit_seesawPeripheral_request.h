@@ -1,4 +1,27 @@
 /**
+ * @brief Write a 16-bit value to the I2C reply, most significant byte
+ * first.
+ * @param value Value to send.
+ */
+__attribute__((always_inline)) inline void
+Adafruit_seesawPeripheral_write16(uint16_t value) {
+  Adafruit_seesawPeripheral_write8((uint8_t)(value >> 8));
+  Adafruit_seesawPeripheral_write8((uint8_t)value);
+}
+
+/**
+ * @brief Write a 32-bit I2C reply, most significant byte first.
+ * @param value Value to send.
+ */
+__attribute__((always_inline)) inline void
+Adafruit_seesawPeripheral_write32(uint32_t value) {
+  Adafruit_seesawPeripheral_write8((uint8_t)(value >> 24));
+  Adafruit_seesawPeripheral_write8((uint8_t)(value >> 16));
+  Adafruit_seesawPeripheral_write8((uint8_t)(value >> 8));
+  Adafruit_seesawPeripheral_write8((uint8_t)value);
+}
+
+/**
  * @brief Encode a register reply using the transport's reply helpers.
  * @param base_cmd Module selected by the transport.
  * @param module_cmd Register selected by the transport.

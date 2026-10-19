@@ -1,4 +1,27 @@
 /**
+ * @brief Read a 16-bit command value, most significant byte first.
+ * @param data Pointer to two bytes in the command buffer.
+ * @return Decoded value.
+ */
+__attribute__((always_inline)) inline uint16_t
+Adafruit_seesawPeripheral_read16(const volatile uint8_t *data) {
+  return ((uint16_t)data[0] << 8) | data[1];
+}
+
+/**
+ * @brief Read a 32-bit command value, most significant byte first.
+ * @param data Pointer to four bytes in the command buffer.
+ * @return Decoded value.
+ */
+__attribute__((always_inline)) inline uint32_t
+Adafruit_seesawPeripheral_read32(const volatile uint8_t *data) {
+  uint32_t value = data[0];
+  value = (value << 8) | data[1];
+  value = (value << 8) | data[2];
+  return (value << 8) | data[3];
+}
+
+/**
  * @brief Decode a command already loaded by a transport.
  * @param packet Command buffer, including module and register.
  * @param howMany Number of received bytes.
