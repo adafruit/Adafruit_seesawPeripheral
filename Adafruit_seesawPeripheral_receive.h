@@ -165,20 +165,8 @@ void receiveEvent(int howMany) {
       SEESAW_DEBUG(pin);
       SEESAW_DEBUG(F(": "));
       SEESAW_DEBUGLN(value);
-#if CONFIG_PWM
-      tone(pin, value);
-#elif CONFIG_PWM_16BIT
-      pinMode(pin, OUTPUT);
-      // set frequency via CLKSEL and PER based on F_CPU
-      // NOTE: changes all PWM outputs
-      uint8_t clksel = 0;
-      unsigned long period = (F_CPU / value);
-      while (period > 65536 && clksel < 7) {
-        clksel++;
-        period = period >> (clksel > 4 ? 2 : 1);
-      }
-      TCA0.SINGLE.CTRLA = (clksel << 1) | TCA_SINGLE_ENABLE_bm;
-      TCA0.SINGLE.PER = period;
+      Adafruit_seesawPeripheral_setPWMFrequency(pin, value);
+#if CONFIG_PWM_16BIT && !CONFIG_PWM
       g_pwmStatus = 0x0;
 #endif
     }

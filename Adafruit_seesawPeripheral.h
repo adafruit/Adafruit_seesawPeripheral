@@ -712,6 +712,32 @@ void Adafruit_seesawPeripheral_gpioBulk(uint32_t value) {
   }
 }
 
+#if CONFIG_PWM || CONFIG_PWM_16BIT
+/**
+ * @brief Set the hardware PWM frequency.
+ * @param pin PWM output pin.
+ * @param frequency Frequency in hertz; must be nonzero for 16-bit PWM.
+ */
+void Adafruit_seesawPeripheral_setPWMFrequency(uint8_t pin,
+                                               uint16_t frequency) {
+#if CONFIG_PWM
+  tone(pin, frequency);
+#elif CONFIG_PWM_16BIT
+  pinMode(pin, OUTPUT);
+  // set frequency via CLKSEL and PER based on F_CPU
+  // NOTE: changes all PWM outputs
+  uint8_t clksel = 0;
+  unsigned long period = (F_CPU / frequency);
+  while (period > 65536 && clksel < 7) {
+    clksel++;
+    period = period >> (clksel > 4 ? 2 : 1);
+  }
+  TCA0.SINGLE.CTRLA = (clksel << 1) | TCA_SINGLE_ENABLE_bm;
+  TCA0.SINGLE.PER = period;
+#endif
+}
+#endif
+
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
   uint32_t temp = 0;
 
