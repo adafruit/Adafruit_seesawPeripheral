@@ -9,7 +9,7 @@ To install, use the Arduino Library Manager and search for 'Adafruit seesaw Peri
 Select STM32duino's generic **STM32C011F6Ux** target and start with
 `examples/example_stm32c011`. This backend supports GPIO direction, bulk
 read/write/toggle, pull-up/pull-down selection, optional active-low GPIO change
-interrupts, 12-bit ADC reads, and PWM. NeoPixel, UART, encoder, EEPROM, FHT, SPI,
+interrupts, 12-bit ADC reads, PWM, and NeoPixel. UART, encoder, EEPROM, FHT, SPI,
 and ROM-bootloader features are not included in this core port.
 
 I2C uses PB7 (SDA) and PB6 (SCL), with address `0x49` in the example. The target
@@ -31,3 +31,12 @@ zero is rejected. Timer resolution limits the available duty steps at high
 frequencies. D3/D9 share TIM1 channel 4, and D7/D15 share TIM3 channel 2: use
 only one pin from each pair at a time. GPIO configuration or an ADC read
 releases that pin from PWM; a software reset releases all PWM outputs.
+
+Enable `CONFIG_NEOPIXEL` for 800 kHz output through Adafruit_NeoPixel on any
+valid GPIO. Set the output pin and byte length before sending SHOW. The default
+`CONFIG_NEOPIXEL_BUF_MAX` is 192 bytes (64 RGB or 48 RGBW pixels); hosts provide
+the bytes in the strip's color order. Lengths are clamped to that capacity, and
+buffer writes preserve only the portion that fits. Storage is allocated once;
+`begin()` fails if allocation fails. Software reset clears the buffer and pin
+selection. SHOW releases its selected pin from PWM and temporarily masks
+interrupts while sending data, delaying I2C service and GPIO-change polling.

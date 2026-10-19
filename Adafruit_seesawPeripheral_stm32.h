@@ -1,13 +1,13 @@
 /*!
  * @file Adafruit_seesawPeripheral_stm32.h
- * @brief STM32C011 GPIO/ADC/PWM backend with deferred command execution.
+ * @brief STM32C011 backend with deferred command execution.
  */
 #ifndef ADAFRUIT_SEESAWPERIPHERAL_STM32_H
 #define ADAFRUIT_SEESAWPERIPHERAL_STM32_H
 
-#if CONFIG_NEOPIXEL || CONFIG_UART || CONFIG_ENCODER || CONFIG_EEPROM ||       \
-    CONFIG_FHT
-#error "The STM32C011 backend currently supports GPIO, ADC, and PWM only"
+#if CONFIG_UART || CONFIG_ENCODER || CONFIG_EEPROM || CONFIG_FHT
+#error                                                                         \
+    "The STM32C011 backend currently supports GPIO, ADC, PWM, and NeoPixel only"
 #endif
 #if USE_PINCHANGE_INTERRUPT
 #error "The STM32C011 backend polls GPIO changes from run()"
@@ -36,6 +36,9 @@ static_assert(CONFIG_ADDR_3_PIN < 32 && (ALL_GPIO & (1UL << CONFIG_ADDR_3_PIN)),
 
 #if CONFIG_ADC
 #include "stm32c0xx_ll_adc.h"
+#endif
+#if CONFIG_NEOPIXEL
+#include <Adafruit_NeoPixel.h>
 #endif
 
 /**
@@ -68,6 +71,20 @@ uint8_t Adafruit_seesawPeripheral_applyAddressStraps(uint8_t address) {
 }
 
 namespace SeesawSTM32 {
+#if CONFIG_NEOPIXEL
+static_assert(CONFIG_NEOPIXEL_BUF_MAX > 0 && CONFIG_NEOPIXEL_BUF_MAX <= 65532,
+              "NeoPixel capacity must fit the library's 16-bit byte count");
+/** @brief Allocate once, then send the host's raw RGB or RGBW byte sequence. */
+class RawPixels : public Adafruit_NeoPixel {
+public:
+  RawPixels()
+      : Adafruit_NeoPixel((CONFIG_NEOPIXEL_BUF_MAX + 2) / 3, -1,
+                          NEO_RGB + NEO_KHZ800) {}
+  /** @brief Select a byte count without reallocating or converting colors. */
+  void byteLength(uint16_t length) { numBytes = length; }
+};
+RawPixels pixels; ///< Fixed-capacity NeoPixel storage and Arduino transmitter.
+#endif
 const uint8_t queueSize = 4;    ///< Bounded queue; one entry stays empty.
 const uint8_t commandSize = 32; ///< Classic seesaw packet capacity.
 struct Command {
@@ -277,6 +294,15 @@ void reset() {
   g_irqGPIO = g_irqFlags = 0;
 #endif
   applyGPIO(VALID_GPIO);
+#if CONFIG_NEOPIXEL
+  g_neopixel_pin = 0xFF;
+  g_neopixel_bufsize = 0;
+  if (pixels.getPixels()) {
+    pixels.byteLength(CONFIG_NEOPIXEL_BUF_MAX);
+    pixels.clear();
+  }
+  pixels.byteLength(0);
+#endif
 #if CONFIG_PWM || CONFIG_PWM_16BIT
   g_pwmStatus = 0;
   pwmFrequency = 1000;
@@ -464,7 +490,33 @@ void Adafruit_seesawPeripheral_setPWMFrequency(uint8_t pin,
 }
 #endif
 
-/** @brief Queue writes so ADC conversion never runs inside an I2C interrupt. */
+#if CONFIG_NEOPIXEL
+/** @brief Return the allocated raw-byte buffer used by protocol writes. */
+volatile uint8_t *Adafruit_seesawPeripheral_pixelBuffer(void) {
+  return SeesawSTM32::pixels.getPixels();
+}
+
+/** @brief Send the selected raw bytes at 800 kHz on a valid GPIO pin. */
+void Adafruit_seesawPeripheral_showPixels(void) {
+  using namespace SeesawSTM32;
+  if (!pixels.getPixels() || !g_neopixel_bufsize || g_neopixel_pin >= 32 ||
+      !(VALID_GPIO & (1UL << g_neopixel_pin))) {
+    return;
+  }
+#if CONFIG_PWM || CONFIG_PWM_16BIT
+  stopPWM(g_neopixel_pin);
+#endif
+  pixels.setPin(g_neopixel_pin);
+  pixels.byteLength(g_neopixel_bufsize);
+  // GPIO/ADC commands may have changed the mode since the previous SHOW.
+  // STM32 needs no extra NeoPixel resources; configure this output directly.
+  pinMode(g_neopixel_pin, OUTPUT);
+  digitalWrite(g_neopixel_pin, LOW);
+  pixels.show();
+}
+#endif
+
+/** @brief Queue writes so ADC and NeoPixel work run outside I2C interrupts. */
 void receiveEvent(int howMany) { SeesawSTM32::receive(howMany); }
 
 /** @brief Serve a live GPIO snapshot or the last completed ADC conversion. */
@@ -489,11 +541,16 @@ void Adafruit_seesawPeripheral_reset(void) {
   }
 }
 
-/** @brief Initialize the GPIO/ADC/PWM backend and dedicated I2C target. */
+/** @brief Initialize the STM32 backend and dedicated I2C target. */
 bool Adafruit_seesawPeripheral_begin(void) {
   using namespace SeesawSTM32;
   Adafruit_seesawPeripheral_setDatecode();
   reset();
+#if CONFIG_NEOPIXEL
+  if (!pixels.getPixels()) {
+    return false;
+  }
+#endif
 #if CONFIG_ADC
   if (!adcReady) {
     return false;

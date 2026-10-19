@@ -179,7 +179,9 @@ volatile uint8_t g_adcStatus = 0;
 volatile uint8_t g_pwmStatus = 0;
 #endif
 #if CONFIG_NEOPIXEL
+#if !defined(ARDUINO_ARCH_STM32)
 volatile uint8_t g_neopixel_buf[CONFIG_NEOPIXEL_BUF_MAX];
+#endif
 volatile uint16_t g_neopixel_bufsize = 0;
 volatile uint8_t g_neopixel_pin = 0;
 #endif

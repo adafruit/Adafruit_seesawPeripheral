@@ -185,6 +185,9 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
     if (module_cmd == SEESAW_NEOPIXEL_BUF && howMany >= 4) {
       uint16_t offset = Adafruit_seesawPeripheral_read16(&packet[2]);
       volatile uint8_t *buffer = Adafruit_seesawPeripheral_pixelBuffer();
+      if (!buffer) {
+        return;
+      }
 
       for (uint8_t i = 0; i < howMany - 4; i++) {
         // Widen before adding: a large offset must not wrap into the buffer.
