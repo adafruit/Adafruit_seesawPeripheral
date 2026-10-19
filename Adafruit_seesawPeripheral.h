@@ -65,7 +65,7 @@ void foo(void);
 
 #if CONFIG_EEPROM
 #include <EEPROM.h>
-#define EEPROM_I2C_ADDR (EEPROM.length() - 1)
+#define EEPROM_I2C_ADDR (Adafruit_seesawPeripheral_eepromLength() - 1)
 #endif
 
 /*************** UART debugging */
@@ -479,6 +479,34 @@ bool Adafruit_seesawPeripheral_begin(void) {
   return true;
 }
 
+#if CONFIG_EEPROM
+/**
+ * @brief Get the hardware EEPROM capacity.
+ * @return Capacity in bytes.
+ */
+uint16_t Adafruit_seesawPeripheral_eepromLength(void) {
+  return EEPROM.length();
+}
+
+/**
+ * @brief Read one byte from hardware EEPROM.
+ * @param address EEPROM byte address.
+ * @return Stored byte.
+ */
+uint8_t Adafruit_seesawPeripheral_readEEPROM(uint16_t address) {
+  return EEPROM.read(address);
+}
+
+/**
+ * @brief Write one byte to hardware EEPROM.
+ * @param address EEPROM byte address.
+ * @param value Byte to store.
+ */
+void Adafruit_seesawPeripheral_writeEEPROM(uint16_t address, uint8_t value) {
+  EEPROM.write(address, value);
+}
+#endif
+
 void Adafruit_seesawPeripheral_reset(void) {
   Adafruit_seesawPeripheral_setDatecode();
 
@@ -491,7 +519,7 @@ void Adafruit_seesawPeripheral_reset(void) {
   uint8_t _i2c_addr = CONFIG_I2C_PERIPH_ADDR;
 
 #if CONFIG_EEPROM
-  _i2c_addr = EEPROM.read(EEPROM_I2C_ADDR);
+  _i2c_addr = Adafruit_seesawPeripheral_readEEPROM(EEPROM_I2C_ADDR);
   SEESAW_DEBUG(F("EEaddr: 0x"));
   SEESAW_DEBUGLN(_i2c_addr, HEX);
   if (_i2c_addr > 0x7F) {

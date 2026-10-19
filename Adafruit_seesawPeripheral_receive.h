@@ -232,12 +232,12 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
   else if (base_cmd == SEESAW_EEPROM_BASE) {
     // special case for 1 byte at -1 (i2c addr)
     if ((module_cmd == 0xFF) && (howMany == 3)) {
-      EEPROM.write(EEPROM.length()-1, packet[2]);
+      Adafruit_seesawPeripheral_writeEEPROM(EEPROM_I2C_ADDR, packet[2]);
     } else {
       // write the data
-      for (uint8_t i=0; i<howMany-2; i++) {
-        if ((module_cmd+i) < EEPROM.length()) {
-          EEPROM.write(module_cmd+i, packet[2+i]);
+      for (uint8_t i = 0; i < howMany - 2; i++) {
+        if ((module_cmd + i) < Adafruit_seesawPeripheral_eepromLength()) {
+          Adafruit_seesawPeripheral_writeEEPROM(module_cmd + i, packet[2 + i]);
           SEESAW_DEBUG(F("EEP $"));
           SEESAW_DEBUG(module_cmd+i, HEX);
           SEESAW_DEBUG(F(" <- 0x"));
