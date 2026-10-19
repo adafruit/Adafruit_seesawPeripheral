@@ -642,6 +642,28 @@ ISR(ADC0_RESRDY_vect) { // ADC conversion complete
 
 
 /**
+ * @brief Set the direction of selected valid GPIO pins.
+ * @param mask GPIO bits to change; invalid pins are ignored.
+ * @param output True for outputs, false for inputs.
+ */
+void Adafruit_seesawPeripheral_gpioDirection(uint32_t mask, bool output) {
+  mask &= VALID_GPIO;
+  for (uint8_t pin = 0; pin < 32; pin++) {
+    if ((mask >> pin) & 0x1) {
+      SEESAW_DEBUG(F("Set pin "));
+      SEESAW_DEBUG(pin);
+      if (output) {
+        pinMode(pin, OUTPUT);
+        SEESAW_DEBUGLN(F(" OUTPUT"));
+      } else {
+        pinMode(pin, INPUT);
+        SEESAW_DEBUGLN(F(" INPUT"));
+      }
+    }
+  }
+}
+
+/**
  * @brief Write all valid GPIO pins from a bulk value.
  * @param value Pin levels, with bit N controlling GPIO N.
  */
