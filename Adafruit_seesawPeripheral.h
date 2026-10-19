@@ -416,6 +416,35 @@ void Adafruit_seesawPeripheral_setDatecode(void) {
 }
 
 
+/**
+ * @brief Apply address straps to the base I2C address.
+ * @param address Base I2C address.
+ * @return Address after applying configured straps.
+ */
+uint8_t Adafruit_seesawPeripheral_applyAddressStraps(uint8_t address) {
+#if CONFIG_ADDR_0
+  pinMode(CONFIG_ADDR_0_PIN, INPUT_PULLUP);
+  if (digitalRead(CONFIG_ADDR_0_PIN) == CONFIG_ADDR_INVERTED)
+    address += 1;
+#endif
+#if CONFIG_ADDR_1
+  pinMode(CONFIG_ADDR_1_PIN, INPUT_PULLUP);
+  if (digitalRead(CONFIG_ADDR_1_PIN) == CONFIG_ADDR_INVERTED)
+    address += 2;
+#endif
+#if CONFIG_ADDR_2
+  pinMode(CONFIG_ADDR_2_PIN, INPUT_PULLUP);
+  if (digitalRead(CONFIG_ADDR_2_PIN) == CONFIG_ADDR_INVERTED)
+    address += 4;
+#endif
+#if CONFIG_ADDR_3
+  pinMode(CONFIG_ADDR_3_PIN, INPUT_PULLUP);
+  if (digitalRead(CONFIG_ADDR_3_PIN) == CONFIG_ADDR_INVERTED)
+    address += 8;
+#endif
+  return address;
+}
+
 void Adafruit_seesawPeripheral_setIRQ(void) {
   digitalWrite(CONFIG_INTERRUPT_PIN, LOW);
   pinMode(CONFIG_INTERRUPT_PIN, OUTPUT);
@@ -465,26 +494,7 @@ void Adafruit_seesawPeripheral_reset(void) {
   }
 #endif
 
-#if CONFIG_ADDR_0
-  pinMode(CONFIG_ADDR_0_PIN, INPUT_PULLUP);
-  if (digitalRead(CONFIG_ADDR_0_PIN) == CONFIG_ADDR_INVERTED)
-    _i2c_addr += 1;
-#endif
-#if CONFIG_ADDR_1
-  pinMode(CONFIG_ADDR_1_PIN, INPUT_PULLUP);
-  if (digitalRead(CONFIG_ADDR_1_PIN) == CONFIG_ADDR_INVERTED)
-    _i2c_addr += 2;
-#endif
-#if CONFIG_ADDR_2
-  pinMode(CONFIG_ADDR_2_PIN, INPUT_PULLUP);
-  if (digitalRead(CONFIG_ADDR_2_PIN) == CONFIG_ADDR_INVERTED)
-    _i2c_addr += 4;
-#endif
-#if CONFIG_ADDR_3
-  pinMode(CONFIG_ADDR_3_PIN, INPUT_PULLUP);
-  if (digitalRead(CONFIG_ADDR_3_PIN) == CONFIG_ADDR_INVERTED)
-    _i2c_addr += 8;
-#endif
+  _i2c_addr = Adafruit_seesawPeripheral_applyAddressStraps(_i2c_addr);
 
   SEESAW_DEBUG(F("I2C 0x"));
   SEESAW_DEBUGLN(_i2c_addr, HEX);
