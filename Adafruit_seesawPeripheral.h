@@ -629,12 +629,16 @@ Adafruit_seesawPeripheral_write16(uint16_t value) {
   Wire.write((uint8_t)value);
 }
 
-void Adafruit_seesawPeripheral_write32(uint32_t value) {
-  Wire.write(value >> 24);
-  Wire.write(value >> 16);
-  Wire.write(value >> 8);
-  Wire.write(value);
-  return;
+/**
+ * @brief Write a 32-bit I2C reply, most significant byte first.
+ * @param value Value to send.
+ */
+__attribute__((always_inline)) inline void
+Adafruit_seesawPeripheral_write32(uint32_t value) {
+  Wire.write((uint8_t)(value >> 24));
+  Wire.write((uint8_t)(value >> 16));
+  Wire.write((uint8_t)(value >> 8));
+  Wire.write((uint8_t)value);
 }
 
 #include "Adafruit_seesawPeripheral_main.h"
