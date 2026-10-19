@@ -9,7 +9,7 @@ void requestEvent(void) {
       Wire.write(SEESAW_HW_ID); // instant reply
     }
     if (module_cmd == SEESAW_STATUS_VERSION) {
-      Adafruit_seesawPeripheral_write32(CONFIG_VERSION | DATE_CODE); // instant reply
+      Adafruit_seesawPeripheral_write32(CONFIG_VERSION); // instant reply
     } else if (module_cmd == SEESAW_STATUS_OPTIONS) {
       uint32_t options =
           (1UL << SEESAW_STATUS_BASE) | (1UL << SEESAW_GPIO_BASE) |

@@ -121,9 +121,7 @@ void foo(void);
 
 uint16_t DATE_CODE = 0;
 
-#define CONFIG_VERSION                                                         \
-  (uint32_t)(((uint32_t)PRODUCT_CODE << 16) |                                  \
-             ((uint16_t)DATE_CODE & 0x0000FFFF))
+#define CONFIG_VERSION (((uint32_t)PRODUCT_CODE << 16) | DATE_CODE)
 
 /********************** Hardcoded chip configration */
 
