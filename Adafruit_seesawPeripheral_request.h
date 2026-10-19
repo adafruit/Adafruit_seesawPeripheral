@@ -59,7 +59,8 @@ void requestEvent(void) {
 
 #if CONFIG_EEPROM
   else if (base_cmd == SEESAW_EEPROM_BASE) {
-    Wire.write(EEPROM.read(module_cmd % EEPROM.length()));
+    Wire.write(Adafruit_seesawPeripheral_readEEPROM(
+        module_cmd % Adafruit_seesawPeripheral_eepromLength()));
   }
 #endif
 
