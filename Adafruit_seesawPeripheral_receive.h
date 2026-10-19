@@ -218,31 +218,22 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
 
 #if CONFIG_ENCODER
   else if (base_cmd == SEESAW_ENCODER_BASE) {
-    uint8_t encoder_num;
-    if ((module_cmd & 0xF0) ==  SEESAW_ENCODER_INTENSET) {
-      encoder_num = module_cmd & 0x0F;
-      if (encoder_num < CONFIG_NUM_ENCODERS) {
-        g_irqGPIO |= Adafruit_seesawPeripheral_encoderInputMask(encoder_num);
-      }
+    uint8_t encoder_num = module_cmd & 0x0F;
+    uint8_t command = module_cmd & 0xF0;
+    if (encoder_num >= CONFIG_NUM_ENCODERS) {
+      return;
     }
-    else if ((module_cmd & 0xF0) ==  SEESAW_ENCODER_INTENCLR) {
-      encoder_num = module_cmd & 0x0F;
-      if (encoder_num < CONFIG_NUM_ENCODERS) {
-        g_irqGPIO &= ~Adafruit_seesawPeripheral_encoderInputMask(encoder_num);
-      }
-    }
-    else if ((module_cmd & 0xF0) ==  SEESAW_ENCODER_POSITION) {
-      if (howMany == 6) { 
-      encoder_num = module_cmd & 0x0F;
-        if (encoder_num < CONFIG_NUM_ENCODERS){
-          uint32_t value = Adafruit_seesawPeripheral_read32(&packet[2]);
-          g_enc_value[encoder_num] = value;
-        }
-      }
+
+    if (command == SEESAW_ENCODER_INTENSET && howMany == 3) {
+      g_irqGPIO |= Adafruit_seesawPeripheral_encoderInputMask(encoder_num);
+    } else if (command == SEESAW_ENCODER_INTENCLR && howMany == 3) {
+      g_irqGPIO &= ~Adafruit_seesawPeripheral_encoderInputMask(encoder_num);
+    } else if (command == SEESAW_ENCODER_POSITION && howMany == 6) {
+      uint32_t value = Adafruit_seesawPeripheral_read32(&packet[2]);
+      g_enc_value[encoder_num] = value;
     }
   }
 #endif
-
 
 #if CONFIG_EEPROM
   else if (base_cmd == SEESAW_EEPROM_BASE) {
