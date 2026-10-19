@@ -49,6 +49,14 @@ void requestEvent(void) {
   }
 #endif
 
+#if CONFIG_PWM || CONFIG_PWM_16BIT
+  else if (base_cmd == SEESAW_TIMER_BASE) {
+    if (module_cmd == SEESAW_TIMER_STATUS) {
+      Wire.write(g_pwmStatus);
+    }
+  }
+#endif
+
 #if CONFIG_EEPROM
   else if (base_cmd == SEESAW_EEPROM_BASE) {
     Wire.write(EEPROM.read(module_cmd % EEPROM.length()));
