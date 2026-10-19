@@ -217,9 +217,9 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
     }
 
     if (command == SEESAW_ENCODER_INTENSET && howMany == 3) {
-      g_irqGPIO |= Adafruit_seesawPeripheral_encoderInputMask(encoder_num);
+      Adafruit_seesawPeripheral_setEncoderInterrupt(encoder_num, true);
     } else if (command == SEESAW_ENCODER_INTENCLR && howMany == 3) {
-      g_irqGPIO &= ~Adafruit_seesawPeripheral_encoderInputMask(encoder_num);
+      Adafruit_seesawPeripheral_setEncoderInterrupt(encoder_num, false);
     } else if (command == SEESAW_ENCODER_POSITION && howMany == 6) {
       uint32_t value = Adafruit_seesawPeripheral_read32(&packet[2]);
       g_enc_value[encoder_num] = value;

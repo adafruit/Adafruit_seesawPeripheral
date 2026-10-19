@@ -708,6 +708,21 @@ uint32_t Adafruit_seesawPeripheral_encoderInputMask(uint8_t encoder) {
   }
   return 0;
 }
+
+/**
+ * @brief Enable or disable GPIO change reporting for an encoder's inputs.
+ * @param encoder Encoder index, from 0 through 3.
+ * @param enabled True to enable interrupts, false to disable them.
+ */
+void Adafruit_seesawPeripheral_setEncoderInterrupt(uint8_t encoder,
+                                                   bool enabled) {
+  uint32_t mask = Adafruit_seesawPeripheral_encoderInputMask(encoder);
+  if (enabled) {
+    g_irqGPIO |= mask;
+  } else {
+    g_irqGPIO &= ~mask;
+  }
+}
 #endif
 
 /**
