@@ -6,7 +6,7 @@ void requestEvent(void) {
 
   if (base_cmd == SEESAW_STATUS_BASE) {
     if (module_cmd == SEESAW_STATUS_HW_ID) {
-      Wire.write(SEESAW_HW_ID); // instant reply
+      Adafruit_seesawPeripheral_write8(SEESAW_HW_ID); // instant reply
     }
     if (module_cmd == SEESAW_STATUS_VERSION) {
       Adafruit_seesawPeripheral_write32(CONFIG_VERSION); // instant reply
@@ -44,7 +44,7 @@ void requestEvent(void) {
     if (module_cmd >= SEESAW_ADC_CHANNEL_OFFSET) {
       Adafruit_seesawPeripheral_write16(g_bufferedADCRead);
     } else if (module_cmd == SEESAW_ADC_STATUS) {
-      Wire.write(g_adcStatus);
+      Adafruit_seesawPeripheral_write8(g_adcStatus);
     }
   }
 #endif
@@ -52,14 +52,14 @@ void requestEvent(void) {
 #if CONFIG_PWM || CONFIG_PWM_16BIT
   else if (base_cmd == SEESAW_TIMER_BASE) {
     if (module_cmd == SEESAW_TIMER_STATUS) {
-      Wire.write(g_pwmStatus);
+      Adafruit_seesawPeripheral_write8(g_pwmStatus);
     }
   }
 #endif
 
 #if CONFIG_EEPROM
   else if (base_cmd == SEESAW_EEPROM_BASE) {
-    Wire.write(Adafruit_seesawPeripheral_readEEPROM(
+    Adafruit_seesawPeripheral_write8(Adafruit_seesawPeripheral_readEEPROM(
         module_cmd % Adafruit_seesawPeripheral_eepromLength()));
   }
 #endif
@@ -99,9 +99,11 @@ void requestEvent(void) {
       // channel mapping as is used in Adafruit_seesawPeripheral_receive.h --
       // see notes over there. Prob just two values. For now though, for the
       // sake of initial testing, this just returns the raw MUXPOS setting.
-      Wire.write(ADC0.MUXPOS); // Return current ADC channel
+      Adafruit_seesawPeripheral_write8(
+          ADC0.MUXPOS); // Return current ADC channel
     } else if (module_cmd == SEESAW_SPECTRUM_RATE) {
-      Wire.write(ADC0.SAMPCTRL); // Return current sample rate index
+      Adafruit_seesawPeripheral_write8(
+          ADC0.SAMPCTRL); // Return current sample rate index
     }
   }
 #endif
@@ -109,13 +111,14 @@ void requestEvent(void) {
 #if CONFIG_UART
   else if (base_cmd == SEESAW_SERCOM0_BASE) {
     if (module_cmd == SEESAW_SERCOM_STATUS) {
-      Wire.write(g_uart_status);
+      Adafruit_seesawPeripheral_write8(g_uart_status);
     } else if (module_cmd == SEESAW_SERCOM_INTEN) {
-      Wire.write(g_uart_inten);
+      Adafruit_seesawPeripheral_write8(g_uart_inten);
     } else if (module_cmd == SEESAW_SERCOM_BAUD) {
       Adafruit_seesawPeripheral_write32(g_uart_baud);
     } else if (module_cmd == SEESAW_SERCOM_DATA) {
-      Wire.write(Adafruit_seesawPeripheral_readUARTData());
+      Adafruit_seesawPeripheral_write8(
+          Adafruit_seesawPeripheral_readUARTData());
     }
   }
 #endif

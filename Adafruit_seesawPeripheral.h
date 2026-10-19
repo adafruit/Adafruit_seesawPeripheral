@@ -988,14 +988,23 @@ Adafruit_seesawPeripheral_read32(const volatile uint8_t *data) {
 }
 
 /**
+ * @brief Write one byte to the I2C reply.
+ * @param value Byte to send.
+ */
+__attribute__((always_inline)) inline void
+Adafruit_seesawPeripheral_write8(uint8_t value) {
+  Wire.write(value);
+}
+
+/**
  * @brief Write a 16-bit value to the I2C reply, most significant byte
  * first.
  * @param value Value to send.
  */
 __attribute__((always_inline)) inline void
 Adafruit_seesawPeripheral_write16(uint16_t value) {
-  Wire.write((uint8_t)(value >> 8));
-  Wire.write((uint8_t)value);
+  Adafruit_seesawPeripheral_write8((uint8_t)(value >> 8));
+  Adafruit_seesawPeripheral_write8((uint8_t)value);
 }
 
 /**
@@ -1004,10 +1013,10 @@ Adafruit_seesawPeripheral_write16(uint16_t value) {
  */
 __attribute__((always_inline)) inline void
 Adafruit_seesawPeripheral_write32(uint32_t value) {
-  Wire.write((uint8_t)(value >> 24));
-  Wire.write((uint8_t)(value >> 16));
-  Wire.write((uint8_t)(value >> 8));
-  Wire.write((uint8_t)value);
+  Adafruit_seesawPeripheral_write8((uint8_t)(value >> 24));
+  Adafruit_seesawPeripheral_write8((uint8_t)(value >> 16));
+  Adafruit_seesawPeripheral_write8((uint8_t)(value >> 8));
+  Adafruit_seesawPeripheral_write8((uint8_t)value);
 }
 
 #include "Adafruit_seesawPeripheral_main.h"
