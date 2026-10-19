@@ -24,6 +24,9 @@
 #ifndef CONFIG_NEOPIXEL
 #define CONFIG_NEOPIXEL 0
 #endif
+#if CONFIG_NEOPIXEL && !defined(CONFIG_NEOPIXEL_BUF_MAX)
+#define CONFIG_NEOPIXEL_BUF_MAX 192 // Bytes; sketches may override.
+#endif
 #ifndef CONFIG_UART
 #define CONFIG_UART 0
 #endif
