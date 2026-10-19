@@ -59,10 +59,10 @@ void receiveEvent(int howMany) {
         }
         break;
       case SEESAW_GPIO_DIRSET_BULK:
-        Adafruit_seesawPeripheral_gpioDirection(temp, true);
+        Adafruit_seesawPeripheral_gpioMode(temp, OUTPUT);
         break;
       case SEESAW_GPIO_DIRCLR_BULK:
-        Adafruit_seesawPeripheral_gpioDirection(temp, false);
+        Adafruit_seesawPeripheral_gpioMode(temp, INPUT);
         break;
       case SEESAW_GPIO_BULK_SET:
       case SEESAW_GPIO_BULK_CLR:
