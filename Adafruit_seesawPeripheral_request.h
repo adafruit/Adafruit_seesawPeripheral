@@ -49,8 +49,7 @@ void requestEvent(void) {
 #if CONFIG_ADC
   else if (base_cmd == SEESAW_ADC_BASE) {
     if (module_cmd >= SEESAW_ADC_CHANNEL_OFFSET) {
-      Wire.write(g_bufferedADCRead >> 8);
-      Wire.write(g_bufferedADCRead);
+      Adafruit_seesawPeripheral_write16(g_bufferedADCRead);
     } else if (module_cmd == SEESAW_ADC_STATUS) {
       Wire.write(g_adcStatus);
     }

@@ -618,6 +618,17 @@ uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
   return temp;
 }
 
+/**
+ * @brief Write a 16-bit value to the I2C reply, most significant byte
+ * first.
+ * @param value Value to send.
+ */
+__attribute__((always_inline)) inline void
+Adafruit_seesawPeripheral_write16(uint16_t value) {
+  Wire.write((uint8_t)(value >> 8));
+  Wire.write((uint8_t)value);
+}
+
 void Adafruit_seesawPeripheral_write32(uint32_t value) {
   Wire.write(value >> 24);
   Wire.write(value >> 16);
