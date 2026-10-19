@@ -182,30 +182,35 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
   else if (base_cmd == SEESAW_NEOPIXEL_BASE) {
     if (module_cmd == SEESAW_NEOPIXEL_SPEED) {
       // we only support 800khz anyways
-    }
-    else if (module_cmd == SEESAW_NEOPIXEL_BUF_LENGTH) {
+    } else if (module_cmd == SEESAW_NEOPIXEL_BUF_LENGTH && howMany == 4) {
       uint16_t value = Adafruit_seesawPeripheral_read16(&packet[2]);
       // dont let it be larger than the internal buffer, of course
       g_neopixel_bufsize = min((uint16_t)CONFIG_NEOPIXEL_BUF_MAX, value);
       SEESAW_DEBUG(F("Neolen "));
       SEESAW_DEBUGLN(g_neopixel_bufsize);
     }
-    if (module_cmd == SEESAW_NEOPIXEL_PIN) {
-      g_neopixel_pin = packet[2];
+    if (module_cmd == SEESAW_NEOPIXEL_PIN && howMany == 3) {
+      uint8_t pin = packet[2];
+      if (pin >= 32 || !(VALID_GPIO & (1UL << pin))) {
+        return;
+      }
+      g_neopixel_pin = pin;
       SEESAW_DEBUG(F("Neopin "));
       SEESAW_DEBUGLN(g_neopixel_pin);
     }
-    if (module_cmd == SEESAW_NEOPIXEL_BUF) {
+    if (module_cmd == SEESAW_NEOPIXEL_BUF && howMany >= 4) {
       uint16_t offset = Adafruit_seesawPeripheral_read16(&packet[2]);
       volatile uint8_t *buffer = Adafruit_seesawPeripheral_pixelBuffer();
 
-      for (uint8_t i=0; i<howMany-4; i++) {
-        if (offset+i < CONFIG_NEOPIXEL_BUF_MAX) {
-          buffer[offset+i] = packet[4+i];
+      for (uint8_t i = 0; i < howMany - 4; i++) {
+        // Widen before adding: a large offset must not wrap into the buffer.
+        // Keep accepting the portion of a write that fits the allocated buffer.
+        if ((uint32_t)offset + i < CONFIG_NEOPIXEL_BUF_MAX) {
+          buffer[offset + i] = packet[4 + i];
         }
       }
     }
-    if (module_cmd == SEESAW_NEOPIXEL_SHOW) {
+    if (module_cmd == SEESAW_NEOPIXEL_SHOW && howMany == 2) {
       Adafruit_seesawPeripheral_showPixels();
     }
   }
