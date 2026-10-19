@@ -842,6 +842,31 @@ uint16_t Adafruit_seesawPeripheral_readADC(uint8_t pin) {
 }
 #endif
 
+#if CONFIG_UART
+/**
+ * @brief Refresh the UART data-ready bit, preserving other status flags.
+ */
+void Adafruit_seesawPeripheral_updateUARTStatus(void) {
+  if (CONFIG_UART_SERCOM.available()) {
+    g_uart_status |= 0x02; // set DATA_RDY bit
+  } else {
+    g_uart_status &= ~0x02; // clear DATA_RDY bit
+  }
+}
+
+/**
+ * @brief Change the UART baud rate only when needed.
+ * @param baud Baud rate in bits per second.
+ */
+void Adafruit_seesawPeripheral_setUARTBaud(uint32_t baud) {
+  if (baud != g_uart_baud) {
+    g_uart_baud = baud;
+    CONFIG_UART_SERCOM.end();
+    CONFIG_UART_SERCOM.begin(g_uart_baud);
+  }
+}
+#endif
+
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
   uint32_t temp = 0;
 

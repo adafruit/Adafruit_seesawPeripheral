@@ -250,29 +250,21 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
 #if CONFIG_UART
   else if (base_cmd == SEESAW_SERCOM0_BASE) {
     if (module_cmd == SEESAW_SERCOM_STATUS) {
-      if (CONFIG_UART_SERCOM.available()) {
-        g_uart_status |= 0x02;  // set DATA_RDY bit
-      } else {
-        g_uart_status &= ~0x02; // clear DATA_RDY bit
-      }
-    } else if ((module_cmd == SEESAW_SERCOM_INTEN) && (howMany == 3)){
+      Adafruit_seesawPeripheral_updateUARTStatus();
+    } else if ((module_cmd == SEESAW_SERCOM_INTEN) && (howMany == 3)) {
       // writing 0 to this register has no effect
       if (packet[2] & 0x01) {
         g_uart_inten = 1;
       }
-    } else if ((module_cmd == SEESAW_SERCOM_INTENCLR) && (howMany == 3)){
+    } else if ((module_cmd == SEESAW_SERCOM_INTENCLR) && (howMany == 3)) {
       // writing 0 to this register has no effect
       if (packet[2] & 0x01) {
         g_uart_inten = 0;
       }
-    } else if ((module_cmd == SEESAW_SERCOM_BAUD) && (howMany == 6)){
+    } else if ((module_cmd == SEESAW_SERCOM_BAUD) && (howMany == 6)) {
       uint32_t newBaud = Adafruit_seesawPeripheral_read32(&packet[2]);
-      if (newBaud != g_uart_baud) {
-        g_uart_baud = newBaud;
-        CONFIG_UART_SERCOM.end();
-        CONFIG_UART_SERCOM.begin(g_uart_baud);
-      }
-    } else if (module_cmd ==  SEESAW_SERCOM_DATA) {
+      Adafruit_seesawPeripheral_setUARTBaud(newBaud);
+    } else if (module_cmd == SEESAW_SERCOM_DATA) {
       g_uart_tx_len = howMany - 2;
       if (g_uart_tx_len <= CONFIG_UART_BUF_MAX) {
         for (uint8_t i=0; i<g_uart_tx_len; i++) {
