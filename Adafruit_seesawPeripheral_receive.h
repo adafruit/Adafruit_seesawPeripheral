@@ -145,7 +145,7 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
       Adafruit_seesawPeripheral_setPWM(pin, value);
       g_pwmStatus = 0x0;
     } else if (module_cmd == SEESAW_TIMER_FREQ) {
-#if CONFIG_PWM_16BIT && !CONFIG_PWM
+#if defined(ARDUINO_ARCH_STM32) || (CONFIG_PWM_16BIT && !CONFIG_PWM)
       // The 16-bit timer period calculation divides by the frequency.
       if (value == 0) {
         g_pwmStatus = 0x1;

@@ -9,7 +9,7 @@ To install, use the Arduino Library Manager and search for 'Adafruit seesaw Peri
 Select STM32duino's generic **STM32C011F6Ux** target and start with
 `examples/example_stm32c011`. This backend supports GPIO direction, bulk
 read/write/toggle, pull-up/pull-down selection, optional active-low GPIO change
-interrupts, and 12-bit ADC reads. PWM, NeoPixel, UART, encoder, EEPROM, FHT, SPI,
+interrupts, 12-bit ADC reads, and PWM. NeoPixel, UART, encoder, EEPROM, FHT, SPI,
 and ROM-bootloader features are not included in this core port.
 
 I2C uses PB7 (SDA) and PB6 (SCL), with address `0x49` in the example. The target
@@ -24,3 +24,10 @@ Only indices 0–10 support ADC. SWD, I2C, the PC15 LED, and configured address 
 interrupt pins are excluded from ordinary GPIO/ADC access. Enable
 `CONFIG_INTERRUPT_PIN` only on an exposed GPIO pin; its output is open-drain.
 
+Enable `CONFIG_PWM` (or `CONFIG_PWM_16BIT`) for PWM on indices 0–9 and 15.
+Both settings accept 16-bit duty values, from 0 through 65535. Frequency is
+shared across active PWM outputs, defaults to 1000 Hz, and accepts 1–65535 Hz;
+zero is rejected. Timer resolution limits the available duty steps at high
+frequencies. D3/D9 share TIM1 channel 4, and D7/D15 share TIM3 channel 2: use
+only one pin from each pair at a time. GPIO configuration or an ADC read
+releases that pin from PWM; a software reset releases all PWM outputs.
