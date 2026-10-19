@@ -1,9 +1,34 @@
 /*!
  * @file Adafruit_seesawPeripheral_i2c.h
- * @brief I2C callbacks for the shared seesaw protocol.
+ * @brief I2C state, callbacks, and reply writers for the shared seesaw protocol.
  */
 #ifndef ADAFRUIT_SEESAW_PERIPHERAL_I2C_H
 #define ADAFRUIT_SEESAW_PERIPHERAL_I2C_H
+
+#if CONFIG_FHT && defined(MEGATINYCORE)
+volatile uint8_t i2c_buffer[3]; // Minimal I2C buffer w/FHT because RAM
+#else
+volatile uint8_t i2c_buffer[32];
+#endif
+
+/**
+ * @brief Write one byte to the I2C reply.
+ * @param value Byte to send.
+ */
+__attribute__((always_inline)) inline void
+Adafruit_seesawPeripheral_write8(uint8_t value) {
+  Wire.write(value);
+}
+
+/**
+ * @brief Write a byte buffer to the I2C reply.
+ * @param data Bytes to send.
+ * @param length Number of bytes to send.
+ */
+__attribute__((always_inline)) inline void
+Adafruit_seesawPeripheral_writeBuffer(const uint8_t *data, size_t length) {
+  Wire.write(data, length);
+}
 
 /***************************** data write */
 
