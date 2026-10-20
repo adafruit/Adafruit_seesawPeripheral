@@ -22,8 +22,8 @@ STM32C011 exposes 12 after reserving I2C, SWD and the board LED.
 Select STM32duino's generic **STM32C011F6Ux** target and start with
 `examples/example_stm32c011`. This backend supports GPIO direction, bulk
 read/write/toggle, pull-up/pull-down selection, optional active-low GPIO change
-interrupts, 12-bit ADC reads, PWM, NeoPixel, encoders, UART, and opt-in EEPROM.
-FHT and SPI are not included in this core port.
+interrupts, 12-bit ADC reads, PWM, NeoPixel, encoders, UART, opt-in EEPROM,
+and an opt-in SPI controller bridge. FHT remains AVR-only.
 
 I2C uses PB7 (SDA) and PB6 (SCL), with address `0x49` in the example. The target
 requires a 48 MHz peripheral clock and retains hardware clock stretching as a
@@ -117,3 +117,19 @@ to 30720 bytes, erase only the required application pages, and verify written
 bytes before using ROM Go at `0x08000000`. Do not change option bytes or
 mass-erase. Keep SWD recovery available if power or an update is interrupted;
 this key prevents accidental entry, not unauthorized firmware updates.
+
+### I2C-to-SPI controller bridge
+
+`examples/example_spi` enables `CONFIG_SPI` alongside GPIO, ADC, and PWM.
+The experimental module at `0x13` supports all four SPI modes, either bit
+order, and held chip select across bounded chunks. Use it for e-paper displays
+or other SPI devices, with ordinary seesaw GPIOs for D/C, reset, or BUSY.
+All raw SPI/control signals use 3.3 V logic.
+
+Define `CONFIG_SPI_CS_PIN`, `CONFIG_SPI_SCK_PIN`, `CONFIG_SPI_MISO_PIN`, and
+`CONFIG_SPI_MOSI_PIN` before including the library, as in the example. CS may
+use any available GPIO; SCK/MISO/MOSI must map to one hardware SPI peripheral.
+The selected pins are reserved while SPI is configured; disabling SPI releases
+them. Transfers run from `run()`, not the I2C callback.
+Read status and consume received data before sending another chunk. See the
+[SPI protocol](SPI_PROTOCOL.md) for registers, framing, clock limits, and errors.
