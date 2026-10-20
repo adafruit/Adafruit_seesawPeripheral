@@ -5,8 +5,11 @@
 #ifndef ADAFRUIT_SEESAWPERIPHERAL_STM32_H
 #define ADAFRUIT_SEESAWPERIPHERAL_STM32_H
 
-#if CONFIG_EEPROM || CONFIG_FHT
-#error "EEPROM and FHT are not yet supported on STM32C011"
+#if CONFIG_FHT
+#error "The AVR FHT backend is not supported on STM32C011"
+#endif
+#if CONFIG_EEPROM
+extern "C" uint8_t _sidata, _sdata, _edata;
 #endif
 #if CONFIG_UART && CONFIG_UART_DEBUG
 #error "Keep Serial debug output disabled when using the STM32 UART bridge"
@@ -80,6 +83,13 @@ uint8_t Adafruit_seesawPeripheral_applyAddressStraps(uint8_t address) {
 }
 
 namespace SeesawSTM32 {
+#if CONFIG_EEPROM
+const uint32_t eepromAddress = FLASH_BASE + 30 * 1024; ///< Reserved final page.
+const uint16_t eepromSize = 256; ///< Bytes addressable by the seesaw protocol.
+uint8_t *eepromBuffer = nullptr; ///< Full-page workspace, allocated once.
+bool eepromSafe = false;         ///< Application fits below the reserved page.
+bool eepromDirty = false;        ///< Current command changed at least one byte.
+#endif
 #if CONFIG_ENCODER
 static_assert(CONFIG_NUM_ENCODERS >= 1 && CONFIG_NUM_ENCODERS <= 4,
               "Configure between one and four encoders");
@@ -267,6 +277,9 @@ uint8_t firstUARTData() { return CONFIG_UART_SERCOM.peek(); }
 /** @brief Select a live first-byte source before a repeated START. */
 void prepareFirstByte() {
   static const uint8_t zero = 0, hardwareID = SEESAW_HW_ID;
+#if CONFIG_EEPROM
+  static const uint8_t unavailable = 0xFF;
+#endif
   static const uint8_t versionHigh = (uint32_t)PRODUCT_CODE >> 8;
   seesawWire.setFirstByte(&zero);
   if (selectedBase == SEESAW_STATUS_BASE) {
@@ -317,6 +330,16 @@ void prepareFirstByte() {
       seesawWire.setFirstByte((const volatile uint8_t *)&g_uart_baud + 3);
     } else if (selectedRegister == SEESAW_SERCOM_DATA) {
       seesawWire.setFirstByte(firstUARTData);
+    }
+  }
+#endif
+#if CONFIG_EEPROM
+  else if (selectedBase == SEESAW_EEPROM_BASE) {
+    if (eepromSafe) {
+      seesawWire.setFirstByte((const uint8_t *)eepromAddress +
+                              selectedRegister);
+    } else {
+      seesawWire.setFirstByte(&unavailable);
     }
   }
 #endif
@@ -456,14 +479,98 @@ void reset() {
 /** @brief Apply address straps, falling back to the base on reserved addresses.
  */
 uint8_t configuredAddress() {
-  uint8_t result =
-      Adafruit_seesawPeripheral_applyAddressStraps(CONFIG_I2C_PERIPH_ADDR);
+  uint8_t result = CONFIG_I2C_PERIPH_ADDR;
+#if CONFIG_EEPROM
+  if (eepromSafe) {
+    uint8_t saved = *((const uint8_t *)eepromAddress + eepromSize - 1);
+    if (saved >= 8 && saved <= 0x77) {
+      result = saved;
+    }
+  }
+#endif
+  result = Adafruit_seesawPeripheral_applyAddressStraps(result);
   if (result < 8 || result > 0x77) {
     result = CONFIG_I2C_PERIPH_ADDR;
   }
   return result;
 }
 } // namespace SeesawSTM32
+
+#if CONFIG_EEPROM
+/** @brief Return the emulated EEPROM's protocol-visible byte count. */
+uint16_t Adafruit_seesawPeripheral_eepromLength(void) {
+  return SeesawSTM32::eepromSize;
+}
+
+/**
+ * @brief Read one byte from the reserved flash page.
+ * @param address EEPROM byte offset.
+ * @return Stored byte, or 0xFF if unavailable or outside the EEPROM.
+ */
+uint8_t Adafruit_seesawPeripheral_readEEPROM(uint16_t address) {
+  if (!SeesawSTM32::eepromSafe || address >= SeesawSTM32::eepromSize) {
+    return 0xFF;
+  }
+  return *((const uint8_t *)SeesawSTM32::eepromAddress + address);
+}
+
+/** @brief Preserve the entire flash page before staging one command. */
+void Adafruit_seesawPeripheral_beginEEPROMWrite(void) {
+  using namespace SeesawSTM32;
+  eepromDirty = false;
+  if (eepromSafe) {
+    memcpy(eepromBuffer, (const void *)eepromAddress, FLASH_PAGE_SIZE);
+  }
+}
+
+/**
+ * @brief Stage a byte in the current EEPROM command's page buffer.
+ * @param address EEPROM byte offset.
+ * @param value Byte to store at commit time.
+ */
+void Adafruit_seesawPeripheral_writeEEPROM(uint16_t address, uint8_t value) {
+  using namespace SeesawSTM32;
+  if (eepromSafe && address < eepromSize && eepromBuffer[address] != value) {
+    eepromBuffer[address] = value;
+    eepromDirty = true;
+  }
+}
+
+/**
+ * @brief Commit changed bytes in one erase, preserving the rest of the page.
+ * @return True on success or an unchanged command; false on flash failure.
+ */
+bool Adafruit_seesawPeripheral_commitEEPROMWrite(void) {
+  using namespace SeesawSTM32;
+  if (!eepromSafe) {
+    return false;
+  }
+  if (!eepromDirty) {
+    return true;
+  }
+  FLASH_EraseInitTypeDef erase = {};
+  erase.TypeErase = FLASH_TYPEERASE_PAGES;
+  erase.Page = (eepromAddress - FLASH_BASE) / FLASH_PAGE_SIZE;
+  erase.NbPages = 1;
+  uint32_t pageError;
+  if (HAL_FLASH_Unlock() != HAL_OK) {
+    return false;
+  }
+  __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_ALL_ERRORS);
+  bool success = HAL_FLASHEx_Erase(&erase, &pageError) == HAL_OK;
+  for (uint16_t pos = 0; success && pos < FLASH_PAGE_SIZE; pos += 8) {
+    uint64_t word;
+    memcpy(&word, eepromBuffer + pos, sizeof(word));
+    if (word != UINT64_MAX) {
+      success = HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD,
+                                  eepromAddress + pos, word) == HAL_OK;
+    }
+  }
+  HAL_FLASH_Lock();
+  return success && memcmp((const void *)eepromAddress, eepromBuffer,
+                           FLASH_PAGE_SIZE) == 0;
+}
+#endif
 
 /** @brief Read a snapshot of the selected valid GPIO pins. */
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
@@ -691,6 +798,22 @@ void Adafruit_seesawPeripheral_reset(void) {
 bool Adafruit_seesawPeripheral_begin(void) {
   using namespace SeesawSTM32;
   Adafruit_seesawPeripheral_setDatecode();
+#if CONFIG_EEPROM
+  // Include initialized RAM data's flash load image, not just executable code.
+  eepromSafe =
+      (uintptr_t)&_sidata + ((uintptr_t)&_edata - (uintptr_t)&_sdata) <=
+      eepromAddress;
+  if (!eepromSafe) {
+    return false;
+  }
+  if (!eepromBuffer) {
+    eepromBuffer = (uint8_t *)malloc(FLASH_PAGE_SIZE);
+  }
+  if (!eepromBuffer) {
+    eepromSafe = false;
+    return false;
+  }
+#endif
   reset();
 #if CONFIG_NEOPIXEL
   if (!pixels.getPixels()) {

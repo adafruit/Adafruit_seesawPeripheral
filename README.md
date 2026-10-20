@@ -9,8 +9,8 @@ To install, use the Arduino Library Manager and search for 'Adafruit seesaw Peri
 Select STM32duino's generic **STM32C011F6Ux** target and start with
 `examples/example_stm32c011`. This backend supports GPIO direction, bulk
 read/write/toggle, pull-up/pull-down selection, optional active-low GPIO change
-interrupts, 12-bit ADC reads, PWM, NeoPixel, encoders, and UART. EEPROM, FHT, SPI,
-and ROM-bootloader features are not included in this core port.
+interrupts, 12-bit ADC reads, PWM, NeoPixel, encoders, UART, and opt-in EEPROM.
+FHT, SPI, and ROM-bootloader features are not included in this core port.
 
 I2C uses PB7 (SDA) and PB6 (SCL), with address `0x49` in the example. The target
 requires a 48 MHz peripheral clock and retains hardware clock stretching as a
@@ -66,3 +66,19 @@ RX interrupt stays asserted until the receive buffer is empty. Each I2C DATA
 read consumes one byte (0xFF when empty); writes can carry up to 30 bytes with
 the default 32-byte command buffer. Long interrupt-masked NeoPixel shows can
 lose incoming serial bytes. Check flash usage when combining features.
+
+`examples/example_eeprom` enables `CONFIG_EEPROM` (disabled by default on STM32).
+It emulates 256 bytes in the final 2 KiB flash page at `0x08007800`. Reserve that
+page when linking/programming: the application, including initialized data,
+must fit below it (30 KiB maximum). `begin()` fails if the application overlaps
+the page or its 2 KiB RAM workspace cannot be allocated. Writes preserve the
+whole page, including bytes outside the 256-byte protocol window.
+
+Each changed write command erases/programs the page once; unchanged writes skip
+the erase. Writes are deferred to `run()` and can delay I2C replies while flash
+is busy. Allow completion and read back the bytes to check success. Flash has
+limited endurance; avoid frequent updates, and do not interrupt power during a
+write. Updates are not power-loss atomic. Software reset does not erase data.
+Byte `0xFF` holds the persistent base I2C address: values `0x08`–`0x77` take
+effect on the next reset before address straps are applied; other values use
+`CONFIG_I2C_PERIPH_ADDR`.
