@@ -57,6 +57,7 @@
 #endif
 #define SEESAW_STATUS_BOOTLOADER 0x7E      ///< Factory-ROM entry register.
 #define SEESAW_BOOTLOADER_KEY 0xB00710ADUL ///< Exact four-byte BOOTLOAD key.
+#define SEESAW_STATUS_UID 0x05 ///< Read-only STM32 96-bit unique identifier.
 
 #if defined(ARDUINO_ARCH_STM32)
 #include "Adafruit_seesawPeripheral_stm32_config.h"

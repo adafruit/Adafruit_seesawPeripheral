@@ -55,6 +55,14 @@ void Adafruit_seesawPeripheral_processRequest(uint8_t base_cmd,
 #endif
       Adafruit_seesawPeripheral_write32(options);
     }
+#if defined(ARDUINO_ARCH_STM32)
+    else if (module_cmd == SEESAW_STATUS_UID) {
+      // Factory words in address order, each most significant byte first.
+      Adafruit_seesawPeripheral_write32(HAL_GetUIDw0());
+      Adafruit_seesawPeripheral_write32(HAL_GetUIDw1());
+      Adafruit_seesawPeripheral_write32(HAL_GetUIDw2());
+    }
+#endif
   } else if (base_cmd == SEESAW_GPIO_BASE) {
     if (module_cmd == SEESAW_GPIO_BULK) {
       Adafruit_seesawPeripheral_write32(g_bufferedBulkGPIORead); // instant reply because we did the write before
