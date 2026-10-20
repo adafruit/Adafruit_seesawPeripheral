@@ -4,6 +4,19 @@ Library for making seesaw i2c peripherals in Arduino core
 
 To install, use the Arduino Library Manager and search for 'Adafruit seesaw Peripheral' and install the library.
 
+## Example portability
+
+General feature examples, including `example_eeprom` and the combined-feature
+`example_stm32c011`, are enabled in CI for all seven supported targets. FHT remains
+AVR-only. Product examples keep their original board wiring and use explicitly
+marked alternate pin mappings where supported on other targets.
+
+The large NeoPixel buffers in `example_neodriver` and `example_pid5690` need
+more RAM than the 8 KiB tinyAVR parts provide. NeoDriver also uses an AVR-only
+activity-LED hook. `example_pid5752` needs the 24-pin tinyAVR pinout: its four
+encoders, address straps, interrupt and NeoPixel need 13 GPIOs, while the
+STM32C011 exposes 12 after reserving I2C, SWD and the board LED.
+
 ## STM32C011 core support
 
 Select STM32duino's generic **STM32C011F6Ux** target and start with
