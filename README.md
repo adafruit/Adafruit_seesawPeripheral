@@ -180,6 +180,49 @@ The linker uses the 30 KiB application limit and 12 KiB RAM size. This
 target-specific example is excluded from the existing CI platform matrix
 until that matrix includes the new board.
 
+## STM32C051 breakout support
+
+The STM32C051G8U6 Rev A breakout uses the 28-pin generic **STM32C051G8Ux**
+variant with 64 KiB flash, 12 KiB SRAM, and a 48 MHz internal clock. Its GPIO,
+ADC, and selected PWM channel map matches the C031 table above. The backend
+uses C051-specific alternate-function indices to preserve those PWM channels,
+and supplies its missing startup clock hook through HAL. Its provisional
+hardware ID is **0x92**, which host libraries must recognize.
+
+`examples/example_stm32c051` enables GPIO, ADC, PWM, NeoPixel, encoder, UART,
+SPI, and EEPROM together. UART reserves PA0/PA1; the encoder uses PA2/PA3;
+PC14 is the interrupt output. The example selects PA4–PA7 for SPI using the
+four `CONFIG_SPI_*_PIN` defines; change them for other valid pin assignments. EEPROM
+uses the final 2 KiB page at **0x0800F800**, so reserve **63488 bytes** for the
+application. Do not use the C011/C031 EEPROM address or image-size limit.
+The bridge exposes one configured SPI bus, not multiple simultaneous buses.
+Additional I2C instances on the C051 are not exposed by this backend.
+
+The BOOTLOAD key enters ROM I2C at **0x76** on PB6/PB7. ST's C051 ROM also
+initializes its SPI interfaces, so isolate attached SPI peripherals when
+using the ROM loader. The ROM's I2C limit is 400 kHz; see
+[ST AN2606](https://www.st.com/resource/en/application_note/cd00167594-stm32-microcontroller-system-memory-boot-mode-stmicroelectronics.pdf).
+
+As with C031, STM32duino 3.0.0 supplies the G8Ux source files without a menu
+entry or linker script. Add this entry to the same `boards.local.txt`:
+
+```ini
+GenC0.menu.pnum.GENERIC_C051G8UX=Generic C051G8Ux
+GenC0.menu.pnum.GENERIC_C051G8UX.upload.maximum_size=65536
+GenC0.menu.pnum.GENERIC_C051G8UX.upload.maximum_data_size=12288
+GenC0.menu.pnum.GENERIC_C051G8UX.build.board=GENERIC_C051G8UX
+GenC0.menu.pnum.GENERIC_C051G8UX.build.product_line=STM32C051xx
+GenC0.menu.pnum.GENERIC_C051G8UX.build.variant=STM32C0xx/C051G(6-8)U
+GenC0.menu.pnum.GENERIC_C051G8UX.build.ldscript=../C051C(6-8)(T-U)/ldscript.ld
+```
+
+```sh
+arduino-cli compile --fqbn "STMicroelectronics:stm32:GenC0:pnum=GENERIC_C051G8UX,xserial=generic,usb=none,opt=oslto,dbg=none,rtlib=nano,upload_method=OpenOCDSTLink" --build-property upload.maximum_size=63488 --library . examples/example_stm32c051
+```
+
+This example is excluded from the existing CI matrix until it has a C051
+platform entry.
+
 ## I2C-to-SPI controller bridge
 
 `examples/example_spi` enables `CONFIG_SPI` alongside GPIO, ADC, and PWM.
