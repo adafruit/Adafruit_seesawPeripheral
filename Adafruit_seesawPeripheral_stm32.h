@@ -205,9 +205,29 @@ uint32_t direction = 0, output = 0, pull = 0; ///< GPIO register state.
 uint32_t lastGPIO = 0;                        ///< Previous GPIO sample.
 uint8_t address = CONFIG_I2C_PERIPH_ADDR;     ///< Effective I2C address.
 #if CONFIG_SPI
-const uint8_t spiBase = 0x13;     ///< Experimental SPI controller module.
-const uint32_t spiPinMask = 0xF0; ///< PA4 CS, PA5 SCK, PA6 MISO, PA7 MOSI.
-SPIClass spiPort(PA7, PA6, PA5);  ///< Dedicated Arduino SPI controller.
+const uint8_t spiBase = 0x13; ///< Experimental SPI controller module.
+constexpr uint16_t spiPins[] = {
+    CONFIG_SPI_CS_PIN, CONFIG_SPI_SCK_PIN, CONFIG_SPI_MISO_PIN,
+    CONFIG_SPI_MOSI_PIN}; ///< Protocol pin indices for CS, SCK, MISO, MOSI.
+
+/** @brief Require distinct SPI pins on exposed, unreserved GPIOs. */
+constexpr bool validSPIPins() {
+  uint32_t used = 0;
+  for (uint16_t pin : spiPins) {
+    if (pin >= 32 || !(VALID_GPIO & (1UL << pin)) || (used & (1UL << pin))) {
+      return false;
+    }
+    used |= 1UL << pin;
+  }
+  return true;
+}
+static_assert(validSPIPins(), "SPI pins must be distinct valid GPIOs");
+const uint32_t spiPinMask =
+    (1UL << CONFIG_SPI_CS_PIN) | (1UL << CONFIG_SPI_SCK_PIN) |
+    (1UL << CONFIG_SPI_MISO_PIN) |
+    (1UL << CONFIG_SPI_MOSI_PIN); ///< Pins reserved while SPI is configured.
+SPIClass spiPort(CONFIG_SPI_MOSI_PIN, CONFIG_SPI_MISO_PIN,
+                 CONFIG_SPI_SCK_PIN); ///< Dedicated Arduino SPI controller.
 volatile bool spiConfigured = false, spiSelected = false; ///< SPI ownership/CS.
 volatile uint8_t spiPending = 0; ///< Queued commands, including the active one.
 volatile uint8_t spiError = 0, spiSequence = 0; ///< Error and completion count.

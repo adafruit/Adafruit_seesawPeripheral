@@ -126,7 +126,10 @@ order, and held chip select across bounded chunks. Use it for e-paper displays
 or other SPI devices, with ordinary seesaw GPIOs for D/C, reset, or BUSY.
 All raw SPI/control signals use 3.3 V logic.
 
-PA4/CS, PA5/SCK, PA6/MISO, and PA7/MOSI are reserved while SPI is configured;
-disabling SPI releases them. Transfers run from `run()`, not the I2C callback.
+Define `CONFIG_SPI_CS_PIN`, `CONFIG_SPI_SCK_PIN`, `CONFIG_SPI_MISO_PIN`, and
+`CONFIG_SPI_MOSI_PIN` before including the library, as in the example. CS may
+use any available GPIO; SCK/MISO/MOSI must map to one hardware SPI peripheral.
+The selected pins are reserved while SPI is configured; disabling SPI releases
+them. Transfers run from `run()`, not the I2C callback.
 Read status and consume received data before sending another chunk. See the
 [SPI protocol](SPI_PROTOCOL.md) for registers, framing, clock limits, and errors.

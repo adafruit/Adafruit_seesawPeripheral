@@ -36,7 +36,7 @@ enum {
 /*! Release CS without changing the configured SPI pins. */
 void spiRelease() {
   if (spiSelected) {
-    digitalWrite(PA4, HIGH);
+    digitalWrite(CONFIG_SPI_CS_PIN, HIGH);
     spiPort.endTransaction();
   }
   spiSelected = false;
@@ -55,7 +55,7 @@ void spiStop() {
 #if CONFIG_PWM || CONFIG_PWM_16BIT
   pwmActive &= ~spiPinMask;
 #endif
-  for (uint8_t pin = 4; pin <= 7; pin++)
+  for (uint16_t pin : spiPins)
     pinMode(pin, INPUT);
 }
 
@@ -74,7 +74,8 @@ uint8_t spiStatusFlags() {
 uint32_t spiActualClock() {
   if (!spiConfigured)
     return 0;
-  uint32_t divisor = ((SPI1->CR1 & SPI_CR1_BR) >> SPI_CR1_BR_Pos) + 1;
+  uint32_t divisor =
+      ((spiPort.getHandle()->Instance->CR1 & SPI_CR1_BR) >> SPI_CR1_BR_Pos) + 1;
   // begin() accepts only this C011's 48 MHz PCLK. Avoid walking the RCC clock
   // tree inside the first-byte deadline; the live SPI divider is read above.
   return 48000000UL >> divisor;
@@ -149,6 +150,18 @@ void spiProcess(uint8_t reg, const volatile uint8_t *data, uint8_t length) {
       spiFail(spiPinConflict);
       return;
     }
+    // Use the core's pin maps: all three signal pins must reach the same
+    // hardware SPI peripheral. CS is an ordinary software-controlled GPIO.
+    void *mosi = pinmap_peripheral(digitalPinToPinName(CONFIG_SPI_MOSI_PIN),
+                                   PinMap_SPI_MOSI);
+    void *miso = pinmap_peripheral(digitalPinToPinName(CONFIG_SPI_MISO_PIN),
+                                   PinMap_SPI_MISO);
+    void *sck = pinmap_peripheral(digitalPinToPinName(CONFIG_SPI_SCK_PIN),
+                                  PinMap_SPI_SCLK);
+    if (mosi == NP || mosi != miso || mosi != sck) {
+      spiFail(spiBadConfig);
+      return;
+    }
     // Stop any PWM using these exact pins before assigning the SPI function.
     direction &= ~spiPinMask;
     pull &= ~spiPinMask;
@@ -156,8 +169,8 @@ void spiProcess(uint8_t reg, const volatile uint8_t *data, uint8_t length) {
     spiMode = data[0];
     spiOrder = data[1];
     spiFrequency = frequency;
-    digitalWrite(PA4, HIGH);
-    pinMode(PA4, OUTPUT);
+    digitalWrite(CONFIG_SPI_CS_PIN, HIGH);
+    pinMode(CONFIG_SPI_CS_PIN, OUTPUT);
     const uint8_t modes[] = {SPI_MODE0, SPI_MODE1, SPI_MODE2, SPI_MODE3};
     // STM32duino 3.0.0 retains its settings cache across end(). Force a
     // different setting first so an identical reconfiguration reinitializes
@@ -185,7 +198,7 @@ void spiProcess(uint8_t reg, const volatile uint8_t *data, uint8_t length) {
     return;
   }
   if (flags & spiBeginFlag) {
-    digitalWrite(PA4, LOW);
+    digitalWrite(CONFIG_SPI_CS_PIN, LOW);
     spiSelected = true;
   }
   uint8_t count = length - 1;
@@ -200,7 +213,7 @@ void spiProcess(uint8_t reg, const volatile uint8_t *data, uint8_t length) {
     return;
   }
   if (flags & spiEndFlag) {
-    digitalWrite(PA4, HIGH);
+    digitalWrite(CONFIG_SPI_CS_PIN, HIGH);
     spiPort.endTransaction();
     spiSelected = false;
   }
