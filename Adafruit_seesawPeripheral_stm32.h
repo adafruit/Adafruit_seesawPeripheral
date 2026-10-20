@@ -414,6 +414,9 @@ bool spectrumPinAvailable(uint8_t pin) {
 bool adcReady = false;                  ///< Calibration and enable completed.
 const uint32_t adcTimeoutMicros = 5000; ///< Calibration/conversion timeout.
 #endif
+#if CONFIG_ADC
+volatile int32_t temperature = 0; ///< Last die temperature in signed 16.16 C.
+#endif
 
 #if CONFIG_INTERRUPT
 volatile bool irqActive = false; ///< Last published IRQ state.
@@ -517,6 +520,11 @@ void prepareFirstByte() {
       // STM32 is little-endian; the wire reply starts with UID word 0's MSB.
       seesawWire.setFirstByte((const uint8_t *)UID_BASE + 3);
     }
+#if CONFIG_ADC
+    else if (selectedRegister == SEESAW_STATUS_TEMP) {
+      seesawWire.setFirstByte((const volatile uint8_t *)&temperature + 3);
+    }
+#endif
     // All supported OPTIONS and GPIO bits are below bit 24.
   }
 #if CONFIG_ADC
@@ -693,7 +701,77 @@ bool beginADC() {
     if (micros() - started > adcTimeoutMicros)
       return false;
   }
+#if CONFIG_ADC
+  // Temperature and VREFINT use internal channels, not GPIO pins. Keep these
+  // paths off in spectrum mode, which owns the ADC continuously.
+  LL_ADC_SetCommonPathInternalCh(__LL_ADC_COMMON_INSTANCE(ADC1),
+                                 LL_ADC_PATH_INTERNAL_TEMPSENSOR |
+                                     LL_ADC_PATH_INTERNAL_VREFINT);
+  delayMicroseconds(LL_ADC_DELAY_TEMPSENSOR_STAB_US);
+#endif
   return true;
+}
+#endif
+
+#if CONFIG_ADC
+/**
+ * @brief Convert one external or internal ADC channel with bounded waits.
+
+ * * @param channel LL ADC channel constant.
+ * @return 12-bit result, or -1 if
+ * initialization or conversion failed.
+ */
+int32_t readADCChannel(uint32_t channel) {
+  if (!adcReady)
+    return -1;
+  LL_ADC_ClearFlag_CCRDY(ADC1);
+  LL_ADC_REG_SetSequencerChannels(ADC1, channel);
+  uint32_t started = micros();
+  while (!LL_ADC_IsActiveFlag_CCRDY(ADC1)) {
+    if (micros() - started > adcTimeoutMicros)
+      return -1;
+  }
+  LL_ADC_ClearFlag_EOC(ADC1);
+  LL_ADC_ClearFlag_EOS(ADC1);
+  LL_ADC_ClearFlag_OVR(ADC1);
+  LL_ADC_REG_StartConversion(ADC1);
+  started = micros();
+  while (!LL_ADC_IsActiveFlag_EOC(ADC1)) {
+    if (micros() - started > adcTimeoutMicros)
+      return -1;
+  }
+  return LL_ADC_REG_ReadConversionData12(ADC1);
+}
+
+/** @brief Refresh die temperature outside the I2C interrupt; retain on error.
+ */
+void readTemperature() {
+  int32_t reference = readADCChannel(LL_ADC_CHANNEL_VREFINT);
+  int32_t raw = readADCChannel(LL_ADC_CHANNEL_TEMPSENSOR);
+  if (reference <= 0 || raw < 0) {
+    g_adcStatus = 1;
+    return;
+  }
+  // Normalize to the factory calibration supply, retaining 16 fractional bits.
+  // VREFINT compensates for the actual board supply instead of assuming 3.3 V.
+  int64_t normalized = (int64_t)raw * *VREFINT_CAL_ADDR * VREFINT_CAL_VREF *
+                       65536 / ((int64_t)reference * TEMPSENSOR_CAL_VREFANALOG);
+  int64_t delta = normalized - (int64_t)*TEMPSENSOR_CAL1_ADDR * 65536;
+#if defined(STM32G0xx)
+  // G071 has two factory temperature calibration points.
+  int32_t span = (int32_t)*TEMPSENSOR_CAL2_ADDR - *TEMPSENSOR_CAL1_ADDR;
+  if (!span) {
+    g_adcStatus = 1;
+    return;
+  }
+  delta = delta * (TEMPSENSOR_CAL2_TEMP - TEMPSENSOR_CAL1_TEMP) / span;
+#else
+  // C0 has only the 30 C calibration point. DS13866/DS13867/DS14721 specify
+  // a typical positive slope of 2.53 mV/C (not a precision ambient sensor).
+  delta = delta * TEMPSENSOR_CAL_VREFANALOG * 1000 / (4095L * 2530);
+#endif
+  temperature = TEMPSENSOR_CAL1_TEMP * 65536 + delta;
+  g_adcStatus = 0;
 }
 #endif
 
@@ -756,9 +834,12 @@ void reset() {
 #endif
 #if CONFIG_ADC
   g_bufferedADCRead = g_adcStatus = 0;
+  temperature = 0;
   adcReady = beginADC();
   if (!adcReady) {
     g_adcStatus = 1;
+  } else {
+    readTemperature();
   }
 #endif
 #if CONFIG_FHT
@@ -995,24 +1076,7 @@ int32_t Adafruit_seesawPeripheral_readADC(uint8_t pin) {
   // The core's package-specific map also covers PB0/PB1 on the 28-pin board.
   uint32_t function = pinmap_function(digitalPinToPinName(pin), PinMap_ADC);
   uint32_t channel = STM_PIN_CHANNEL(function);
-  LL_ADC_ClearFlag_CCRDY(ADC1);
-  LL_ADC_REG_SetSequencerChannels(ADC1,
-                                  __LL_ADC_DECIMAL_NB_TO_CHANNEL(channel));
-  uint32_t started = micros();
-  while (!LL_ADC_IsActiveFlag_CCRDY(ADC1)) {
-    if (micros() - started > adcTimeoutMicros)
-      return -1;
-  }
-  LL_ADC_ClearFlag_EOC(ADC1);
-  LL_ADC_ClearFlag_EOS(ADC1);
-  LL_ADC_ClearFlag_OVR(ADC1);
-  LL_ADC_REG_StartConversion(ADC1);
-  started = micros();
-  while (!LL_ADC_IsActiveFlag_EOC(ADC1)) {
-    if (micros() - started > adcTimeoutMicros)
-      return -1;
-  }
-  return LL_ADC_REG_ReadConversionData12(ADC1);
+  return readADCChannel(__LL_ADC_DECIMAL_NB_TO_CHANNEL(channel));
 }
 #endif
 
