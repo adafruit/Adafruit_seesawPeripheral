@@ -155,6 +155,10 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
     uint16_t value = Adafruit_seesawPeripheral_read16(&packet[3]);
     if (pin >= 32 || !(VALID_PWM & AVAILABLE_GPIO & (1UL << pin))) {
       g_pwmStatus = 0x1; // error, invalid pin!
+#if CONFIG_FHT && defined(ARDUINO_ARCH_STM32)
+    } else if (!SeesawSTM32::spectrumAllowsPWM(pin)) {
+      g_pwmStatus = 0x1; // TIM3 is the spectrum sample clock.
+#endif
     } else if (module_cmd == SEESAW_TIMER_PWM) {
       // its valid!
       SEESAW_DEBUG(F("PWM "));

@@ -14,6 +14,8 @@ jobs:
     - uses: actions/checkout@v3
       with:
          repository: adafruit/ci-arduino
+         # Includes the new STM32 targets from adafruit/ci-arduino#240.
+         ref: eb4ebf2b8d7e3db5e37067e54e508c0ae71363dd
          path: ci
 
     - name: Temporary Arduino package-index signature workaround
@@ -32,7 +34,7 @@ jobs:
       run: bash ci/actions_install.sh
 
     - name: test platforms
-      run: python3 ci/build_platform.py attiny817 attiny816 attiny807 attiny806 attiny1617 attiny1616 stm32c011
+      run: python3 ci/build_platform.py attiny817 attiny816 attiny807 attiny806 attiny1617 attiny1616 stm32c011 stm32c031 stm32c051 stm32g071
 
 #    - name: clang
 #      run: python3 ci/run-clang-format.py -e "ci/*" -e "bin/*" -r . 

@@ -203,6 +203,11 @@ constexpr bool validEncoderPins() {
       if (pin >= 32 || !(VALID_GPIO & (1UL << pin)) || (used & (1UL << pin))) {
         return false;
       }
+#if CONFIG_FHT
+      if (pin == CONFIG_FHT_PIN) {
+        return false;
+      }
+#endif
       used |= 1UL << pin;
     }
   }
@@ -321,6 +326,14 @@ const uint16_t pwmPins[SEESAW_STM32_PIN_COUNT] = {
     PB3,      PB4,      PB5,  PB6,      PB7,      PB8,  PC6,      PC14};
 #endif
 
+#if CONFIG_FHT
+/** @brief Keep Arduino PWM away from the timer driving ADC conversions. */
+bool spectrumAllowsPWM(uint8_t pin) {
+  return pinmap_peripheral(digitalPinToPinName(pwmPins[pin]), PinMap_PWM) !=
+         TIM3;
+}
+#endif
+
 /**
  * @brief Write one timer output without selecting a G071 DAC by accident.
  * @param pin Validated protocol pin.
@@ -362,6 +375,39 @@ void stopPWM(uint8_t pin) {
 #endif
   pinMode(pwmPins[pin], INPUT);
   applyPWM();
+}
+#endif
+#if CONFIG_FHT
+/** @brief Reject ADC inputs already owned by another enabled feature. */
+bool spectrumPinAvailable(uint8_t pin) {
+  if (pin >= 32 || !(VALID_ADC & (1UL << pin))) {
+    return false;
+  }
+  uint32_t bit = 1UL << pin;
+#if CONFIG_SPI
+  if (spiConfigured && (spiPinMask & bit)) {
+    return false;
+  }
+#endif
+#if CONFIG_ENCODER
+  for (uint8_t encoder = 0; encoder < CONFIG_NUM_ENCODERS; encoder++) {
+    if (pin == encoderPins[encoder][0] || pin == encoderPins[encoder][1]) {
+      return false;
+    }
+  }
+#endif
+#if CONFIG_PWM || CONFIG_PWM_16BIT
+  if (pwmActive & bit) {
+    return false;
+  }
+#endif
+#if CONFIG_NEOPIXEL
+  if (pin == g_neopixel_pin) {
+    return false;
+  }
+#endif
+  (void)bit;
+  return true;
 }
 #endif
 #if CONFIG_ADC || CONFIG_FHT

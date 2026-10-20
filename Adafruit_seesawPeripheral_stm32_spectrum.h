@@ -1,27 +1,17 @@
 /*!
  * @file Adafruit_seesawPeripheral_stm32_spectrum.h
- * @brief Timer-triggered ADC/DMA and fixed-point audio spectrum for STM32C0.
+ * @brief Timer-triggered ADC/DMA and fixed-point audio spectrum for STM32C0/G0.
  */
 #ifndef ADAFRUIT_SEESAWPERIPHERAL_STM32_SPECTRUM_H
 #define ADAFRUIT_SEESAWPERIPHERAL_STM32_SPECTRUM_H
 
-#if defined(ARDUINO_GENERIC_G071GBUX)
-#error "STM32 spectrum capture currently supports C011, C031, and C051 only"
-#endif
-
-#include "stm32c0xx_ll_dma.h"
-#include "stm32c0xx_ll_tim.h"
+#include "stm32yyxx_ll_dma.h"
+#include "stm32yyxx_ll_tim.h"
 #include <CMSIS_DSP.h>
 #include <arm_const_structs.h>
 
-#if CONFIG_ADC || CONFIG_PWM || CONFIG_PWM_16BIT
-#error "STM32 spectrum capture owns ADC1 and TIM3; disable ADC and PWM"
-#endif
-#if CONFIG_NEOPIXEL || CONFIG_EEPROM
-#error "Disable NeoPixel and EEPROM during STM32 spectrum capture"
-#endif
-#if CONFIG_SPI || CONFIG_ENCODER
-#error "STM32 spectrum capture cannot share pins with SPI or encoders"
+#if CONFIG_ADC
+#error "STM32 spectrum capture owns ADC1; disable CONFIG_ADC"
 #endif
 #ifndef CONFIG_FHT_PIN
 #define CONFIG_FHT_PIN 0 ///< Initial protocol GPIO index (PA0).
@@ -46,6 +36,7 @@ const q15_t spectrumWindow[spectrumSamples] = {
 };
 
 bool beginADC();
+bool spectrumPinAvailable(uint8_t pin);
 
 /** @brief Stop triggers before changing ADC or DMA state. */
 bool stopSpectrum() {
@@ -96,7 +87,8 @@ bool selectSpectrumChannel() {
   return true;
 }
 
-/** @brief Apply the legacy rate code using a 48 MHz timer, rounded to one tick.
+/** @brief Apply the legacy rate code using the timer clock, rounded to one
+ * tick.
  */
 void applySpectrumRate() {
   uint32_t ticks =
@@ -111,6 +103,9 @@ bool beginSpectrum() {
   spectrumRunning = false;
   spectrumChannel = CONFIG_FHT_PIN;
   spectrumRate = 12;
+  if (!spectrumPinAvailable(spectrumChannel)) {
+    return false;
+  }
   memset(spectrumResults, 0, sizeof(spectrumResults));
   memset(spectrumSnapshot, 0, sizeof(spectrumSnapshot));
   spectrumPublished = 0;
@@ -121,7 +116,7 @@ bool beginSpectrum() {
   if (!beginADC()) {
     return false;
   }
-  // 160.5 sample + 12.5 conversion cycles at 12 MHz fits every rate code.
+  // 160.5 + 12.5 ADC cycles at 12 MHz (C0) or 16 MHz (G0) fits every rate.
   LL_ADC_REG_SetTriggerSource(ADC1, LL_ADC_REG_TRIG_EXT_TIM3_TRGO);
   LL_ADC_REG_SetTriggerEdge(ADC1, LL_ADC_REG_TRIG_EXT_RISING);
   LL_ADC_REG_SetDMATransfer(ADC1, LL_ADC_REG_DMA_TRANSFER_UNLIMITED);
@@ -246,7 +241,7 @@ void Adafruit_seesawPeripheral_setSpectrumRate(uint8_t rate) {
 /** @brief Select an exposed ADC pin; invalid or reserved pins are ignored. */
 void Adafruit_seesawPeripheral_setSpectrumChannel(uint8_t pin) {
   using namespace SeesawSTM32;
-  if (pin >= 32 || !(VALID_ADC & (1UL << pin))) {
+  if (!spectrumPinAvailable(pin)) {
     return;
   }
   if (!spectrumRunning || !stopSpectrum()) {

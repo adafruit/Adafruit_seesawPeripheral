@@ -1,1 +1,1 @@
-# FHT uses AVR assembly and free-running ADC support, not implemented on STM32.
+# The C011 matrix uses the dedicated example_stm32_spectrum instead.

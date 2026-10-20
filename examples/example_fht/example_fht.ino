@@ -7,14 +7,16 @@
 
 #define CONFIG_FHT                 1
 
-// STM32C011/C031/C051: connect a 0..3.3 V analog microphone output to PA0.
+// STM32C011/C031/C051/G071: connect a 0..3.3 V microphone output to PA0.
 // For the Adafruit SPW2430 breakout, use DC, not AC; power it from 3.3 V.
 // The measured DC offset is removed before each 128-point transform.
 // CONFIG_FHT_PIN is a protocol GPIO index; the default is 0 (PA0).
 // #define CONFIG_FHT_PIN 0
 // Default rate code 12 = 12,500 samples/s, giving 97.65625 Hz per bin.
-// STM32 owns ADC1, DMA1 channel 1, and TIM3. Do not enable ADC, PWM,
-// NeoPixel, EEPROM, SPI, or encoders in the same sketch.
+// STM32 owns ADC1, DMA1 channel 1, and TIM3. CONFIG_ADC cannot share ADC1.
+// PWM on other timers, SPI, encoders, NeoPixels, and EEPROM can coexist
+// if pins and memory permit. TIM3 PWM requests are rejected.
+// Slow operations can delay frames, and FFT processing delays encoder polling.
 
 #include "Adafruit_seesawPeripheral.h"
 
