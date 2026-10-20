@@ -60,9 +60,9 @@
 #define SEESAW_STATUS_UID 0x05 ///< Read-only STM32 96-bit unique identifier.
 
 #if defined(ARDUINO_ARCH_STM32)
-#include "Adafruit_seesawPeripheral_stm32_config.h"
+#include "arch/stm32/Adafruit_seesawPeripheral_stm32_config.h"
 #else
-#include "Adafruit_seesawPeripheral_avr_config.h"
+#include "arch/avr/Adafruit_seesawPeripheral_avr_config.h"
 #endif
 
 void foo(void);
@@ -191,9 +191,9 @@ Adafruit_seesawPeripheral_write32(uint32_t value);
 #endif
 
 #if defined(ARDUINO_ARCH_STM32)
-#include "Adafruit_seesawPeripheral_stm32_i2c.h"
+#include "arch/stm32/Adafruit_seesawPeripheral_stm32_i2c.h"
 #else
-#include "Adafruit_seesawPeripheral_i2c.h"
+#include "arch/avr/Adafruit_seesawPeripheral_i2c.h"
 #endif
 
 /****************************************************** global state */
@@ -416,9 +416,9 @@ void Adafruit_seesawPeripheral_setDatecode(void) {
 }
 
 #if defined(ARDUINO_ARCH_STM32)
-#include "Adafruit_seesawPeripheral_stm32.h"
+#include "arch/stm32/Adafruit_seesawPeripheral_stm32.h"
 #else
-#include "Adafruit_seesawPeripheral_avr.h"
+#include "arch/avr/Adafruit_seesawPeripheral_avr.h"
 
 bool Adafruit_seesawPeripheral_begin(void) {
   SEESAW_DEBUG(F("All GPIO: "));
