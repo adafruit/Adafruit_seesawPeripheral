@@ -76,9 +76,9 @@ uint32_t spiActualClock() {
     return 0;
   uint32_t divisor =
       ((spiPort.getHandle()->Instance->CR1 & SPI_CR1_BR) >> SPI_CR1_BR_Pos) + 1;
-  // begin() accepts only this C011's 48 MHz PCLK. Avoid walking the RCC clock
+  // begin() accepts only the target's expected PCLK. Avoid walking the RCC clock
   // tree inside the first-byte deadline; the live SPI divider is read above.
-  return 48000000UL >> divisor;
+  return SEESAW_STM32_PCLK >> divisor;
 }
 /*! First wire byte of the actual-clock response. */
 uint8_t spiFirstClockByte() { return spiActualClock() >> 24; }
@@ -130,9 +130,10 @@ void spiProcess(uint8_t reg, const volatile uint8_t *data, uint8_t length) {
       return;
     }
     uint32_t frequency = Adafruit_seesawPeripheral_read32(data + 2);
-    // The generic C011 runs SPI from 48 MHz with divisors 2 through 256.
+    // SPI runs from PCLK with divisors 2 through 256.
     // Reject a request below the hardware minimum instead of exceeding it.
-    if (frequency < 187500 || frequency > 24000000 || spiSelected) {
+    if (frequency < SEESAW_STM32_PCLK / 256 ||
+        frequency > SEESAW_STM32_PCLK / 2 || spiSelected) {
       spiFail(spiBadConfig);
       return;
     }
@@ -143,7 +144,7 @@ void spiProcess(uint8_t reg, const volatile uint8_t *data, uint8_t length) {
       available &= ~((1UL << encoderPins[i][0]) | (1UL << encoderPins[i][1]));
 #endif
 #if CONFIG_NEOPIXEL
-    if (g_neopixel_pin < 16)
+    if (g_neopixel_pin < SEESAW_STM32_PIN_COUNT)
       available &= ~(1UL << g_neopixel_pin);
 #endif
     if ((available & spiPinMask) != spiPinMask) {
@@ -175,7 +176,10 @@ void spiProcess(uint8_t reg, const volatile uint8_t *data, uint8_t length) {
     // STM32duino 3.0.0 retains its settings cache across end(). Force a
     // different setting first so an identical reconfiguration reinitializes
     // the hardware too. CS remains high during both configurations.
-    uint32_t primingFrequency = spiFrequency == 187500 ? 375000 : 187500;
+    uint32_t minimumFrequency = SEESAW_STM32_PCLK / 256;
+    uint32_t primingFrequency = spiFrequency == minimumFrequency
+                                    ? minimumFrequency * 2
+                                    : minimumFrequency;
     spiPort.beginTransaction(
         SPISettings(primingFrequency, MSBFIRST, SPI_MODE0));
     spiPort.beginTransaction(SPISettings(

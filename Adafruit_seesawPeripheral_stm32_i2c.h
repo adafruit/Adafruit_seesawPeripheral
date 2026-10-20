@@ -1,16 +1,12 @@
 /*!
  * @file Adafruit_seesawPeripheral_stm32_i2c.h
- * Bounded, allocation-free C011 I2C target transport.
+ * Bounded, allocation-free STM32 I2C target transport.
  * Fill TXDR before the first data clock; service RXNE/TXIS directly instead of
  * passing through Wire and HAL callbacks. Retain hardware stretching as a
  * safety fallback while flash writes or NeoPixel output prevent IRQ service.
  */
 #ifndef ADAFRUIT_SEESAWPERIPHERAL_STM32_I2C_H
 #define ADAFRUIT_SEESAWPERIPHERAL_STM32_I2C_H
-
-#if !defined(ARDUINO_GENERIC_C011F6UX)
-#error "The fast I2C transport currently supports STM32C011F6Ux only"
-#endif
 
 #include "PeripheralPins.h"
 #include "pinmap.h"
@@ -21,15 +17,15 @@
 #define CONFIG_I2C_NO_STRETCH 0
 #endif
 
-void seesawC011I2CInterrupt();
-// C011 has 16 Cortex entries and 32 peripheral entries. Keep every other
+void seesawSTM32I2CInterrupt();
+// These Cortex-M0+ targets have 16 Cortex and 32 peripheral entries. Keep every other
 // handler unchanged, including SysTick, UART and timers. STM32duino's linked
 // Wire code owns the flash-vector symbol, so replace only our RAM I2C1 entry.
-static uint32_t seesawC011Vectors[48] __attribute__((aligned(256)));
-static uint32_t seesawC011OriginalI2CVector;
+static uint32_t seesawSTM32Vectors[48] __attribute__((aligned(256)));
+static uint32_t seesawSTM32OriginalI2CVector;
 
 /*! Minimal Wire-style target interface used by the shared seesaw handlers. */
-class SeesawC011I2C {
+class SeesawSTM32I2C {
 public:
   /*! Record the Arduino SDA pin. */
   void setSDA(uint32_t pin) { sdaPin = digitalPinToPinName(pin); }
@@ -51,9 +47,9 @@ public:
   /*! Select a short getter for a first byte that is not stored directly. */
   void setFirstByte(uint8_t (*callback)()) { firstByteCallback = callback; }
 
-  /*! Start the dedicated 48 MHz C011 I2C1 target. */
+  /*! Start the dedicated I2C1 target at the board's expected clock. */
   bool begin(uint8_t address) {
-    if (HAL_RCC_GetPCLK1Freq() != 48000000 ||
+    if (HAL_RCC_GetPCLK1Freq() != SEESAW_STM32_PCLK ||
         pinmap_peripheral(sdaPin, PinMap_I2C_SDA) != I2C1 ||
         pinmap_peripheral(sclPin, PinMap_I2C_SCL) != I2C1)
       return false;
@@ -86,13 +82,13 @@ public:
     NVIC_ClearPendingIRQ(I2C1_IRQn);
     uint32_t savedMask = __get_PRIMASK();
     __disable_irq();
-    if (SCB->VTOR != (uintptr_t)seesawC011Vectors) {
-      memcpy(seesawC011Vectors, (const void *)SCB->VTOR,
-             sizeof(seesawC011Vectors));
-      seesawC011OriginalI2CVector = seesawC011Vectors[16 + I2C1_IRQn];
+    if (SCB->VTOR != (uintptr_t)seesawSTM32Vectors) {
+      memcpy(seesawSTM32Vectors, (const void *)SCB->VTOR,
+             sizeof(seesawSTM32Vectors));
+      seesawSTM32OriginalI2CVector = seesawSTM32Vectors[16 + I2C1_IRQn];
     }
-    seesawC011Vectors[16 + I2C1_IRQn] = (uintptr_t)seesawC011I2CInterrupt;
-    SCB->VTOR = (uintptr_t)seesawC011Vectors;
+    seesawSTM32Vectors[16 + I2C1_IRQn] = (uintptr_t)seesawSTM32I2CInterrupt;
+    SCB->VTOR = (uintptr_t)seesawSTM32Vectors;
     __DSB();
     __ISB();
     __set_PRIMASK(savedMask);
@@ -105,8 +101,8 @@ public:
     NVIC_DisableIRQ(I2C1_IRQn);
     I2C1->CR1 = 0;
     NVIC_ClearPendingIRQ(I2C1_IRQn);
-    if (SCB->VTOR == (uintptr_t)seesawC011Vectors)
-      seesawC011Vectors[16 + I2C1_IRQn] = seesawC011OriginalI2CVector;
+    if (SCB->VTOR == (uintptr_t)seesawSTM32Vectors)
+      seesawSTM32Vectors[16 + I2C1_IRQn] = seesawSTM32OriginalI2CVector;
   }
 
   /*! Bytes remaining in the complete received packet. */
@@ -142,7 +138,7 @@ public:
   /*! The fast byte must match the same read's ordinary protocol response. */
   volatile uint32_t firstByteMismatches = 0;
 
-  /*! Service the C011's combined I2C interrupt. No waits or allocation. */
+  /*! Service the combined I2C interrupt. No waits or allocation. */
   __attribute__((always_inline)) inline void interrupt() {
     uint32_t status = I2C1->ISR;
     // A read address has less than one clock to load its first data byte.
@@ -267,7 +263,7 @@ private:
   }
 };
 
-SeesawC011I2C seesawWire; ///< Dedicated C011 target; does not own global Wire.
+SeesawSTM32I2C seesawWire; ///< Dedicated target; does not own global Wire.
 
 /** @brief Write one byte through the STM32 target transport. */
 __attribute__((always_inline)) inline void
@@ -281,10 +277,10 @@ Adafruit_seesawPeripheral_writeBuffer(const uint8_t *data, size_t length) {
   seesawWire.write(data, length);
 }
 
-/*! The C011 transport owns I2C1, independently of STM32duino's Wire HAL. */
-// The standard C011 linker/startup copies .RamFunc with .data. Avoid flash
+/*! This transport owns I2C1, independently of STM32duino's Wire HAL. */
+// The standard STM32 linker/startup copies .RamFunc with .data. Avoid flash
 // wait states on the address/first-byte path; callbacks still live in flash.
-__attribute__((section(".RamFunc"), noinline)) void seesawC011I2CInterrupt() {
+__attribute__((section(".RamFunc"), noinline)) void seesawSTM32I2CInterrupt() {
   seesawWire.interrupt();
 }
 
