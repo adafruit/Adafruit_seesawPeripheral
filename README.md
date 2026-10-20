@@ -132,6 +132,10 @@ effect on the next reset before address straps are applied; other values use
 
 ### STM32 factory-ROM bootloader
 
+The [C011 I2C bootloading demo](tools/stm32_i2c_bootloader/README.md) includes
+a Nano/Uno/Metro USB-to-I2C bridge and a Python updater with flash backup,
+readback verification, and EEPROM preservation.
+
 The C011 backend enables `CONFIG_BOOTLOADER` by default. Write exactly these six
 bytes in one transaction to the current seesaw I2C address:
 `00 7E B0 07 10 AD`. The four-byte key spells "BOOTLOAD" in leetspeak. Shorter
