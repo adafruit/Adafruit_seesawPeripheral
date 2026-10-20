@@ -40,7 +40,13 @@ void Adafruit_seesawPeripheral_processRequest(uint8_t base_cmd,
     }
     if (module_cmd == SEESAW_STATUS_VERSION) {
       Adafruit_seesawPeripheral_write32(CONFIG_VERSION); // instant reply
-    } else if (module_cmd == SEESAW_STATUS_OPTIONS) {
+    }
+#if defined(ARDUINO_ARCH_STM32) && CONFIG_ADC
+    else if (module_cmd == SEESAW_STATUS_TEMP) {
+      Adafruit_seesawPeripheral_write32(SeesawSTM32::temperature);
+    }
+#endif
+    else if (module_cmd == SEESAW_STATUS_OPTIONS) {
       uint32_t options =
           (1UL << SEESAW_STATUS_BASE) | (1UL << SEESAW_GPIO_BASE) |
           ((uint32_t)CONFIG_ADC << SEESAW_ADC_BASE) |

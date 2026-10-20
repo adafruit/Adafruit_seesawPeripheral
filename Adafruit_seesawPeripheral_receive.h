@@ -53,6 +53,11 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
       Adafruit_seesawPeripheral_reset();
       SEESAW_DEBUGLN(F("Resetting"));
     }
+#if defined(ARDUINO_ARCH_STM32) && CONFIG_ADC
+    else if (module_cmd == SEESAW_STATUS_TEMP && howMany == 2) {
+      SeesawSTM32::readTemperature();
+    }
+#endif
 #if CONFIG_BOOTLOADER
     else if (module_cmd == SEESAW_STATUS_BOOTLOADER && howMany == 6 &&
              Adafruit_seesawPeripheral_read32(&packet[2]) ==

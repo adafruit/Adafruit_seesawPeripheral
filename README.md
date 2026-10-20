@@ -46,6 +46,18 @@ queued commands and sample GPIO changes. ADC replies contain the last completed
 conversion; allow conversion time after selecting a channel. ADC status is zero
 on success and one for an invalid channel or a conversion failure.
 
+On C011, C031, C051, and G071, `CONFIG_ADC` also enables the internal die
+temperature sensor through the standard seesaw `getTemp()` / `get_temp()` call
+(`STATUS_TEMP`, signed 16.16 degrees Celsius). It uses factory calibration and
+VREFINT supply compensation; C0 uses a typical slope, while G071 has two factory
+calibration points. This measures chip temperature, not precision ambient
+temperature. Allow 1 ms between selecting the register and reading it; an
+immediate repeated START returns the previous reading. A failed conversion
+retains the previous reading (zero until the first success) and sets ADC status
+to one. Temperature sensing is disabled with ADC, including in FHT builds.
+`examples/example_stm32_temperature` prints a reading each second on the debug
+UART (PA0 TX, 115200 baud) while continuing to serve I2C.
+
 Protocol GPIO indices 0–8 map to PA0–PA8, 9/10 to PA11/PA12, and 15 to PC14.
 Only indices 0–10 support ADC. SWD, I2C, the PC15 LED, and configured address or
 interrupt pins are excluded from ordinary GPIO/ADC access. Enable
