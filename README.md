@@ -23,7 +23,7 @@ Select STM32duino's generic **STM32C011F6Ux** target and start with
 `examples/example_stm32c011`. This backend supports GPIO direction, bulk
 read/write/toggle, pull-up/pull-down selection, optional active-low GPIO change
 interrupts, 12-bit ADC reads, PWM, NeoPixel, encoders, UART, and opt-in EEPROM.
-FHT, SPI, and ROM-bootloader features are not included in this core port.
+FHT and SPI are not included in this core port.
 
 I2C uses PB7 (SDA) and PB6 (SCL), with address `0x49` in the example. The target
 requires a 48 MHz peripheral clock and retains hardware clock stretching as a
@@ -95,3 +95,25 @@ write. Updates are not power-loss atomic. Software reset does not erase data.
 Byte `0xFF` holds the persistent base I2C address: values `0x08`–`0x77` take
 effect on the next reset before address straps are applied; other values use
 `CONFIG_I2C_PERIPH_ADDR`.
+
+### STM32 factory-ROM bootloader
+
+The C011 backend enables `CONFIG_BOOTLOADER` by default. Write exactly these six
+bytes in one transaction to the current seesaw I2C address:
+`00 7E B0 07 10 AD`. The four-byte key spells "BOOTLOAD" in leetspeak. Shorter
+commands, incorrect keys, and trailing bytes are ignored; `00 7E FF` is not
+accepted. Normal seesaw software reset remains `00 7F FF`.
+Define `CONFIG_BOOTLOADER 0` before including the library to omit ROM entry.
+
+The command requests a clean reset, then enters ST's factory ROM before Arduino
+initializes peripherals. No BOOT0 wire or option-byte change is needed. ROM uses
+PB6/SCL and PB7/SDA at 7-bit I2C address `0x64` and speaks ST's
+[AN4221 protocol](https://www.st.com/resource/en/application_note/an4221-i2c-protocol-used-in-the-stm32-bootloader-stmicroelectronics.pdf),
+not seesaw commands. Use 3.3 V pull-ups on the raw bus; a 5 V host needs a
+bidirectional level shifter. The breakout's QT connectors are level shifted.
+
+Preserve the final 2 KiB EEPROM page at `0x08007800`: limit application images
+to 30720 bytes, erase only the required application pages, and verify written
+bytes before using ROM Go at `0x08000000`. Do not change option bytes or
+mass-erase. Keep SWD recovery available if power or an update is interrupted;
+this key prevents accidental entry, not unauthorized firmware updates.
