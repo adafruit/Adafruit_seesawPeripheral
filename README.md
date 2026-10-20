@@ -140,7 +140,7 @@ effect on the next reset before address straps are applied; other values use
 
 ### STM32 factory-ROM bootloader
 
-The [C011 I2C bootloading demo](tools/stm32_i2c_bootloader/README.md) includes
+The [C011 I2C bootloading demo](extras/stm32_i2c_bootloader/README.md) includes
 a Nano/Uno/Metro USB-to-I2C bridge and a Python updater with flash backup,
 readback verification, and EEPROM preservation.
 
