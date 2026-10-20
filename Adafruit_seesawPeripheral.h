@@ -33,6 +33,12 @@
 #ifndef CONFIG_FHT
 #define CONFIG_FHT 0
 #endif
+#ifndef CONFIG_SPI
+#define CONFIG_SPI 0
+#endif
+#if CONFIG_SPI && !defined(ARDUINO_ARCH_STM32)
+#error "The SPI controller backend currently requires STM32"
+#endif
 #ifndef CONFIG_BOOTLOADER
 #if defined(ARDUINO_ARCH_STM32)
 #define CONFIG_BOOTLOADER 1 ///< Enable the STM32 factory-ROM boot command.
@@ -153,6 +159,11 @@ uint16_t DATE_CODE = 0;
 #define VALID_GPIO (ALL_GPIO & ~INVALID_GPIO & ~SEESAW_UART_PIN_MASK)
 #define VALID_ADC (ALL_ADC & VALID_GPIO)
 #define VALID_PWM (ALL_PWM & VALID_GPIO)
+#if CONFIG_SPI
+#define AVAILABLE_GPIO (SeesawSTM32::validGPIO())
+#else
+#define AVAILABLE_GPIO VALID_GPIO
+#endif
 
 void Adafruit_seesawPeripheral_reset(void);
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins);
@@ -165,6 +176,12 @@ void Adafruit_seesawPeripheral_processRequest(uint8_t base_cmd,
                                               uint8_t module_cmd);
 void Adafruit_seesawPeripheral_run(void);
 void Adafruit_seesawPeripheral_changedGPIO(void);
+#if CONFIG_SPI
+__attribute__((always_inline)) inline uint32_t
+Adafruit_seesawPeripheral_read32(const volatile uint8_t *data);
+__attribute__((always_inline)) inline void
+Adafruit_seesawPeripheral_write32(uint32_t value);
+#endif
 
 #if defined(ARDUINO_ARCH_STM32)
 #include "Adafruit_seesawPeripheral_stm32_i2c.h"
@@ -491,7 +508,7 @@ void Adafruit_seesawPeripheral_gpioInterrupt(uint32_t mask, bool enabled) {
 #if !CONFIG_INTERRUPT
   (void)enabled;
 #endif
-  mask &= VALID_GPIO;
+  mask &= AVAILABLE_GPIO;
   for (uint8_t pin = 0; pin < 32; pin++) {
     if ((mask >> pin) & 0x1) {
       SEESAW_DEBUG(F("Set pin "));

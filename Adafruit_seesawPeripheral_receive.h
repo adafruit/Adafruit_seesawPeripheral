@@ -34,6 +34,19 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
   uint8_t base_cmd = packet[0];
   uint8_t module_cmd = packet[1];
 
+#if CONFIG_SPI
+  if (base_cmd == SeesawSTM32::spiBase) {
+    SeesawSTM32::spiProcess(module_cmd, &packet[2], howMany - 2);
+    uint32_t savedMask = __get_PRIMASK();
+    noInterrupts();
+    if (SeesawSTM32::spiPending) {
+      SeesawSTM32::spiPending--;
+    }
+    __set_PRIMASK(savedMask);
+    return;
+  }
+#endif
+
   if (base_cmd == SEESAW_STATUS_BASE) {
     if (module_cmd == SEESAW_STATUS_SWRST && howMany == 3 &&
         packet[2] == 0xFF) {
@@ -104,7 +117,7 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
     }
     if (module_cmd >= SEESAW_ADC_CHANNEL_OFFSET) {
       uint8_t adcpin = module_cmd - SEESAW_ADC_CHANNEL_OFFSET;
-      if (adcpin >= 32 || !(VALID_ADC & (1UL << adcpin))) {
+      if (adcpin >= 32 || !(VALID_ADC & AVAILABLE_GPIO & (1UL << adcpin))) {
         g_bufferedADCRead = 0;
         g_adcStatus = 0x1; // error, invalid pin!
       } else {
@@ -140,7 +153,7 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
     }
     uint8_t pin = packet[2];
     uint16_t value = Adafruit_seesawPeripheral_read16(&packet[3]);
-    if (pin >= 32 || !(VALID_PWM & (1UL << pin))) {
+    if (pin >= 32 || !(VALID_PWM & AVAILABLE_GPIO & (1UL << pin))) {
       g_pwmStatus = 0x1; // error, invalid pin!
     } else if (module_cmd == SEESAW_TIMER_PWM) {
       // its valid!
@@ -182,7 +195,7 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
     }
     if (module_cmd == SEESAW_NEOPIXEL_PIN && howMany == 3) {
       uint8_t pin = packet[2];
-      if (pin >= 32 || !(VALID_GPIO & (1UL << pin))) {
+      if (pin >= 32 || !(AVAILABLE_GPIO & (1UL << pin))) {
         return;
       }
       g_neopixel_pin = pin;

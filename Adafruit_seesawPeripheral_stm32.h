@@ -49,6 +49,9 @@ static_assert(CONFIG_ADDR_3_PIN < 32 && (ALL_GPIO & (1UL << CONFIG_ADDR_3_PIN)),
 #if CONFIG_ADC
 #include "stm32c0xx_ll_adc.h"
 #endif
+#if CONFIG_SPI
+#include <SPI.h>
+#endif
 #if CONFIG_NEOPIXEL
 #include <Adafruit_NeoPixel.h>
 #endif
@@ -201,6 +204,24 @@ volatile uint8_t selectedBase = 0, selectedRegister = 0; ///< Read pointer.
 uint32_t direction = 0, output = 0, pull = 0; ///< GPIO register state.
 uint32_t lastGPIO = 0;                        ///< Previous GPIO sample.
 uint8_t address = CONFIG_I2C_PERIPH_ADDR;     ///< Effective I2C address.
+#if CONFIG_SPI
+const uint8_t spiBase = 0x13;     ///< Experimental SPI controller module.
+const uint32_t spiPinMask = 0xF0; ///< PA4 CS, PA5 SCK, PA6 MISO, PA7 MOSI.
+SPIClass spiPort(PA7, PA6, PA5);  ///< Dedicated Arduino SPI controller.
+volatile bool spiConfigured = false, spiSelected = false; ///< SPI ownership/CS.
+volatile uint8_t spiPending = 0; ///< Queued commands, including the active one.
+volatile uint8_t spiError = 0, spiSequence = 0; ///< Error and completion count.
+volatile bool spiAbortPending = false; ///< ISR requests main-loop CS release.
+volatile uint8_t spiRxLength = 0;  ///< Completed bytes available to the host.
+uint8_t spiRx[29];                 ///< One I2C command's received bytes.
+uint32_t spiFrequency = 1000000;   ///< Requested SPI frequency in hertz.
+uint8_t spiMode = 0, spiOrder = 0; ///< Mode 0..3; MSB-first 0, LSB-first 1.
+
+/** @brief Exclude pins owned by an active SPI configuration. */
+uint32_t validGPIO() {
+  return spiConfigured ? VALID_GPIO & ~spiPinMask : VALID_GPIO;
+}
+#endif
 #if CONFIG_PWM || CONFIG_PWM_16BIT
 uint32_t pwmActive = 0; ///< Protocol pins currently using timers.
 uint16_t pwmValues[16] =
@@ -283,7 +304,7 @@ inline uint32_t readGPIO() {
   uint32_t value = 0;
   for (uint8_t pin = 0; pin < 16; pin++) {
     uint32_t bit = 1UL << pin;
-    if ((VALID_GPIO & bit) && digitalRead(pin) == HIGH) {
+    if ((AVAILABLE_GPIO & bit) && digitalRead(pin) == HIGH) {
       value |= bit;
     }
   }
@@ -294,7 +315,7 @@ inline uint32_t readGPIO() {
 void applyGPIO(uint32_t pins) {
   for (uint8_t pin = 0; pin < 16; pin++) {
     uint32_t bit = 1UL << pin;
-    if (!(pins & VALID_GPIO & bit)) {
+    if (!(pins & AVAILABLE_GPIO & bit)) {
       continue;
     }
 #if CONFIG_PWM || CONFIG_PWM_16BIT
@@ -310,6 +331,10 @@ void applyGPIO(uint32_t pins) {
     }
   }
 }
+
+#if CONFIG_SPI
+#include "Adafruit_seesawPeripheral_stm32_spi.h"
+#endif
 
 #if CONFIG_UART
 /** @brief Read live UART readiness before the first I2C reply byte. */
@@ -390,6 +415,19 @@ void prepareFirstByte() {
     }
   }
 #endif
+#if CONFIG_SPI
+  else if (selectedBase == spiBase) {
+    if (selectedRegister == spiStatusRegister) {
+      seesawWire.setFirstByte(spiStatusFlags);
+    } else if (selectedRegister == spiReadRegister) {
+      seesawWire.setFirstByte(spiFirstReceiveByte);
+    } else if (selectedRegister == spiConfigRegister) {
+      seesawWire.setFirstByte(&spiMode);
+    } else if (selectedRegister == spiClockRegister) {
+      seesawWire.setFirstByte(spiFirstClockByte);
+    }
+  }
+#endif
 }
 
 /*! Decode the register pointer before a possible immediate repeated START. */
@@ -400,12 +438,41 @@ bool receiveHeader(uint8_t base, uint8_t reg) {
   // A full queue can invalidate the pointer in receive(). In that case finish
   // reception before loading the first reply byte, even on a repeated START.
   // Between this header and START, the main loop can only free queue entries.
+#if CONFIG_SPI
+  if (base == spiBase) {
+    return true; // Two-byte SPI queries bypass the command queue.
+  }
+#endif
   return (head + 1) % queueSize != tail;
 }
 
 void receive(int length) {
+#if CONFIG_SPI
+  // Status/RX reads must remain available when the work queue is full.
+  if (length == 2 && seesawWire.peek() == spiBase) {
+    seesawWire.read();
+    uint8_t reg = seesawWire.read();
+    selectedBase = spiBase;
+    selectedRegister = reg;
+    prepareFirstByte();
+    if (reg == spiStatusRegister || reg == spiReadRegister ||
+        reg == spiConfigRegister || reg == spiClockRegister) {
+      return;
+    }
+    spiError = spiInvalidCommand;
+    spiAbortPending = true;
+    return;
+  }
+#endif
   uint8_t next = (head + 1) % queueSize;
   if (length < 2 || length > commandSize || next == tail) {
+#if CONFIG_SPI
+    if (spiConfigured || spiPending ||
+        (length >= 2 && seesawWire.peek() == spiBase)) {
+      spiError = spiQueueOverflow;
+      spiAbortPending = true;
+    }
+#endif
     selectedBase = selectedRegister = 0xFF;
     prepareFirstByte();
     while (seesawWire.available()) {
@@ -420,6 +487,11 @@ void receive(int length) {
   selectedBase = commands[head].data[0];
   selectedRegister = commands[head].data[1];
   prepareFirstByte();
+#if CONFIG_SPI
+  if (selectedBase == spiBase) {
+    spiPending++;
+  }
+#endif
   head = next;
 }
 
@@ -457,6 +529,11 @@ bool beginADC() {
 
 /** @brief Reset GPIO and ADC state without writing nonvolatile memory. */
 void reset() {
+#if CONFIG_SPI
+  spiStop();
+  spiError = spiSequence = spiRxLength = 0;
+  spiAbortPending = false;
+#endif
   direction = output = pull = 0;
 #if CONFIG_INTERRUPT
   g_irqGPIO = g_irqFlags = 0;
@@ -625,7 +702,7 @@ uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
 /** @brief Set or clear output direction while preserving pull configuration. */
 void Adafruit_seesawPeripheral_gpioDirection(uint32_t mask, bool enabled) {
   using namespace SeesawSTM32;
-  mask &= VALID_GPIO;
+  mask &= AVAILABLE_GPIO;
   if (enabled) {
     direction |= mask;
   } else {
@@ -637,7 +714,7 @@ void Adafruit_seesawPeripheral_gpioDirection(uint32_t mask, bool enabled) {
 /** @brief Update output levels, or pull polarity while a pin is an input. */
 void Adafruit_seesawPeripheral_gpioWrite(uint32_t mask, uint8_t value) {
   using namespace SeesawSTM32;
-  mask &= VALID_GPIO;
+  mask &= AVAILABLE_GPIO;
   if (value == HIGH) {
     output |= mask;
   } else {
@@ -649,14 +726,15 @@ void Adafruit_seesawPeripheral_gpioWrite(uint32_t mask, uint8_t value) {
 /** @brief Apply a complete GPIO value with one hardware pass. */
 void Adafruit_seesawPeripheral_gpioBulk(uint32_t value) {
   using namespace SeesawSTM32;
-  output = (output & ~VALID_GPIO) | (value & VALID_GPIO);
-  applyGPIO(VALID_GPIO);
+  uint32_t mask = AVAILABLE_GPIO;
+  output = (output & ~mask) | (value & mask);
+  applyGPIO(mask);
 }
 
 /** @brief Toggle selected valid GPIO output levels. */
 void Adafruit_seesawPeripheral_gpioToggle(uint32_t mask) {
   using namespace SeesawSTM32;
-  mask &= VALID_GPIO;
+  mask &= AVAILABLE_GPIO;
   output ^= mask;
   applyGPIO(mask);
 }
@@ -664,7 +742,7 @@ void Adafruit_seesawPeripheral_gpioToggle(uint32_t mask) {
 /** @brief Enable or disable pulls without changing the direction register. */
 void Adafruit_seesawPeripheral_gpioPull(uint32_t mask, bool enabled) {
   using namespace SeesawSTM32;
-  mask &= VALID_GPIO;
+  mask &= AVAILABLE_GPIO;
   if (enabled) {
     pull |= mask;
   } else {
@@ -792,7 +870,7 @@ volatile uint8_t *Adafruit_seesawPeripheral_pixelBuffer(void) {
 void Adafruit_seesawPeripheral_showPixels(void) {
   using namespace SeesawSTM32;
   if (!pixels.getPixels() || !g_neopixel_bufsize || g_neopixel_pin >= 32 ||
-      !(VALID_GPIO & (1UL << g_neopixel_pin))) {
+      !(AVAILABLE_GPIO & (1UL << g_neopixel_pin))) {
     return;
   }
 #if CONFIG_PWM || CONFIG_PWM_16BIT
@@ -883,6 +961,12 @@ bool Adafruit_seesawPeripheral_begin(void) {
 /** @brief Process queued commands and poll GPIO change interrupts. */
 void Adafruit_seesawPeripheral_run(void) {
   using namespace SeesawSTM32;
+#if CONFIG_SPI
+  if (spiAbortPending) {
+    spiRelease();
+    spiAbortPending = false;
+  }
+#endif
   if (tail != head) {
     Command command;
     command.length = commands[tail].length;
@@ -890,6 +974,12 @@ void Adafruit_seesawPeripheral_run(void) {
       command.data[i] = commands[tail].data[i];
     }
     tail = (tail + 1) % queueSize;
+#if CONFIG_SPI && defined(CONFIG_SPI_TEST_HOLD_US)
+    // Test-only delay for deterministic queue-overflow checks; never ship it.
+    if (command.data[0] == spiBase) {
+      delayMicroseconds(CONFIG_SPI_TEST_HOLD_US);
+    }
+#endif
     Adafruit_seesawPeripheral_processCommand(command.data, command.length);
   }
 #if CONFIG_UART
@@ -908,7 +998,7 @@ void Adafruit_seesawPeripheral_run(void) {
   }
 #endif
 #if CONFIG_INTERRUPT
-  uint32_t changed = (current ^ lastGPIO) & g_irqGPIO;
+  uint32_t changed = (current ^ lastGPIO) & g_irqGPIO & AVAILABLE_GPIO;
   lastGPIO = current;
   if (changed) {
     uint32_t savedMask = __get_PRIMASK();

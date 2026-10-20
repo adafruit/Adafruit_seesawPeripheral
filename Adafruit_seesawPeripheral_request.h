@@ -28,6 +28,12 @@ Adafruit_seesawPeripheral_write32(uint32_t value) {
  */
 void Adafruit_seesawPeripheral_processRequest(uint8_t base_cmd,
                                               uint8_t module_cmd) {
+#if CONFIG_SPI
+  if (base_cmd == SeesawSTM32::spiBase) {
+    SeesawSTM32::spiRequest(module_cmd);
+    return;
+  }
+#endif
   if (base_cmd == SEESAW_STATUS_BASE) {
     if (module_cmd == SEESAW_STATUS_HW_ID) {
       Adafruit_seesawPeripheral_write8(SEESAW_HW_ID); // instant reply
@@ -44,6 +50,9 @@ void Adafruit_seesawPeripheral_processRequest(uint8_t base_cmd,
           ((uint32_t)CONFIG_UART << SEESAW_SERCOM0_BASE) |
           ((uint32_t)CONFIG_ENCODER << SEESAW_ENCODER_BASE) |
           ((uint32_t)CONFIG_FHT << SEESAW_SPECTRUM_BASE);
+#if CONFIG_SPI
+      options |= 1UL << SeesawSTM32::spiBase;
+#endif
       Adafruit_seesawPeripheral_write32(options);
     }
   } else if (base_cmd == SEESAW_GPIO_BASE) {
