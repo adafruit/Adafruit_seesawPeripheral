@@ -53,9 +53,11 @@ For a long read/write, wait until not busy, read all RX bytes, then submit the
 next chunk with CS held. Write-only chunks can discard RX. There is one
 29-byte receive buffer: overwriting unread data is an error, not silent loss.
 
-Clock requests are 187500..24000000 Hz for the 48 MHz C011 configuration.
+Clock requests are 187500..24000000 Hz on the 48 MHz C0 targets, and
+250000..32000000 Hz on the 64 MHz G071 target.
 The hardware selects a divisor of 2..256, rounding down (a 1 MHz request yields
-750 kHz). CLOCK reports the peripheral setting, not effective frame throughput.
+750 kHz on C0, or 1 MHz on G071). CLOCK reports the peripheral setting, not
+effective frame throughput.
 Check the wiring and device's maximum clock before selecting a high speed.
 
 Errors: 0=none, 1=configuration, 2=transaction state, 3=queue overflow,

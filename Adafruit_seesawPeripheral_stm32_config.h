@@ -26,10 +26,22 @@
 #define ALL_ADC 0x0000C7FFUL ///< PA0..8, PA11/12, PB0/1.
 #define ALL_PWM 0x00E7E3FFUL ///< All exposed GPIOs except PA12 have timers.
 #define SEESAW_STM32_PIN_COUNT 24 ///< Last usable GPIO is D23 / PC14.
+#elif defined(ARDUINO_GENERIC_G071GBUX)
+#define SEESAW_HW_ID 0x93     ///< Provisional STM32G071 hardware ID.
+#define ALL_GPIO 0x00E7E7FFUL ///< Same exposed 28-pin GPIO map as C031/C051.
+#define ALL_ADC 0x0000C0FFUL  ///< PA0..7 and PB0/1; PA8/11/12 are digital only.
+#define ALL_PWM 0x0067E3FFUL  ///< PA12 and PC14 have no timer output.
+#define SEESAW_STM32_PIN_COUNT 24         ///< Last usable GPIO is D23 / PC14.
+#define SEESAW_STM32_FLASH_BYTES 131072UL ///< Physical flash capacity.
 #else
-#error "Select a supported generic STM32C011F6Ux, C031G6Ux, or C051G8Ux target"
+#error                                                                         \
+    "Select a supported generic C011F6Ux, C031G6Ux, C051G8Ux, or G071GBUx target"
 #endif
+#if defined(ARDUINO_GENERIC_G071GBUX)
+#define SEESAW_STM32_PCLK 64000000UL ///< Generic G071's peripheral clock.
+#else
 #define SEESAW_STM32_PCLK 48000000UL ///< Required peripheral clock in hertz.
+#endif
 
 #define UART_DEBUG_RXD 1
 #define UART_DEBUG_TXD 0
@@ -39,10 +51,10 @@
 #define CONFIG_UART_SERCOM Serial
 #endif
 #ifndef CONFIG_UART_RX_PIN
-#define CONFIG_UART_RX_PIN 1 // PA1, USART1 RX.
+#define CONFIG_UART_RX_PIN 1 // PA1, default UART RX (USART4 on G071).
 #endif
 #ifndef CONFIG_UART_TX_PIN
-#define CONFIG_UART_TX_PIN 0 // PA0, USART1 TX.
+#define CONFIG_UART_TX_PIN 0 // PA0, default UART TX (USART4 on G071).
 #endif
 #define SEESAW_UART_PIN_MASK                                                   \
   ((1UL << CONFIG_UART_RX_PIN) | (1UL << CONFIG_UART_TX_PIN))

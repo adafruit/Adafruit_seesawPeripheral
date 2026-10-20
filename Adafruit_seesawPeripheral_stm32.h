@@ -44,7 +44,10 @@ static_assert(CONFIG_ADDR_3_PIN < 32 && (ALL_GPIO & (1UL << CONFIG_ADDR_3_PIN)),
 #endif
 
 #if CONFIG_ADC || CONFIG_FHT
-#include "stm32c0xx_ll_adc.h"
+#include "stm32yyxx_ll_adc.h"
+#endif
+#if (CONFIG_PWM || CONFIG_PWM_16BIT) && defined(ARDUINO_GENERIC_G071GBUX)
+#include "analog.h"
 #endif
 #if CONFIG_FHT
 #include "Adafruit_seesawPeripheral_stm32_spectrum.h"
@@ -118,8 +121,9 @@ uint8_t Adafruit_seesawPeripheral_applyAddressStraps(uint8_t address) {
 
 namespace SeesawSTM32 {
 #if CONFIG_BOOTLOADER
-const uint32_t systemMemory = 0x1FFF0000; ///< C0 ROM vectors, ST AN2606.
-const uint32_t bootMagic = 0xB007C011;    ///< One-shot reset request signature.
+const uint32_t systemMemory =
+    0x1FFF0000;                        ///< Supported C0/G0 ROM vectors, AN2606.
+const uint32_t bootMagic = 0xB007C011; ///< One-shot reset request signature.
 volatile uint32_t bootRequest[2]
     __attribute__((section(".noinit"))); ///< Retained across a software reset.
 
@@ -302,6 +306,12 @@ const uint16_t pwmPins[SEESAW_STM32_PIN_COUNT] = {
     PA0_ALT2, PA1_ALT2, PA2,  PA3_ALT1, PA4_ALT1, PA5,  PA6,      PA7_ALT1,
     PA8_ALT3, PA11,     PA12, PA13,     PA14,     PA15, PB0_ALT1, PB1_ALT2,
     PB3,      PB4,      PB5,  PB6,      PB7,      PB8,  PC6_ALT1, PC14};
+#elif defined(ARDUINO_GENERIC_G071GBUX)
+// G071: PA2/PA3 use TIM15, PB1 uses ALT1, and PC14 has no PWM output.
+const uint16_t pwmPins[SEESAW_STM32_PIN_COUNT] = {
+    PA0, PA1,  PA2_ALT1, PA3_ALT1, PA4,  PA5,  PA6,      PA7_ALT1,
+    PA8, PA11, PA12,     PA13,     PA14, PA15, PB0_ALT1, PB1_ALT1,
+    PB3, PB4,  PB5,      PB6,      PB7,  PB8,  PC6,      PC14};
 #else
 // C031: select normal rather than complementary outputs. Several pins share
 // timer channels; see the README before enabling those outputs together.
@@ -311,12 +321,28 @@ const uint16_t pwmPins[SEESAW_STM32_PIN_COUNT] = {
     PB3,      PB4,      PB5,  PB6,      PB7,      PB8,  PC6,      PC14};
 #endif
 
+/**
+ * @brief Write one timer output without selecting a G071 DAC by accident.
+ * @param pin Validated protocol pin.
+ * @param value Duty setting from 0 through 65535.
+ */
+void writePWM(uint8_t pin, uint16_t value) {
+#if defined(ARDUINO_GENERIC_G071GBUX)
+  // analogWrite() chooses DAC before PWM on PA4/PA5. Use STM32duino's own
+  // timer helper explicitly; it still owns HardwareTimer setup and pin muxing.
+  pwm_start(digitalPinToPinName(pwmPins[pin]), pwmFrequency, value,
+            RESOLUTION_16B_COMPARE_FORMAT);
+#else
+  analogWrite(pwmPins[pin], value);
+#endif
+}
+
 /** @brief Restore active PWM outputs after changing their shared frequency. */
 void applyPWM() {
   analogWriteFrequency(pwmFrequency);
   for (uint8_t pin = 0; pin < SEESAW_STM32_PIN_COUNT; pin++) {
     if (pwmActive & (1UL << pin)) {
-      analogWrite(pwmPins[pin], pwmValues[pin]);
+      writePWM(pin, pwmValues[pin]);
     }
   }
 }
@@ -330,6 +356,10 @@ void stopPWM(uint8_t pin) {
   pwmActive &= ~bit;
   // STM32duino 3.0.0 pinMode() stops the whole HardwareTimer. Use the exact
   // alternate-function pin, then restore the other active channels.
+#if defined(ARDUINO_GENERIC_G071GBUX)
+  // Direct timer output bypasses analogWrite's DAC/PWM ownership flag.
+  pwm_stop(digitalPinToPinName(pwmPins[pin]));
+#endif
   pinMode(pwmPins[pin], INPUT);
   applyPWM();
 }
@@ -589,8 +619,8 @@ void receive(int length) {
 #if CONFIG_ADC || CONFIG_FHT
 /** @brief Calibrate and enable the ADC with bounded waits. */
 bool beginADC() {
-  // STM32C0 LL sequence: regulator, calibration, two ADC clocks, then enable.
-  // HCLK/4 keeps the ADC at 12 MHz with the generic board's 48 MHz clock.
+  // C0/G0 LL sequence: regulator, calibration, two ADC clocks, then enable.
+  // HCLK/4 gives 12 MHz on C0 and 16 MHz on G071.
   __HAL_RCC_ADC_CLK_ENABLE();
   __HAL_RCC_ADC_FORCE_RESET();
   __HAL_RCC_ADC_RELEASE_RESET();
@@ -606,7 +636,7 @@ bool beginADC() {
     if (micros() - started > adcTimeoutMicros)
       return false;
   }
-  delayMicroseconds(1); // More than two ADC clocks at 12 MHz.
+  delayMicroseconds(1); // More than two ADC clocks at either supported clock.
   LL_ADC_ClearFlag_ADRDY(ADC1);
   LL_ADC_Enable(ADC1);
   started = micros();
@@ -770,13 +800,22 @@ bool Adafruit_seesawPeripheral_commitEEPROMWrite(void) {
   }
   FLASH_EraseInitTypeDef erase = {};
   erase.TypeErase = FLASH_TYPEERASE_PAGES;
+#if defined(ARDUINO_GENERIC_G071GBUX)
+  erase.Banks = FLASH_BANK_1;
+#endif
   erase.Page = (eepromAddress - FLASH_BASE) / FLASH_PAGE_SIZE;
   erase.NbPages = 1;
   uint32_t pageError;
   if (HAL_FLASH_Unlock() != HAL_OK) {
     return false;
   }
+#if defined(ARDUINO_GENERIC_G071GBUX)
+  // G0's clear-flag macro accepts one encoded flag, not a mask. This is the
+  // same write-one-to-clear error mask used by the G0 HAL flash driver.
+  WRITE_REG(FLASH->SR, FLASH_SR_ERRORS);
+#else
   __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_ALL_ERRORS);
+#endif
   bool success = HAL_FLASHEx_Erase(&erase, &pageError) == HAL_OK;
   for (uint16_t pos = 0; success && pos < FLASH_PAGE_SIZE; pos += 8) {
     uint64_t word;
@@ -938,7 +977,7 @@ void Adafruit_seesawPeripheral_setPWM(uint8_t pin, uint16_t value) {
   using namespace SeesawSTM32;
   pwmValues[pin] = value;
   analogWriteFrequency(pwmFrequency);
-  analogWrite(pwmPins[pin], value);
+  writePWM(pin, value);
   pwmActive |= 1UL << pin;
 }
 

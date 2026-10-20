@@ -60,11 +60,18 @@ public:
     __HAL_RCC_I2C1_RELEASE_RESET();
     pinmap_pinout(sdaPin, PinMap_I2C_SDA);
     pinmap_pinout(sclPin, PinMap_I2C_SCL);
-    // At 48 MHz: PRESC=0, SCLDEL=14 (312.5 ns), SDADEL=4 (83.3 ns).
     // SCLH/L do not generate clocks in target mode; this is never a controller.
+#if SEESAW_STM32_PCLK == 64000000UL
+    // At 64 MHz: PRESC=1, SCLDEL=9 (312.5 ns), SDADEL=3 (93.75 ns).
+    I2C1->TIMINGR =
+        (1UL << I2C_TIMINGR_PRESC_Pos) | (9UL << I2C_TIMINGR_SCLDEL_Pos) |
+        (3UL << I2C_TIMINGR_SDADEL_Pos) | (39UL << I2C_TIMINGR_SCLH_Pos) | 39UL;
+#else
+    // At 48 MHz: PRESC=0, SCLDEL=14 (312.5 ns), SDADEL=4 (83.3 ns).
     I2C1->TIMINGR = (14UL << I2C_TIMINGR_SCLDEL_Pos) |
                     (4UL << I2C_TIMINGR_SDADEL_Pos) |
                     (59UL << I2C_TIMINGR_SCLH_Pos) | 59UL;
+#endif
     I2C1->OAR1 = I2C_OAR1_OA1EN | ((uint32_t)address << 1);
     I2C1->OAR2 = 0;
     I2C1->CR2 = 0;

@@ -5,6 +5,10 @@
 #ifndef ADAFRUIT_SEESAWPERIPHERAL_STM32_SPECTRUM_H
 #define ADAFRUIT_SEESAWPERIPHERAL_STM32_SPECTRUM_H
 
+#if defined(ARDUINO_GENERIC_G071GBUX)
+#error "STM32 spectrum capture currently supports C011, C031, and C051 only"
+#endif
+
 #include "stm32c0xx_ll_dma.h"
 #include "stm32c0xx_ll_tim.h"
 #include <CMSIS_DSP.h>
