@@ -39,6 +39,12 @@
 #if CONFIG_SPI && !defined(ARDUINO_ARCH_STM32)
 #error "The SPI controller backend currently requires STM32"
 #endif
+#if CONFIG_SPI &&                                                              \
+    (!defined(CONFIG_SPI_CS_PIN) || !defined(CONFIG_SPI_SCK_PIN) ||            \
+     !defined(CONFIG_SPI_MISO_PIN) || !defined(CONFIG_SPI_MOSI_PIN))
+#error                                                                         \
+    "Define CONFIG_SPI_CS_PIN, CONFIG_SPI_SCK_PIN, CONFIG_SPI_MISO_PIN, and CONFIG_SPI_MOSI_PIN"
+#endif
 #ifndef CONFIG_BOOTLOADER
 #if defined(ARDUINO_ARCH_STM32)
 #define CONFIG_BOOTLOADER 1 ///< Enable the STM32 factory-ROM boot command.

@@ -148,7 +148,8 @@ GPIO except 10. These PWM groups share channels: **3/9**, **5/13**,
 at a time.
 
 The C011 feature rules above also apply, including the optional SPI controller
-on PA4–PA7. EEPROM reserves `0x08007800` and limits the application to 30 KiB.
+with header-configured pins. EEPROM reserves `0x08007800` and limits the
+application to 30 KiB.
 The same BOOTLOAD key enters the C031 ROM, whose PB6/PB7 I2C address is
 **0x63**, not the C011's 0x64; see
 [ST AN2606](https://www.st.com/resource/en/application_note/cd00167594-stm32-microcontroller-system-memory-boot-mode-stmicroelectronics.pdf).
@@ -187,7 +188,10 @@ order, and held chip select across bounded chunks. Use it for e-paper displays
 or other SPI devices, with ordinary seesaw GPIOs for D/C, reset, or BUSY.
 All raw SPI/control signals use 3.3 V logic.
 
-PA4/CS, PA5/SCK, PA6/MISO, and PA7/MOSI are reserved while SPI is configured;
-disabling SPI releases them. Transfers run from `run()`, not the I2C callback.
+Define `CONFIG_SPI_CS_PIN`, `CONFIG_SPI_SCK_PIN`, `CONFIG_SPI_MISO_PIN`, and
+`CONFIG_SPI_MOSI_PIN` before including the library, as in the example. CS may
+use any available GPIO; SCK/MISO/MOSI must map to one hardware SPI peripheral.
+The selected pins are reserved while SPI is configured; disabling SPI releases
+them. Transfers run from `run()`, not the I2C callback.
 Read status and consume received data before sending another chunk. See the
 [SPI protocol](SPI_PROTOCOL.md) for registers, framing, clock limits, and errors.
