@@ -1,12 +1,12 @@
 /*!
  * @file Adafruit_seesawPeripheral_stm32.h
- * @brief STM32C011 backend with deferred command execution.
+ * @brief STM32 backend with deferred command execution.
  */
 #ifndef ADAFRUIT_SEESAWPERIPHERAL_STM32_H
 #define ADAFRUIT_SEESAWPERIPHERAL_STM32_H
 
 #if CONFIG_FHT
-#error "The AVR FHT backend is not supported on STM32C011"
+#error "The AVR FHT backend is not supported on STM32"
 #endif
 #if CONFIG_EEPROM
 extern "C" uint8_t _sidata, _sdata, _edata;
@@ -22,7 +22,7 @@ static_assert(CONFIG_UART_RX_PIN < 32 && CONFIG_UART_TX_PIN < 32 &&
               "UART pins must be distinct exposed pins without other uses");
 #endif
 #if USE_PINCHANGE_INTERRUPT
-#error "The STM32C011 backend polls GPIO changes from run()"
+#error "The STM32 backend polls GPIO changes from run()"
 #endif
 #if CONFIG_INTERRUPT
 static_assert(CONFIG_INTERRUPT_PIN < 32 &&
@@ -56,6 +56,37 @@ static_assert(CONFIG_ADDR_3_PIN < 32 && (ALL_GPIO & (1UL << CONFIG_ADDR_3_PIN)),
 #include <Adafruit_NeoPixel.h>
 #endif
 
+#if defined(ARDUINO_GENERIC_C031G6UX)
+/**
+ * @brief Supply the 48 MHz clock missing from this generic core variant.
+ *
+ * Arduino calls this startup hook before setup(). Use the internal oscillator;
+ * these breakouts do not fit a crystal. The core's weak hook is empty.
+ */
+extern "C" void SystemClock_Config(void) {
+  RCC_ClkInitTypeDef clocks = {};
+  clocks.ClockType =
+      RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_PCLK1;
+  clocks.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  clocks.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  clocks.APB1CLKDivider = RCC_HCLK_DIV1;
+  // Raise flash latency before increasing the reset-time HSI frequency.
+  if (HAL_RCC_ClockConfig(&clocks, FLASH_LATENCY_1) != HAL_OK) {
+    Error_Handler();
+  }
+
+  RCC_OscInitTypeDef oscillator = {};
+  oscillator.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  oscillator.HSIState = RCC_HSI_ON;
+  oscillator.HSIDiv = RCC_HSI_DIV1;
+  oscillator.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  // HAL updates SystemCoreClock and the SysTick time base after the divider.
+  if (HAL_RCC_OscConfig(&oscillator) != HAL_OK) {
+    Error_Handler();
+  }
+}
+#endif
+
 /**
  * @brief Apply address straps to the base I2C address.
  * @param address Base I2C address.
@@ -87,7 +118,7 @@ uint8_t Adafruit_seesawPeripheral_applyAddressStraps(uint8_t address) {
 
 namespace SeesawSTM32 {
 #if CONFIG_BOOTLOADER
-const uint32_t systemMemory = 0x1FFF0000; ///< C011 ROM vectors, ST AN2606.
+const uint32_t systemMemory = 0x1FFF0000; ///< C011/C031 ROM vectors, ST AN2606.
 const uint32_t bootMagic = 0xB007C011;    ///< One-shot reset request signature.
 volatile uint32_t bootRequest[2]
     __attribute__((section(".noinit"))); ///< Retained across a software reset.
@@ -136,7 +167,8 @@ void (*const bootloaderPreinit)() __attribute__((section(".preinit_array"),
     checkBootloader; ///< Preserve Arduino startup hooks.
 #endif
 #if CONFIG_EEPROM
-const uint32_t eepromAddress = FLASH_BASE + 30 * 1024; ///< Reserved final page.
+const uint32_t eepromAddress =
+    FLASH_BASE + SEESAW_STM32_FLASH_BYTES - FLASH_PAGE_SIZE; ///< Final page.
 const uint16_t eepromSize = 256; ///< Bytes addressable by the seesaw protocol.
 uint8_t *eepromBuffer = nullptr; ///< Full-page workspace, allocated once.
 bool eepromSafe = false;         ///< Application fits below the reserved page.
@@ -244,19 +276,28 @@ uint32_t validGPIO() {
 #endif
 #if CONFIG_PWM || CONFIG_PWM_16BIT
 uint32_t pwmActive = 0; ///< Protocol pins currently using timers.
-uint16_t pwmValues[16] =
+uint16_t pwmValues[SEESAW_STM32_PIN_COUNT] =
     {}; ///< Duty settings retained across frequency changes.
 uint16_t pwmFrequency = 1000; ///< Shared PWM frequency in hertz.
+#if defined(ARDUINO_GENERIC_C011F6UX)
 // Select non-complementary outputs. D3/D9 share TIM1_CH4, and D7/D15
 // share TIM3_CH2; use only one pin from each pair at a time.
-const uint16_t pwmPins[16] = {PA0_ALT1, PA1_ALT1, 2, PA3_ALT1, PA4_ALT1, 5,  6,
-                              PA7_ALT1, PA8_ALT3, 9, 10,       11,       12, 13,
-                              14,       15};
+const uint16_t pwmPins[SEESAW_STM32_PIN_COUNT] = {
+    PA0_ALT1, PA1_ALT1, 2,  PA3_ALT1, PA4_ALT1, 5,  6,  PA7_ALT1,
+    PA8_ALT3, 9,        10, 11,       12,       13, 14, 15};
+#else
+// C031: select normal rather than complementary outputs. Several pins share
+// timer channels; see the README before enabling those outputs together.
+const uint16_t pwmPins[SEESAW_STM32_PIN_COUNT] = {
+    PA0_ALT1, PA1_ALT1, PA2,  PA3_ALT1, PA4_ALT1, PA5,  PA6,      PA7_ALT1,
+    PA8_ALT3, PA11,     PA12, PA13,     PA14,     PA15, PB0_ALT1, PB1_ALT2,
+    PB3,      PB4,      PB5,  PB6,      PB7,      PB8,  PC6,      PC14};
+#endif
 
 /** @brief Restore active PWM outputs after changing their shared frequency. */
 void applyPWM() {
   analogWriteFrequency(pwmFrequency);
-  for (uint8_t pin = 0; pin < 16; pin++) {
+  for (uint8_t pin = 0; pin < SEESAW_STM32_PIN_COUNT; pin++) {
     if (pwmActive & (1UL << pin)) {
       analogWrite(pwmPins[pin], pwmValues[pin]);
     }
@@ -322,7 +363,7 @@ void updateIRQ() {
 /** @brief Read exposed GPIOs without touching SWD, I2C, or the LED. */
 inline uint32_t readGPIO() {
   uint32_t value = 0;
-  for (uint8_t pin = 0; pin < 16; pin++) {
+  for (uint8_t pin = 0; pin < SEESAW_STM32_PIN_COUNT; pin++) {
     uint32_t bit = 1UL << pin;
     if ((AVAILABLE_GPIO & bit) && digitalRead(pin) == HIGH) {
       value |= bit;
@@ -333,7 +374,7 @@ inline uint32_t readGPIO() {
 
 /** @brief Apply cached direction, output, and pull state to selected pins. */
 void applyGPIO(uint32_t pins) {
-  for (uint8_t pin = 0; pin < 16; pin++) {
+  for (uint8_t pin = 0; pin < SEESAW_STM32_PIN_COUNT; pin++) {
     uint32_t bit = 1UL << pin;
     if (!(pins & AVAILABLE_GPIO & bit)) {
       continue;
@@ -815,7 +856,7 @@ void Adafruit_seesawPeripheral_setEncoderInterrupt(uint8_t encoder,
 #if CONFIG_ADC
 /**
  * @brief Convert one validated ADC pin.
- * @param pin Protocol GPIO index, from 0 through 10.
+ * @param pin Protocol GPIO index with ADC support.
  * @return 12-bit ADC result, or -1 if initialization or conversion failed.
  */
 int32_t Adafruit_seesawPeripheral_readADC(uint8_t pin) {
@@ -826,11 +867,9 @@ int32_t Adafruit_seesawPeripheral_readADC(uint8_t pin) {
   stopPWM(pin);
 #endif
   pinMode(pin, INPUT_ANALOG);
-  uint8_t channel = pin;
-  if (pin == 9)
-    channel = 11;
-  if (pin == 10)
-    channel = 12;
+  // The core's package-specific map also covers PB0/PB1 on the 28-pin board.
+  uint32_t function = pinmap_function(digitalPinToPinName(pin), PinMap_ADC);
+  uint32_t channel = STM_PIN_CHANNEL(function);
   LL_ADC_ClearFlag_CCRDY(ADC1);
   LL_ADC_REG_SetSequencerChannels(ADC1,
                                   __LL_ADC_DECIMAL_NB_TO_CHANNEL(channel));
