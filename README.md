@@ -238,3 +238,45 @@ The selected pins are reserved while SPI is configured; disabling SPI releases
 them. Transfers run from `run()`, not the I2C callback.
 Read status and consume received data before sending another chunk. See the
 [SPI protocol](SPI_PROTOCOL.md) for registers, framing, clock limits, and errors.
+
+## STM32 audio spectrum
+
+`examples/example_stm32_spectrum` enables the existing `CONFIG_FHT` spectrum
+interface on C011, C031, and C051. The STM32 implementation uses the
+STM32duino core's bundled CMSIS-DSP Q15 FFT, not the AVR assembly FHT.
+ADC1 is triggered by TIM3 and writes 128 evenly spaced samples through DMA1
+channel 1. Call `run()` frequently to process and publish frames. There can
+be gaps between frames, but I2C interrupts do not change sample spacing
+within a frame.
+
+Connect an analog microphone's DC-biased output to PA0, with signal voltage
+always between ground and 3.3 V. For the Adafruit SPW2430 breakout, supply
+VIN from 3.3 V and use **DC**, not AC. Set `CONFIG_FHT_PIN` before including
+the library to choose another initial ADC-capable protocol GPIO index.
+The selected input is reserved from ordinary GPIO commands. This mode owns
+ADC1, DMA1 channel 1, and TIM3; do not also enable `CONFIG_ADC`, PWM,
+NeoPixel, EEPROM, SPI, or encoders.
+
+The existing spectrum registers are unchanged:
+
+- `CHANNEL` selects a protocol GPIO index, not a raw STM32 ADC channel.
+  Invalid, address-strap, interrupt, and UART-reserved pins are ignored.
+- `RATE` accepts codes 0..31 (larger values clamp to 31). The sample rate
+  is approximately `312500 / (13 + code)` Hz, rounded to a 48 MHz timer
+  tick. The default code 12 gives exactly 12,500 Hz.
+- Read `RESULTS_LOWER` (32 bytes) followed by `RESULTS_UPPER` (32 bytes).
+  LOWER latches all 64 bins; UPPER returns the second half of that frame.
+  Bin `k` represents `k * sample_rate / 128` Hz. At the default rate the
+  bin spacing is 97.65625 Hz; bin 0 is DC and Nyquist is not returned.
+
+Signals above half the sample rate alias into lower bins. Use an analog
+low-pass filter when needed; a piezo driven by a square wave can produce
+strong harmonics as well as its fundamental.
+
+Each frame has its measured mean removed, is multiplied by 8 and a Hann
+window, and is transformed with CMSIS's 1/128 scaling. Output is a
+zero-floored approximation to `16 * log2(magnitude)`, in 8-bit counts,
+not calibrated sound pressure or dB SPL. The AVR microphone-specific
+noise and peak tables are deliberately not applied to STM32. Digital
+scaling does not improve the ADC's analog resolution; a very quiet
+microphone may need an external analog amplifier.

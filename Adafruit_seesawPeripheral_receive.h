@@ -294,7 +294,7 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
   }
 #endif
 
-#if CONFIG_FHT && defined(MEGATINYCORE)
+#if CONFIG_FHT && (defined(MEGATINYCORE) || defined(ARDUINO_ARCH_STM32))
   else if (base_cmd == SEESAW_SPECTRUM_BASE) {
     if ((module_cmd == SEESAW_SPECTRUM_RATE) && (howMany == 3)) {
       Adafruit_seesawPeripheral_setSpectrumRate(packet[2]);
