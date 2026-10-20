@@ -192,8 +192,6 @@ const uint32_t adcTimeoutMicros = 5000; ///< Calibration/conversion timeout.
 #endif
 
 #if CONFIG_INTERRUPT
-GPIO_TypeDef *irqPort;           ///< Cached open-drain interrupt port.
-uint32_t irqPinMask;             ///< Interrupt pin bit.
 volatile bool irqActive = false; ///< Last published IRQ state.
 
 /** @brief Check all sources sharing the active-low interrupt output. */
@@ -222,9 +220,9 @@ void updateIRQ() {
   // A read-to-clear callback may have run before interrupts were masked.
   active = pendingIRQ();
   if (active) {
-    irqPort->BSRR = irqPinMask << 16;
+    digitalWrite(CONFIG_INTERRUPT_PIN, LOW);
   } else {
-    irqPort->BSRR = irqPinMask;
+    digitalWrite(CONFIG_INTERRUPT_PIN, HIGH);
   }
   irqActive = active;
   __set_PRIMASK(savedMask);
@@ -469,8 +467,6 @@ void reset() {
   // Keep a real open-drain output with a weak pull-up in the 3.3 V domain.
   PinName irqPin = digitalPinToPinName(CONFIG_INTERRUPT_PIN);
   pin_function(irqPin, STM_PIN_DATA(STM_MODE_OUTPUT_OD, LL_GPIO_PULL_UP, 0));
-  irqPort = get_GPIO_Port(STM_PORT(irqPin));
-  irqPinMask = 1UL << STM_PIN(irqPin);
   irqActive = false;
 #endif
   lastGPIO = readGPIO();
