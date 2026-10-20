@@ -513,6 +513,9 @@ void prepareFirstByte() {
       seesawWire.setFirstByte(&hardwareID);
     } else if (selectedRegister == SEESAW_STATUS_VERSION) {
       seesawWire.setFirstByte(&versionHigh);
+    } else if (selectedRegister == SEESAW_STATUS_UID) {
+      // STM32 is little-endian; the wire reply starts with UID word 0's MSB.
+      seesawWire.setFirstByte((const uint8_t *)UID_BASE + 3);
     }
     // All supported OPTIONS and GPIO bits are below bit 24.
   }
