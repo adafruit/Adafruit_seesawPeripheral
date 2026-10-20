@@ -9,7 +9,7 @@ To install, use the Arduino Library Manager and search for 'Adafruit seesaw Peri
 Select STM32duino's generic **STM32C011F6Ux** target and start with
 `examples/example_stm32c011`. This backend supports GPIO direction, bulk
 read/write/toggle, pull-up/pull-down selection, optional active-low GPIO change
-interrupts, 12-bit ADC reads, PWM, NeoPixel, and encoders. UART, EEPROM, FHT, SPI,
+interrupts, 12-bit ADC reads, PWM, NeoPixel, encoders, and UART. EEPROM, FHT, SPI,
 and ROM-bootloader features are not included in this core port.
 
 I2C uses PB7 (SDA) and PB6 (SCL), with address `0x49` in the example. The target
@@ -55,3 +55,14 @@ also works without an interrupt pin. `CONFIG_ENCODER_2TICKS` selects the shared
 decoder's two-tick mode. Encoders are polled by `run()`, so long NeoPixel shows
 or slow application code can miss transitions. Reset clears counts and interrupt
 enables and samples each input's current phase.
+
+`examples/example_uart` enables the UART bridge on PA0 (TX) and PA1 (RX),
+reserved from GPIO/ADC/PWM while enabled. Use 3.3 V logic on these raw pins.
+`CONFIG_UART_RX_PIN`, `CONFIG_UART_TX_PIN`, and `CONFIG_UART_SERCOM` may select
+another valid hardware-serial mapping. Keep Serial debug output disabled when
+using the bridge. Reset selects 9600 baud and clears buffered data and interrupt
+enables; a zero baud command is ignored. RX-ready status is live, and an enabled
+RX interrupt stays asserted until the receive buffer is empty. Each I2C DATA
+read consumes one byte (0xFF when empty); writes can carry up to 30 bytes with
+the default 32-byte command buffer. Long interrupt-masked NeoPixel shows can
+lose incoming serial bytes. Check flash usage when combining features.

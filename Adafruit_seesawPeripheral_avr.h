@@ -124,39 +124,6 @@ void Adafruit_seesawPeripheral_showPixels(void) {
 }
 #endif
 
-#if CONFIG_UART
-/**
- * @brief Refresh the UART data-ready bit, preserving other status flags.
- */
-void Adafruit_seesawPeripheral_updateUARTStatus(void) {
-  if (CONFIG_UART_SERCOM.available()) {
-    g_uart_status |= 0x02; // set DATA_RDY bit
-  } else {
-    g_uart_status &= ~0x02; // clear DATA_RDY bit
-  }
-}
-
-/**
- * @brief Change the UART baud rate only when needed.
- * @param baud Baud rate in bits per second.
- */
-void Adafruit_seesawPeripheral_setUARTBaud(uint32_t baud) {
-  if (baud != g_uart_baud) {
-    g_uart_baud = baud;
-    CONFIG_UART_SERCOM.end();
-    CONFIG_UART_SERCOM.begin(g_uart_baud);
-  }
-}
-
-/**
- * @brief Read one byte from the UART receive buffer.
- * @return Byte value, or -1 if no data is available.
- */
-int Adafruit_seesawPeripheral_readUARTData(void) {
-  return CONFIG_UART_SERCOM.read();
-}
-#endif
-
 /**
  * @brief Apply address straps to the base I2C address.
  * @param address Base I2C address.

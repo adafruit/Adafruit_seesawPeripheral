@@ -126,6 +126,7 @@ uint16_t DATE_CODE = 0;
   ((1UL << CONFIG_I2C_SDA_PIN) | (1UL << CONFIG_I2C_SCL_PIN))
 #else
 #define SEESAW_I2C_PIN_MASK ((1UL << SDA) | (1UL << SCL))
+#define SEESAW_UART_PIN_MASK 0UL
 #endif
 
 #define INVALID_GPIO                                                           \
@@ -137,7 +138,7 @@ uint16_t DATE_CODE = 0;
    ((uint32_t)CONFIG_ADDR_2 << CONFIG_ADDR_2_PIN) |                            \
    ((uint32_t)CONFIG_ADDR_3 << CONFIG_ADDR_3_PIN) | 0)
 
-#define VALID_GPIO (ALL_GPIO & ~INVALID_GPIO)
+#define VALID_GPIO (ALL_GPIO & ~INVALID_GPIO & ~SEESAW_UART_PIN_MASK)
 #define VALID_ADC (ALL_ADC & VALID_GPIO)
 #define VALID_PWM (ALL_PWM & VALID_GPIO)
 
@@ -191,6 +192,40 @@ volatile uint8_t g_uart_status = 0;
 volatile uint8_t g_uart_inten = 0;
 volatile uint32_t g_uart_baud = 9600;
 volatile uint8_t g_uart_tx_len = 0;
+
+/** @brief Refresh the UART data-ready bit, preserving other status flags. */
+void Adafruit_seesawPeripheral_updateUARTStatus(void) {
+  if (CONFIG_UART_SERCOM.available()) {
+    g_uart_status |= 0x02; // set DATA_RDY bit
+  } else {
+    g_uart_status &= ~0x02; // clear DATA_RDY bit
+  }
+}
+
+/**
+ * @brief Change the UART baud rate only when needed.
+ * @param baud Baud rate in bits per second; STM32 ignores zero.
+ */
+void Adafruit_seesawPeripheral_setUARTBaud(uint32_t baud) {
+#if defined(ARDUINO_ARCH_STM32)
+  if (baud == 0) {
+    return;
+  }
+#endif
+  if (baud != g_uart_baud) {
+    g_uart_baud = baud;
+    CONFIG_UART_SERCOM.end();
+    CONFIG_UART_SERCOM.begin(g_uart_baud);
+  }
+}
+
+/**
+ * @brief Read one byte from the UART receive buffer.
+ * @return Byte value, or -1 if no data is available.
+ */
+int Adafruit_seesawPeripheral_readUARTData(void) {
+  return CONFIG_UART_SERCOM.read();
+}
 #endif
 
 #if CONFIG_ENCODER

@@ -15,6 +15,22 @@
 #define UART_DEBUG_RXD 1
 #define UART_DEBUG_TXD 0
 
+#if CONFIG_UART
+#ifndef CONFIG_UART_SERCOM
+#define CONFIG_UART_SERCOM Serial
+#endif
+#ifndef CONFIG_UART_RX_PIN
+#define CONFIG_UART_RX_PIN 1 // PA1, USART1 RX.
+#endif
+#ifndef CONFIG_UART_TX_PIN
+#define CONFIG_UART_TX_PIN 0 // PA0, USART1 TX.
+#endif
+#define SEESAW_UART_PIN_MASK                                                   \
+  ((1UL << CONFIG_UART_RX_PIN) | (1UL << CONFIG_UART_TX_PIN))
+#else
+#define SEESAW_UART_PIN_MASK 0UL
+#endif
+
 #ifndef CONFIG_I2C_SDA_PIN
 #define CONFIG_I2C_SDA_PIN PB7
 #endif

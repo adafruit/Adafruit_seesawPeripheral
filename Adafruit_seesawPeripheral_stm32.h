@@ -5,8 +5,18 @@
 #ifndef ADAFRUIT_SEESAWPERIPHERAL_STM32_H
 #define ADAFRUIT_SEESAWPERIPHERAL_STM32_H
 
-#if CONFIG_UART || CONFIG_EEPROM || CONFIG_FHT
-#error "UART, EEPROM, and FHT are not yet supported on STM32C011"
+#if CONFIG_EEPROM || CONFIG_FHT
+#error "EEPROM and FHT are not yet supported on STM32C011"
+#endif
+#if CONFIG_UART && CONFIG_UART_DEBUG
+#error "Keep Serial debug output disabled when using the STM32 UART bridge"
+#endif
+#if CONFIG_UART
+static_assert(CONFIG_UART_RX_PIN < 32 && CONFIG_UART_TX_PIN < 32 &&
+                  CONFIG_UART_RX_PIN != CONFIG_UART_TX_PIN &&
+                  (ALL_GPIO & SEESAW_UART_PIN_MASK) == SEESAW_UART_PIN_MASK &&
+                  !(INVALID_GPIO & SEESAW_UART_PIN_MASK),
+              "UART pins must be distinct exposed pins without other uses");
 #endif
 #if USE_PINCHANGE_INTERRUPT
 #error "The STM32C011 backend polls GPIO changes from run()"
@@ -179,6 +189,9 @@ volatile bool irqActive = false; ///< Last published IRQ state.
 /** @brief Check all sources sharing the active-low interrupt output. */
 bool pendingIRQ() {
   bool active = g_irqFlags != 0;
+#if CONFIG_UART
+  active |= g_uart_inten && CONFIG_UART_SERCOM.available();
+#endif
 #if CONFIG_ENCODER
   for (uint8_t encoder = 0; encoder < CONFIG_NUM_ENCODERS; encoder++) {
     active |=
@@ -241,6 +254,16 @@ void applyGPIO(uint32_t pins) {
   }
 }
 
+#if CONFIG_UART
+/** @brief Read live UART readiness before the first I2C reply byte. */
+uint8_t firstUARTStatus() {
+  Adafruit_seesawPeripheral_updateUARTStatus();
+  return g_uart_status;
+}
+/** @brief Peek without consuming the byte returned by the request callback. */
+uint8_t firstUARTData() { return CONFIG_UART_SERCOM.peek(); }
+#endif
+
 /** @brief Select a live first-byte source before a repeated START. */
 void prepareFirstByte() {
   static const uint8_t zero = 0, hardwareID = SEESAW_HW_ID;
@@ -281,6 +304,19 @@ void prepareFirstByte() {
         seesawWire.setFirstByte(
             (const volatile uint8_t *)&g_enc_delta[encoder] + 3);
       }
+    }
+  }
+#endif
+#if CONFIG_UART
+  else if (selectedBase == SEESAW_SERCOM0_BASE) {
+    if (selectedRegister == SEESAW_SERCOM_STATUS) {
+      seesawWire.setFirstByte(firstUARTStatus);
+    } else if (selectedRegister == SEESAW_SERCOM_INTEN) {
+      seesawWire.setFirstByte(&g_uart_inten);
+    } else if (selectedRegister == SEESAW_SERCOM_BAUD) {
+      seesawWire.setFirstByte((const volatile uint8_t *)&g_uart_baud + 3);
+    } else if (selectedRegister == SEESAW_SERCOM_DATA) {
+      seesawWire.setFirstByte(firstUARTData);
     }
   }
 #endif
@@ -356,6 +392,14 @@ void reset() {
   g_irqGPIO = g_irqFlags = 0;
 #endif
   applyGPIO(VALID_GPIO);
+#if CONFIG_UART
+  g_uart_status = g_uart_inten = g_uart_tx_len = 0;
+  g_uart_baud = 9600;
+  CONFIG_UART_SERCOM.end();
+  CONFIG_UART_SERCOM.setRx(CONFIG_UART_RX_PIN);
+  CONFIG_UART_SERCOM.setTx(CONFIG_UART_TX_PIN);
+  CONFIG_UART_SERCOM.begin(g_uart_baud);
+#endif
 #if CONFIG_ENCODER
 #if CONFIG_INTERRUPT
   encoderInterrupts = 0;
@@ -622,7 +666,13 @@ void requestEvent(void) {
       selectedRegister == SEESAW_GPIO_BULK) {
     g_bufferedBulkGPIORead = readGPIO();
   }
+#if CONFIG_UART
+  Adafruit_seesawPeripheral_updateUARTStatus();
+#endif
   Adafruit_seesawPeripheral_processRequest(selectedBase, selectedRegister);
+#if CONFIG_UART && CONFIG_INTERRUPT
+  updateIRQ();
+#endif
 }
 
 /** @brief Reset peripheral state and apply a changed strap address. */
@@ -674,6 +724,12 @@ void Adafruit_seesawPeripheral_run(void) {
     tail = (tail + 1) % queueSize;
     Adafruit_seesawPeripheral_processCommand(command.data, command.length);
   }
+#if CONFIG_UART
+  if (g_uart_tx_len > 0) {
+    CONFIG_UART_SERCOM.write((const uint8_t *)g_uart_buf, g_uart_tx_len);
+    g_uart_tx_len = 0;
+  }
+#endif
 #if CONFIG_INTERRUPT || CONFIG_ENCODER
   uint32_t current = readGPIO();
 #if CONFIG_ENCODER
