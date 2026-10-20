@@ -56,7 +56,7 @@ static_assert(CONFIG_ADDR_3_PIN < 32 && (ALL_GPIO & (1UL << CONFIG_ADDR_3_PIN)),
 #include <Adafruit_NeoPixel.h>
 #endif
 
-#if defined(ARDUINO_GENERIC_C031G6UX)
+#if defined(ARDUINO_GENERIC_C031G6UX) || defined(ARDUINO_GENERIC_C051G8UX)
 /**
  * @brief Supply the 48 MHz clock missing from this generic core variant.
  *
@@ -118,7 +118,7 @@ uint8_t Adafruit_seesawPeripheral_applyAddressStraps(uint8_t address) {
 
 namespace SeesawSTM32 {
 #if CONFIG_BOOTLOADER
-const uint32_t systemMemory = 0x1FFF0000; ///< C011/C031 ROM vectors, ST AN2606.
+const uint32_t systemMemory = 0x1FFF0000; ///< C0 ROM vectors, ST AN2606.
 const uint32_t bootMagic = 0xB007C011;    ///< One-shot reset request signature.
 volatile uint32_t bootRequest[2]
     __attribute__((section(".noinit"))); ///< Retained across a software reset.
@@ -265,6 +265,12 @@ uint16_t pwmFrequency = 1000; ///< Shared PWM frequency in hertz.
 const uint16_t pwmPins[SEESAW_STM32_PIN_COUNT] = {
     PA0_ALT1, PA1_ALT1, 2,  PA3_ALT1, PA4_ALT1, 5,  6,  PA7_ALT1,
     PA8_ALT3, 9,        10, 11,       12,       13, 14, 15};
+#elif defined(ARDUINO_GENERIC_C051G8UX)
+// Keep the C031 timer assignments. C051's extra TIM2 changes alternate indices.
+const uint16_t pwmPins[SEESAW_STM32_PIN_COUNT] = {
+    PA0_ALT2, PA1_ALT2, PA2,  PA3_ALT1, PA4_ALT1, PA5,  PA6,      PA7_ALT1,
+    PA8_ALT3, PA11,     PA12, PA13,     PA14,     PA15, PB0_ALT1, PB1_ALT2,
+    PB3,      PB4,      PB5,  PB6,      PB7,      PB8,  PC6_ALT1, PC14};
 #else
 // C031: select normal rather than complementary outputs. Several pins share
 // timer channels; see the README before enabling those outputs together.
