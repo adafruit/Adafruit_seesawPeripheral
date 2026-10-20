@@ -5,8 +5,9 @@ This is a new, provisional seesaw module at **0x13**, advertised by option bit
 including the peripheral header. `examples/example_spi` enables the bridge
 alongside GPIO, ADC, and PWM.
 
-C011 uses PA4 (index 4) for active-low CS, PA5 (5) for SCK, PA6 (6) for MISO,
-and PA7 (7) for MOSI. Successful configuration reserves all four pins until
+The supported C011, C031, C051, and G071 breakouts use PA4 (index 4) for
+active-low CS, PA5 (5) for SCK, PA6 (6) for MISO, and PA7 (7) for MOSI.
+Successful configuration reserves all four pins until
 disabled. Conflicting encoder/NeoPixel assignments reject configuration.
 Other GPIOs can provide display D/C, reset, and BUSY. Use 3.3 V logic on these
 raw pins. Display control signals remain ordinary seesaw GPIOs; this is not a
@@ -35,9 +36,11 @@ For a long read/write, wait until not busy, read all RX bytes, then submit the
 next chunk with CS held. Write-only chunks can discard RX. There is one
 29-byte receive buffer: overwriting unread data is an error, not silent loss.
 
-Clock requests are 187500..24000000 Hz for the 48 MHz C011 configuration.
+Clock requests are 187500..24000000 Hz on the 48 MHz C0 targets, and
+250000..32000000 Hz on the 64 MHz G071 target.
 The hardware selects a divisor of 2..256, rounding down (a 1 MHz request yields
-750 kHz). CLOCK reports the peripheral setting, not effective frame throughput.
+750 kHz on C0, or 1 MHz on G071). CLOCK reports the peripheral setting, not
+effective frame throughput.
 Check the wiring and device's maximum clock before selecting a high speed.
 
 Errors: 0=none, 1=configuration, 2=transaction state, 3=queue overflow,

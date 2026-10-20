@@ -220,6 +220,42 @@ arduino-cli compile --fqbn "STMicroelectronics:stm32:GenC0:pnum=GENERIC_C051G8UX
 This example is excluded from the existing CI matrix until it has a C051
 platform entry.
 
+## STM32G071 breakout support
+
+The STM32G071GBU6 Rev A breakout uses the standard 28-pin generic
+**STM32G071GBUx** target, not the alternate **UxN** pinout. It has 128 KiB
+flash and 36 KiB SRAM. STM32duino supplies its 64 MHz clock initialization;
+the backend selects matching I2C timing and SPI clock limits. The provisional
+hardware ID is **0x93**, which host libraries must recognize.
+
+GPIO numbering and reserved pins match the C031/C051 table. G071 ADC is
+limited to indices **0–7 and 14/15**. PWM is available on the exposed GPIOs
+except **10/PA12 and 23/PC14**; shared channel groups are **0/5/13**,
+**6/17**, and **7/18**. Use one pin from each group at a time. PA4/PA5 use
+STM32duino's timer helpers explicitly because ordinary `analogWrite()` would
+select their DAC instead. This firmware does not expose a DAC command.
+
+`examples/example_stm32g071` enables GPIO, ADC, PWM, NeoPixel, encoder, UART,
+SPI, and EEPROM. Its UART is USART4 on PA0/PA1, encoder is PA2/PA3, and
+interrupt output is PC14. SPI still uses PA4–PA7, with clock requests from
+250 kHz through 32 MHz. EEPROM occupies **0x0801F800**, the final 2 KiB page;
+the application must fit within **129024 bytes**.
+
+The BOOTLOAD key enters ROM I2C at **0x51** on PB6/PB7. This 28-pin package
+requires ROM V11.1 or later. Check the actual ROM version before updating:
+ST documents extra stretching and single-page erase precautions for V11.3.
+The ROM also initializes SPI, so isolate attached SPI peripherals while
+using it. See [ST AN2606](https://www.st.com/resource/en/application_note/cd00167594-stm32-microcontroller-system-memory-boot-mode-stmicroelectronics.pdf).
+
+This target is already present in STM32duino 3.0.0's board menu:
+
+```sh
+arduino-cli compile --fqbn "STMicroelectronics:stm32:GenG0:pnum=GENERIC_G071GBUX,xserial=generic,usb=none,opt=oslto,dbg=none,rtlib=nano,upload_method=OpenOCDSTLink" --build-property upload.maximum_size=129024 --library . examples/example_stm32g071
+```
+
+The example is excluded from the existing CI matrix until it has a G071
+platform entry.
+
 ## I2C-to-SPI controller bridge
 
 `examples/example_spi` enables `CONFIG_SPI` alongside GPIO, ADC, and PWM.
