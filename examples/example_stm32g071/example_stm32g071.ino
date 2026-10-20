@@ -12,7 +12,11 @@
 #define CONFIG_INTERRUPT_PIN 23 // PC14, active-low open-drain output.
 #define CONFIG_UART 1 // PA0/TX and PA1/RX, USART4, 3.3 V logic.
 #define CONFIG_UART_BUF_MAX 32
-#define CONFIG_SPI 1 // PA4/CS, PA5/SCK, PA6/MISO, PA7/MOSI, 3.3 V logic.
+#define CONFIG_SPI 1
+#define CONFIG_SPI_CS_PIN 4 // PA4, active-low CS, 3.3 V logic.
+#define CONFIG_SPI_SCK_PIN 5 // PA5
+#define CONFIG_SPI_MISO_PIN 6 // PA6
+#define CONFIG_SPI_MOSI_PIN 7 // PA7
 #define CONFIG_EEPROM 1
 
 // Reserve the final 2 KiB flash page: application maximum 129024 bytes.

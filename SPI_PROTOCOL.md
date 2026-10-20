@@ -5,10 +5,27 @@ This is a new, provisional seesaw module at **0x13**, advertised by option bit
 including the peripheral header. `examples/example_spi` enables the bridge
 alongside GPIO, ADC, and PWM.
 
-The supported C011, C031, C051, and G071 breakouts use PA4 (index 4) for
-active-low CS, PA5 (5) for SCK, PA6 (6) for MISO, and PA7 (7) for MOSI.
-Successful configuration reserves all four pins until
-disabled. Conflicting encoder/NeoPixel assignments reject configuration.
+The bridge is currently implemented only for STM32. AVR support is probably
+feasible, but has not been implemented or tested; the restriction does not
+reflect a demonstrated AVR hardware limitation.
+
+Define all four pins before including the peripheral header, using the same
+seesaw/Arduino digital pin numbers as encoder configuration. There are no
+implicit pin defaults in the backend. For example:
+
+```cpp
+#define CONFIG_SPI_CS_PIN 4   // PA4, active-low CS
+#define CONFIG_SPI_SCK_PIN 5  // PA5
+#define CONFIG_SPI_MISO_PIN 6 // PA6
+#define CONFIG_SPI_MOSI_PIN 7 // PA7
+```
+
+CS may use any exposed, available GPIO. SCK, MISO, and MOSI must be valid
+hardware SPI pins for the selected target and map to the same peripheral;
+unsupported combinations report a configuration error. Software SPI is not
+provided. Duplicate or reserved GPIO assignments fail compilation.
+Successful configuration reserves the selected four pins until disabled.
+Conflicting encoder/NeoPixel assignments reject configuration.
 Other GPIOs can provide display D/C, reset, and BUSY. Use 3.3 V logic on these
 raw pins. Display control signals remain ordinary seesaw GPIOs; this is not a
 drop-in display-library integration.
