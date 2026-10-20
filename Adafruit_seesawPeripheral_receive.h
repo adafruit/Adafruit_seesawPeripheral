@@ -223,7 +223,11 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
 #endif
 
 #if CONFIG_EEPROM
-  else if (base_cmd == SEESAW_EEPROM_BASE) {
+  else if (base_cmd == SEESAW_EEPROM_BASE && howMany > 2) {
+#if defined(ARDUINO_ARCH_STM32)
+    // Stage the complete command so flash is erased at most once per packet.
+    Adafruit_seesawPeripheral_beginEEPROMWrite();
+#endif
     // special case for 1 byte at -1 (i2c addr)
     if ((module_cmd == 0xFF) && (howMany == 3)) {
       Adafruit_seesawPeripheral_writeEEPROM(EEPROM_I2C_ADDR, packet[2]);
@@ -233,12 +237,17 @@ void Adafruit_seesawPeripheral_processCommand(const volatile uint8_t *packet,
         if ((module_cmd + i) < Adafruit_seesawPeripheral_eepromLength()) {
           Adafruit_seesawPeripheral_writeEEPROM(module_cmd + i, packet[2 + i]);
           SEESAW_DEBUG(F("EEP $"));
-          SEESAW_DEBUG(module_cmd+i, HEX);
+          SEESAW_DEBUG(module_cmd + i, HEX);
           SEESAW_DEBUG(F(" <- 0x"));
-          SEESAW_DEBUGLN(packet[2+i], HEX);
+          SEESAW_DEBUGLN(packet[2 + i], HEX);
         }
       }
     }
+#if defined(ARDUINO_ARCH_STM32)
+    if (!Adafruit_seesawPeripheral_commitEEPROMWrite()) {
+      SEESAW_DEBUGLN(F("EEPROM flash write failed"));
+    }
+#endif
   }
 #endif
 
