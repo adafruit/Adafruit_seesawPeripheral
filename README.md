@@ -118,7 +118,68 @@ bytes before using ROM Go at `0x08000000`. Do not change option bytes or
 mass-erase. Keep SWD recovery available if power or an update is interrupted;
 this key prevents accidental entry, not unauthorized firmware updates.
 
-### I2C-to-SPI controller bridge
+## STM32C031 breakout support
+
+The STM32C031G6U6 Rev A breakout uses the 28-pin generic **STM32C031G6Ux**
+variant: 32 KiB flash, 12 KiB SRAM, and a 48 MHz peripheral clock.
+`examples/example_stm32c031` enables GPIO, ADC, PWM, NeoPixel, one encoder on
+PA2/PA3, and an interrupt output on PC14. The provisional hardware ID is `0x91`;
+host libraries must recognize that ID before using their normal `begin()`.
+The backend supplies the missing 48 MHz `SystemClock_Config()` startup hook
+for this generic variant, using the internal oscillator and HAL clock APIs.
+
+Protocol indices follow STM32duino's package-specific digital pin map:
+
+| Protocol indices | Board pins |
+| --- | --- |
+| 0–8 | PA0–PA8 |
+| 9, 10 | PA11, PA12 |
+| 13 | PA15 |
+| 14, 15 | PB0, PB1 |
+| 16–18 | PB3–PB5 |
+| 21, 22, 23 | PB8, PC6, PC14 |
+
+These are 20 usable GPIOs before optional UART, interrupt, address, or SPI
+reservations. SWD (11/12), I2C (19/20), the PC15 LED (24), reset (25),
+and duplicate remap aliases (26/27) are not ordinary GPIOs. PC14 is exposed on
+the saved Rev A design. ADC supports 0–10 and 14/15; PWM supports every usable
+GPIO except 10. These PWM groups share channels: **3/9**, **5/13**,
+**6/17/21/22**, **7/18/23**, and **8/14**. Use only one pin from each group
+at a time.
+
+The C011 feature rules above also apply, including the optional SPI controller
+on PA4–PA7. EEPROM reserves `0x08007800` and limits the application to 30 KiB.
+The same BOOTLOAD key enters the C031 ROM, whose PB6/PB7 I2C address is
+**0x63**, not the C011's 0x64; see
+[ST AN2606](https://www.st.com/resource/en/application_note/cd00167594-stm32-microcontroller-system-memory-boot-mode-stmicroelectronics.pdf).
+
+STM32duino 3.0.0 includes this variant's sources but not its board-menu entry
+or linker script. Add the following to `boards.local.txt` beside that core's
+`boards.txt`, preserving any existing entries. This uses the core's supplied
+G6Ux variant and its existing C031 linker script; no core source changes are
+needed. Restart the IDE after adding the entry.
+
+```ini
+GenC0.menu.pnum.GENERIC_C031G6UX=Generic C031G6Ux
+GenC0.menu.pnum.GENERIC_C031G6UX.upload.maximum_size=32768
+GenC0.menu.pnum.GENERIC_C031G6UX.upload.maximum_data_size=12288
+GenC0.menu.pnum.GENERIC_C031G6UX.build.board=GENERIC_C031G6UX
+GenC0.menu.pnum.GENERIC_C031G6UX.build.product_line=STM32C031xx
+GenC0.menu.pnum.GENERIC_C031G6UX.build.variant=STM32C0xx/C031G(4-6)U
+GenC0.menu.pnum.GENERIC_C031G6UX.build.ldscript=../C031C(4-6)(T-U)/ldscript.ld
+```
+
+Compile with the EEPROM page reserved:
+
+```sh
+arduino-cli compile --fqbn "STMicroelectronics:stm32:GenC0:pnum=GENERIC_C031G6UX,xserial=generic,usb=none,opt=oslto,dbg=none,rtlib=nano,upload_method=OpenOCDSTLink" --build-property upload.maximum_size=30720 --library . examples/example_stm32c031
+```
+
+The linker uses the 30 KiB application limit and 12 KiB RAM size. This
+target-specific example is excluded from the existing CI platform matrix
+until that matrix includes the new board.
+
+## I2C-to-SPI controller bridge
 
 `examples/example_spi` enables `CONFIG_SPI` alongside GPIO, ADC, and PWM.
 The experimental module at `0x13` supports all four SPI modes, either bit
