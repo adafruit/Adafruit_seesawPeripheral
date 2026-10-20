@@ -177,8 +177,7 @@ arduino-cli compile --fqbn "STMicroelectronics:stm32:GenC0:pnum=GENERIC_C031G6UX
 ```
 
 The linker uses the 30 KiB application limit and 12 KiB RAM size. This
-target-specific example is excluded from the existing CI platform matrix
-until that matrix includes the new board.
+target-specific example is included in the C031 CI platform matrix.
 
 ## STM32C051 breakout support
 
@@ -220,8 +219,7 @@ GenC0.menu.pnum.GENERIC_C051G8UX.build.ldscript=../C051C(6-8)(T-U)/ldscript.ld
 arduino-cli compile --fqbn "STMicroelectronics:stm32:GenC0:pnum=GENERIC_C051G8UX,xserial=generic,usb=none,opt=oslto,dbg=none,rtlib=nano,upload_method=OpenOCDSTLink" --build-property upload.maximum_size=63488 --library . examples/example_stm32c051
 ```
 
-This example is excluded from the existing CI matrix until it has a C051
-platform entry.
+This example is included in the C051 CI platform matrix.
 
 ## STM32G071 breakout support
 
@@ -257,8 +255,7 @@ This target is already present in STM32duino 3.0.0's board menu:
 arduino-cli compile --fqbn "STMicroelectronics:stm32:GenG0:pnum=GENERIC_G071GBUX,xserial=generic,usb=none,opt=oslto,dbg=none,rtlib=nano,upload_method=OpenOCDSTLink" --build-property upload.maximum_size=129024 --library . examples/example_stm32g071
 ```
 
-The example is excluded from the existing CI matrix until it has a G071
-platform entry.
+This example is included in the G071 CI platform matrix.
 
 ## I2C-to-SPI controller bridge
 
@@ -275,3 +272,55 @@ The selected pins are reserved while SPI is configured; disabling SPI releases
 them. Transfers run from `run()`, not the I2C callback.
 Read status and consume received data before sending another chunk. See the
 [SPI protocol](SPI_PROTOCOL.md) for registers, framing, clock limits, and errors.
+
+## STM32 audio spectrum
+
+`examples/example_stm32_spectrum` enables the existing `CONFIG_FHT` spectrum
+interface on C011, C031, C051, and G071. The STM32 implementation uses the
+STM32duino core's bundled CMSIS-DSP Q15 FFT, not the AVR assembly FHT.
+ADC1 is triggered by TIM3 and writes 128 evenly spaced samples through DMA1
+channel 1. Call `run()` frequently to process and publish frames. There can
+be gaps between frames, but I2C interrupts do not change sample spacing
+within a frame.
+
+Connect an analog microphone's DC-biased output to PA0, with signal voltage
+always between ground and 3.3 V. For the Adafruit SPW2430 breakout, supply
+VIN from 3.3 V and use **DC**, not AC. Set `CONFIG_FHT_PIN` before including
+the library to choose another initial ADC-capable protocol GPIO index.
+The selected input is reserved from ordinary GPIO commands. This mode owns
+ADC1, DMA1 channel 1, and TIM3; do not also enable `CONFIG_ADC`. PWM requests
+using TIM3 are rejected, while other timers remain available. SPI, encoders,
+NeoPixels, and EEPROM may coexist when pins and memory permit. Microphone
+channel changes cannot take pins assigned to those features or active PWM.
+The C051 and G071 have more flash for feature combinations than C011/C031.
+EEPROM also needs a 2 KiB RAM buffer and reserved flash page.
+Spectrum plus PWM uses nearly all of the C011's 32 KiB flash, so that
+combination cannot retain the final 2 KiB EEPROM page.
+
+NeoPixel output, flash writes, and SPI transfers can delay spectrum processing
+and I2C servicing; completed DMA frames remain available. FFT processing also
+delays the polling-based encoder decoder, so fast encoder edges can be missed.
+
+The existing spectrum registers are unchanged:
+
+- `CHANNEL` selects a protocol GPIO index, not a raw STM32 ADC channel.
+  Invalid, address-strap, interrupt, and UART-reserved pins are ignored.
+- `RATE` accepts codes 0..31 (larger values clamp to 31). The sample rate
+  is approximately `312500 / (13 + code)` Hz, rounded to a timer
+  tick. The default code 12 gives exactly 12,500 Hz.
+- Read `RESULTS_LOWER` (32 bytes) followed by `RESULTS_UPPER` (32 bytes).
+  LOWER latches all 64 bins; UPPER returns the second half of that frame.
+  Bin `k` represents `k * sample_rate / 128` Hz. At the default rate the
+  bin spacing is 97.65625 Hz; bin 0 is DC and Nyquist is not returned.
+
+Signals above half the sample rate alias into lower bins. Use an analog
+low-pass filter when needed; a piezo driven by a square wave can produce
+strong harmonics as well as its fundamental.
+
+Each frame has its measured mean removed, is multiplied by 8 and a Hann
+window, and is transformed with CMSIS's 1/128 scaling. Output is a
+zero-floored approximation to `16 * log2(magnitude)`, in 8-bit counts,
+not calibrated sound pressure or dB SPL. The AVR microphone-specific
+noise and peak tables are deliberately not applied to STM32. Digital
+scaling does not improve the ADC's analog resolution; a very quiet
+microphone may need an external analog amplifier.

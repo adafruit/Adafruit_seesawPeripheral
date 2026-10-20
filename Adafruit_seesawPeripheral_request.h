@@ -120,13 +120,16 @@ void Adafruit_seesawPeripheral_processRequest(uint8_t base_cmd,
   }
 #endif
 
-#if CONFIG_FHT && defined(MEGATINYCORE)
+#if CONFIG_FHT && (defined(MEGATINYCORE) || defined(ARDUINO_ARCH_STM32))
   else if (base_cmd == SEESAW_SPECTRUM_BASE) {
     // TO DO: change to A/B/C/D results if we decide on FHT_N = 256.
     // That will require changes in Adafruit_Seesaw as well. Note that
     // this will only be possible if using an ATtiny part with 1K RAM
     // or better; won't fit on smaller devices.
     if (module_cmd == SEESAW_SPECTRUM_RESULTS_LOWER) {
+#if defined(ARDUINO_ARCH_STM32)
+      SeesawSTM32::snapshotSpectrum();
+#endif
       Adafruit_seesawPeripheral_writeBuffer(
           Adafruit_seesawPeripheral_spectrumBuffer(), 32);
     } else if (module_cmd == SEESAW_SPECTRUM_RESULTS_UPPER) {

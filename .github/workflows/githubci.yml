@@ -16,23 +16,11 @@ jobs:
          repository: adafruit/ci-arduino
          path: ci
 
-    - name: Temporary Arduino package-index signature workaround
-      run: |
-        # 2026-10-19: upstream index uses an unrecognized signing key.
-        # Retry signed updates and remove this step on 2026-10-20.
-        # Keep HTTPS and package checksum checks; bypass only index signatures.
-        grep -Fq 'arduino-cli core update-index > /dev/null' ci/actions_install.sh
-        sed -i 's|arduino-cli core update-index > /dev/null|curl -fsSL https://downloads.arduino.cc/packages/package_index.json -o "${HOME}/.arduino15/package_index.json"\narduino-cli lib update-index > /dev/null|' ci/actions_install.sh
-        grep -Fq 'run_or_die("arduino-cli core update-index --additional-urls "+BSP_URLS+' ci/build_platform.py
-        sed -i '/run_or_die("arduino-cli core update-index --additional-urls "+BSP_URLS+/{N;c\
-            for url in BSP_URLS.split(","):\n        run_or_die("curl -fsSL " + url + " -o " + os.path.expanduser("~/.arduino15/") + url.rsplit("/", 1)[-1], "FAILED to download core index")
-        }' ci/build_platform.py
-
     - name: pre-install
       run: bash ci/actions_install.sh
 
     - name: test platforms
-      run: python3 ci/build_platform.py attiny817 attiny816 attiny807 attiny806 attiny1617 attiny1616 stm32c011
+      run: python3 ci/build_platform.py attiny817 attiny816 attiny807 attiny806 attiny1617 attiny1616 stm32c011 stm32c031 stm32c051 stm32g071
 
 #    - name: clang
 #      run: python3 ci/run-clang-format.py -e "ci/*" -e "bin/*" -r . 

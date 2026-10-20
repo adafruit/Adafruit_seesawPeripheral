@@ -5,9 +5,6 @@
 #ifndef ADAFRUIT_SEESAWPERIPHERAL_STM32_H
 #define ADAFRUIT_SEESAWPERIPHERAL_STM32_H
 
-#if CONFIG_FHT
-#error "The AVR FHT backend is not supported on STM32"
-#endif
 #if CONFIG_EEPROM
 extern "C" uint8_t _sidata, _sdata, _edata;
 #endif
@@ -46,11 +43,14 @@ static_assert(CONFIG_ADDR_3_PIN < 32 && (ALL_GPIO & (1UL << CONFIG_ADDR_3_PIN)),
               "Address strap 3 must use an exposed GPIO pin");
 #endif
 
-#if CONFIG_ADC
+#if CONFIG_ADC || CONFIG_FHT
 #include "stm32yyxx_ll_adc.h"
 #endif
 #if (CONFIG_PWM || CONFIG_PWM_16BIT) && defined(ARDUINO_GENERIC_G071GBUX)
 #include "analog.h"
+#endif
+#if CONFIG_FHT
+#include "Adafruit_seesawPeripheral_stm32_spectrum.h"
 #endif
 #if CONFIG_SPI
 #include <SPI.h>
@@ -203,6 +203,11 @@ constexpr bool validEncoderPins() {
       if (pin >= 32 || !(VALID_GPIO & (1UL << pin)) || (used & (1UL << pin))) {
         return false;
       }
+#if CONFIG_FHT
+      if (pin == CONFIG_FHT_PIN) {
+        return false;
+      }
+#endif
       used |= 1UL << pin;
     }
   }
@@ -273,9 +278,20 @@ uint8_t spiRx[29];                 ///< One I2C command's received bytes.
 uint32_t spiFrequency = 1000000;   ///< Requested SPI frequency in hertz.
 uint8_t spiMode = 0, spiOrder = 0; ///< Mode 0..3; MSB-first 0, LSB-first 1.
 
-/** @brief Exclude pins owned by an active SPI configuration. */
+#endif
+#if CONFIG_SPI || CONFIG_FHT
+/** @brief Exclude pins owned by active SPI and spectrum capture. */
 uint32_t validGPIO() {
-  return spiConfigured ? VALID_GPIO & ~spiPinMask : VALID_GPIO;
+  uint32_t pins = VALID_GPIO;
+#if CONFIG_SPI
+  if (spiConfigured) {
+    pins &= ~spiPinMask;
+  }
+#endif
+#if CONFIG_FHT
+  pins &= ~(1UL << spectrumChannel);
+#endif
+  return pins;
 }
 #endif
 #if CONFIG_PWM || CONFIG_PWM_16BIT
@@ -308,6 +324,14 @@ const uint16_t pwmPins[SEESAW_STM32_PIN_COUNT] = {
     PA0_ALT1, PA1_ALT1, PA2,  PA3_ALT1, PA4_ALT1, PA5,  PA6,      PA7_ALT1,
     PA8_ALT3, PA11,     PA12, PA13,     PA14,     PA15, PB0_ALT1, PB1_ALT2,
     PB3,      PB4,      PB5,  PB6,      PB7,      PB8,  PC6,      PC14};
+#endif
+
+#if CONFIG_FHT
+/** @brief Keep Arduino PWM away from the timer driving ADC conversions. */
+bool spectrumAllowsPWM(uint8_t pin) {
+  return pinmap_peripheral(digitalPinToPinName(pwmPins[pin]), PinMap_PWM) !=
+         TIM3;
+}
 #endif
 
 /**
@@ -353,7 +377,40 @@ void stopPWM(uint8_t pin) {
   applyPWM();
 }
 #endif
-#if CONFIG_ADC
+#if CONFIG_FHT
+/** @brief Reject ADC inputs already owned by another enabled feature. */
+bool spectrumPinAvailable(uint8_t pin) {
+  if (pin >= 32 || !(VALID_ADC & (1UL << pin))) {
+    return false;
+  }
+  uint32_t bit = 1UL << pin;
+#if CONFIG_SPI
+  if (spiConfigured && (spiPinMask & bit)) {
+    return false;
+  }
+#endif
+#if CONFIG_ENCODER
+  for (uint8_t encoder = 0; encoder < CONFIG_NUM_ENCODERS; encoder++) {
+    if (pin == encoderPins[encoder][0] || pin == encoderPins[encoder][1]) {
+      return false;
+    }
+  }
+#endif
+#if CONFIG_PWM || CONFIG_PWM_16BIT
+  if (pwmActive & bit) {
+    return false;
+  }
+#endif
+#if CONFIG_NEOPIXEL
+  if (pin == g_neopixel_pin) {
+    return false;
+  }
+#endif
+  (void)bit;
+  return true;
+}
+#endif
+#if CONFIG_ADC || CONFIG_FHT
 bool adcReady = false;                  ///< Calibration and enable completed.
 const uint32_t adcTimeoutMicros = 5000; ///< Calibration/conversion timeout.
 #endif
@@ -465,6 +522,19 @@ void prepareFirstByte() {
       seesawWire.setFirstByte((const volatile uint8_t *)&g_bufferedADCRead + 1);
     } else if (selectedRegister == SEESAW_ADC_STATUS) {
       seesawWire.setFirstByte(&g_adcStatus);
+    }
+  }
+#endif
+#if CONFIG_FHT
+  else if (selectedBase == SEESAW_SPECTRUM_BASE) {
+    if (selectedRegister == SEESAW_SPECTRUM_RESULTS_LOWER) {
+      seesawWire.setFirstByte(firstSpectrumLower);
+    } else if (selectedRegister == SEESAW_SPECTRUM_RESULTS_UPPER) {
+      seesawWire.setFirstByte(&spectrumSnapshot[32]);
+    } else if (selectedRegister == SEESAW_SPECTRUM_CHANNEL) {
+      seesawWire.setFirstByte(&spectrumChannel);
+    } else if (selectedRegister == SEESAW_SPECTRUM_RATE) {
+      seesawWire.setFirstByte(&spectrumRate);
     }
   }
 #endif
@@ -592,7 +662,7 @@ void receive(int length) {
   head = next;
 }
 
-#if CONFIG_ADC
+#if CONFIG_ADC || CONFIG_FHT
 /** @brief Calibrate and enable the ADC with bounded waits. */
 bool beginADC() {
   // C0/G0 LL sequence: regulator, calibration, two ADC clocks, then enable.
@@ -626,6 +696,10 @@ bool beginADC() {
 
 /** @brief Reset GPIO and ADC state without writing nonvolatile memory. */
 void reset() {
+#if CONFIG_FHT
+  stopSpectrum();
+  pinMode(spectrumChannel, INPUT);
+#endif
 #if CONFIG_SPI
   spiStop();
   spiError = spiSequence = spiRxLength = 0;
@@ -683,6 +757,9 @@ void reset() {
   if (!adcReady) {
     g_adcStatus = 1;
   }
+#endif
+#if CONFIG_FHT
+  adcReady = beginSpectrum();
 #endif
 #if CONFIG_INTERRUPT
   pinMode(CONFIG_INTERRUPT_PIN, OUTPUT_OPEN_DRAIN);
@@ -1047,7 +1124,7 @@ bool Adafruit_seesawPeripheral_begin(void) {
     return false;
   }
 #endif
-#if CONFIG_ADC
+#if CONFIG_ADC || CONFIG_FHT
   if (!adcReady) {
     return false;
   }
@@ -1065,6 +1142,9 @@ bool Adafruit_seesawPeripheral_begin(void) {
 /** @brief Process queued commands and poll GPIO change interrupts. */
 void Adafruit_seesawPeripheral_run(void) {
   using namespace SeesawSTM32;
+#if CONFIG_FHT
+  runSpectrum();
+#endif
 #if CONFIG_SPI
   if (spiAbortPending) {
     spiRelease();
