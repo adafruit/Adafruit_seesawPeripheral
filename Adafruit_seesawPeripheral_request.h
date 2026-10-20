@@ -1,35 +1,59 @@
-#if defined(ARDUINO_AVR_ATtiny416)
-#define SEESAW_HW_ID 0x46
-#elif defined(ARDUINO_AVR_ATtiny806)
-#define SEESAW_HW_ID 0x84
-#elif defined(ARDUINO_AVR_ATtiny807)
-#define SEESAW_HW_ID 0x85
-#elif defined(ARDUINO_AVR_ATtiny816)
-#define SEESAW_HW_ID 0x86
-#elif defined(ARDUINO_AVR_ATtiny817)
-#define SEESAW_HW_ID 0x87
-#elif defined(ARDUINO_AVR_ATtiny1616)
-#define SEESAW_HW_ID 0x88
-#elif defined(ARDUINO_AVR_ATtiny1617)
-#define SEESAW_HW_ID 0x89
-#else
-#error "Unsupported chip variant selected"
+/**
+ * @brief Write a 16-bit value to the I2C reply, most significant byte
+ * first.
+ * @param value Value to send.
+ */
+__attribute__((always_inline)) inline void
+Adafruit_seesawPeripheral_write16(uint16_t value) {
+  Adafruit_seesawPeripheral_write8((uint8_t)(value >> 8));
+  Adafruit_seesawPeripheral_write8((uint8_t)value);
+}
+
+/**
+ * @brief Write a 32-bit I2C reply, most significant byte first.
+ * @param value Value to send.
+ */
+__attribute__((always_inline)) inline void
+Adafruit_seesawPeripheral_write32(uint32_t value) {
+  Adafruit_seesawPeripheral_write8((uint8_t)(value >> 24));
+  Adafruit_seesawPeripheral_write8((uint8_t)(value >> 16));
+  Adafruit_seesawPeripheral_write8((uint8_t)(value >> 8));
+  Adafruit_seesawPeripheral_write8((uint8_t)value);
+}
+
+/**
+ * @brief Encode a register reply using the transport's reply helpers.
+ * @param base_cmd Module selected by the transport.
+ * @param module_cmd Register selected by the transport.
+ */
+void Adafruit_seesawPeripheral_processRequest(uint8_t base_cmd,
+                                              uint8_t module_cmd) {
+#if CONFIG_SPI
+  if (base_cmd == SeesawSTM32::spiBase) {
+    SeesawSTM32::spiRequest(module_cmd);
+    return;
+  }
 #endif
-
-extern volatile uint32_t g_bufferedBulkGPIORead;
-
-/***************************** data read */
-void requestEvent(void) {
-  // SEESAW_DEBUGLN(F("Requesting data"));
-  uint8_t base_cmd = i2c_buffer[0];
-  uint8_t module_cmd = i2c_buffer[1];
-
   if (base_cmd == SEESAW_STATUS_BASE) {
     if (module_cmd == SEESAW_STATUS_HW_ID) {
-      Wire.write(SEESAW_HW_ID); // instant reply
+      Adafruit_seesawPeripheral_write8(SEESAW_HW_ID); // instant reply
     }
     if (module_cmd == SEESAW_STATUS_VERSION) {
-      Adafruit_seesawPeripheral_write32(CONFIG_VERSION | DATE_CODE); // instant reply
+      Adafruit_seesawPeripheral_write32(CONFIG_VERSION); // instant reply
+    } else if (module_cmd == SEESAW_STATUS_OPTIONS) {
+      uint32_t options =
+          (1UL << SEESAW_STATUS_BASE) | (1UL << SEESAW_GPIO_BASE) |
+          ((uint32_t)CONFIG_ADC << SEESAW_ADC_BASE) |
+          ((uint32_t)(CONFIG_PWM || CONFIG_PWM_16BIT) << SEESAW_TIMER_BASE) |
+          ((uint32_t)CONFIG_EEPROM << SEESAW_EEPROM_BASE) |
+          ((uint32_t)CONFIG_NEOPIXEL << SEESAW_NEOPIXEL_BASE) |
+          ((uint32_t)CONFIG_UART << SEESAW_SERCOM0_BASE) |
+          ((uint32_t)CONFIG_ENCODER << SEESAW_ENCODER_BASE) |
+          ((uint32_t)CONFIG_FHT << SEESAW_SPECTRUM_BASE);
+#if CONFIG_SPI
+      options |= 1UL << SeesawSTM32::spiBase;
+#endif
+      Adafruit_seesawPeripheral_write32(options);
     }
   } else if (base_cmd == SEESAW_GPIO_BASE) {
     if (module_cmd == SEESAW_GPIO_BULK) {
@@ -51,58 +75,72 @@ void requestEvent(void) {
 #if CONFIG_ADC
   else if (base_cmd == SEESAW_ADC_BASE) {
     if (module_cmd >= SEESAW_ADC_CHANNEL_OFFSET) {
-      Wire.write(g_bufferedADCRead >> 8);
-      Wire.write(g_bufferedADCRead);
+      Adafruit_seesawPeripheral_write16(g_bufferedADCRead);
     } else if (module_cmd == SEESAW_ADC_STATUS) {
-      Wire.write(g_adcStatus);
+      Adafruit_seesawPeripheral_write8(g_adcStatus);
+    }
+  }
+#endif
+
+#if CONFIG_PWM || CONFIG_PWM_16BIT
+  else if (base_cmd == SEESAW_TIMER_BASE) {
+    if (module_cmd == SEESAW_TIMER_STATUS) {
+      Adafruit_seesawPeripheral_write8(g_pwmStatus);
     }
   }
 #endif
 
 #if CONFIG_EEPROM
   else if (base_cmd == SEESAW_EEPROM_BASE) {
-    Wire.write(EEPROM.read(module_cmd % EEPROM.length()));
+    Adafruit_seesawPeripheral_write8(Adafruit_seesawPeripheral_readEEPROM(
+        module_cmd % Adafruit_seesawPeripheral_eepromLength()));
   }
 #endif
 
 #if CONFIG_ENCODER
   else if (base_cmd == SEESAW_ENCODER_BASE) {
-    uint8_t encoder_num = 0;
-    if ((module_cmd & 0xF0) == SEESAW_ENCODER_POSITION) {
-      encoder_num = module_cmd & 0x0F;
-      if (encoder_num < CONFIG_NUM_ENCODERS){
-        Adafruit_seesawPeripheral_write32(g_enc_value[encoder_num]);
-        g_enc_delta[encoder_num] = 0;
+    uint8_t encoder_num = module_cmd & 0x0F;
+    uint8_t command = module_cmd & 0xF0;
+    if (encoder_num < CONFIG_NUM_ENCODERS &&
+        (command == SEESAW_ENCODER_POSITION ||
+         command == SEESAW_ENCODER_DELTA)) {
+      int32_t value;
+      if (command == SEESAW_ENCODER_DELTA) {
+        value = g_enc_delta[encoder_num];
+      } else {
+        value = g_enc_value[encoder_num];
       }
-    }
-    else if ((module_cmd & 0xF0) == SEESAW_ENCODER_DELTA) {
-      encoder_num = module_cmd & 0x0F;
-      if (encoder_num < CONFIG_NUM_ENCODERS){
-        Adafruit_seesawPeripheral_write32(g_enc_delta[encoder_num]);
-        g_enc_delta[encoder_num] = 0;
-      }
+      Adafruit_seesawPeripheral_write32(value);
+      // Reading either register clears the accumulated delta.
+      g_enc_delta[encoder_num] = 0;
+#if defined(ARDUINO_ARCH_STM32) && CONFIG_INTERRUPT
+      Adafruit_seesawPeripheral_clearIRQ();
+#endif
     }
   }
 #endif
 
-#if CONFIG_FHT && defined(MEGATINYCORE)
+#if CONFIG_FHT && (defined(MEGATINYCORE) || defined(ARDUINO_ARCH_STM32))
   else if (base_cmd == SEESAW_SPECTRUM_BASE) {
     // TO DO: change to A/B/C/D results if we decide on FHT_N = 256.
     // That will require changes in Adafruit_Seesaw as well. Note that
     // this will only be possible if using an ATtiny part with 1K RAM
     // or better; won't fit on smaller devices.
     if (module_cmd == SEESAW_SPECTRUM_RESULTS_LOWER) {
-      Wire.write(fht_log_out, 32);
+#if defined(ARDUINO_ARCH_STM32)
+      SeesawSTM32::snapshotSpectrum();
+#endif
+      Adafruit_seesawPeripheral_writeBuffer(
+          Adafruit_seesawPeripheral_spectrumBuffer(), 32);
     } else if (module_cmd == SEESAW_SPECTRUM_RESULTS_UPPER) {
-      Wire.write(&fht_log_out[32], 32);
+      Adafruit_seesawPeripheral_writeBuffer(
+          Adafruit_seesawPeripheral_spectrumBuffer() + 32, 32);
     } else if (module_cmd == SEESAW_SPECTRUM_CHANNEL) {
-      // TO DO: this should re-map the current MUXPOS setting to the same
-      // channel mapping as is used in Adafruit_seesawPeripheral_receive.h --
-      // see notes over there. Prob just two values. For now though, for the
-      // sake of initial testing, this just returns the raw MUXPOS setting.
-      Wire.write(ADC0.MUXPOS); // Return current ADC channel
+      Adafruit_seesawPeripheral_write8(
+          Adafruit_seesawPeripheral_readSpectrumChannel());
     } else if (module_cmd == SEESAW_SPECTRUM_RATE) {
-      Wire.write(ADC0.SAMPCTRL); // Return current sample rate index
+      Adafruit_seesawPeripheral_write8(
+          Adafruit_seesawPeripheral_readSpectrumRate());
     }
   }
 #endif
@@ -110,16 +148,14 @@ void requestEvent(void) {
 #if CONFIG_UART
   else if (base_cmd == SEESAW_SERCOM0_BASE) {
     if (module_cmd == SEESAW_SERCOM_STATUS) {
-      Wire.write(g_uart_status);
+      Adafruit_seesawPeripheral_write8(g_uart_status);
     } else if (module_cmd == SEESAW_SERCOM_INTEN) {
-      Wire.write(g_uart_inten);
+      Adafruit_seesawPeripheral_write8(g_uart_inten);
     } else if (module_cmd == SEESAW_SERCOM_BAUD) {
-      Wire.write((g_uart_baud >> 24) & 0xFF);
-      Wire.write((g_uart_baud >> 16) & 0xFF);
-      Wire.write((g_uart_baud >> 8) & 0xFF);
-      Wire.write(g_uart_baud & 0xFF);
+      Adafruit_seesawPeripheral_write32(g_uart_baud);
     } else if (module_cmd == SEESAW_SERCOM_DATA) {
-      Wire.write(CONFIG_UART_SERCOM.read());
+      Adafruit_seesawPeripheral_write8(
+          Adafruit_seesawPeripheral_readUARTData());
     }
   }
 #endif

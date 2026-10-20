@@ -1,0 +1,1 @@
+# Four encoders, three address straps, IRQ and NeoPixel need 13 GPIOs; STM32C011 exposes 12.
