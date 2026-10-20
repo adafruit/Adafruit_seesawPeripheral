@@ -7,8 +7,9 @@ To install, use the Arduino Library Manager and search for 'Adafruit seesaw Peri
 ## Example portability
 
 General feature examples, including `example_eeprom` and the combined-feature
-`example_stm32c011`, are enabled in CI for all seven supported targets. FHT remains
-AVR-only. Product examples keep their original board wiring and use explicitly
+`example_stm32c011`, are enabled in CI for the larger tinyAVR and supported STM32
+targets. Spectrum capture uses AVR FHT or the STM32 FFT backend. Product examples
+keep their original board wiring and use explicitly
 marked alternate pin mappings where supported on other targets.
 
 The large NeoPixel buffers in `example_neodriver` and `example_pid5690` need
@@ -17,13 +18,26 @@ activity-LED hook. `example_pid5752` needs the 24-pin tinyAVR pinout: its four
 encoders, address straps, interrupt and NeoPixel need 13 GPIOs, while the
 STM32C011 exposes 12 after reserving I2C, SWD and the board LED.
 
+## ATtiny416 support
+
+Select megaTinyCore's **ATtiny416** target and start with `example_gpioonly`
+or `example_adc`. It uses the same 20-pin GPIO, ADC, PWM, and debug-UART pin
+mapping as ATtiny816, and reports hardware ID `0x46`. The host-side seesaw
+library must recognize this ID.
+
+The ATtiny416 has only 4 KiB flash and 256 bytes RAM. Keep serial debugging
+disabled and check both memory totals before adding features. The existing
+PWM example exceeds flash capacity; even GPIO plus PWM with EEPROM and
+debugging disabled is too large with megaTinyCore 2.6.11. FHT and large
+NeoPixel buffers require a larger chip. ATtiny416 is not in the CI matrix.
+
 ## STM32C011 core support
 
 Select STM32duino's generic **STM32C011F6Ux** target and start with
 `examples/example_stm32c011`. This backend supports GPIO direction, bulk
 read/write/toggle, pull-up/pull-down selection, optional active-low GPIO change
 interrupts, 12-bit ADC reads, PWM, NeoPixel, encoders, UART, opt-in EEPROM,
-and an opt-in SPI controller bridge. FHT remains AVR-only.
+and an opt-in SPI controller bridge. Audio spectrum capture is described below.
 
 I2C uses PB7 (SDA) and PB6 (SCL), with address `0x49` in the example. The target
 requires a 48 MHz peripheral clock and retains hardware clock stretching as a

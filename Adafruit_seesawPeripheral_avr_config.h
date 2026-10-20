@@ -5,7 +5,9 @@
 #ifndef ADAFRUIT_SEESAW_PERIPHERAL_AVR_CONFIG_H
 #define ADAFRUIT_SEESAW_PERIPHERAL_AVR_CONFIG_H
 
-#if defined(ARDUINO_AVR_ATtiny806)
+#if defined(ARDUINO_AVR_ATtiny416)
+#define SEESAW_HW_ID 0x46
+#elif defined(ARDUINO_AVR_ATtiny806)
 #define SEESAW_HW_ID 0x84
 #elif defined(ARDUINO_AVR_ATtiny807)
 #define SEESAW_HW_ID 0x85
@@ -39,9 +41,9 @@
 #endif
 #define PWM_WO_OFFSET (6)
 #endif
-#if defined(ARDUINO_AVR_ATtiny816) || defined(ARDUINO_AVR_ATtiny806) ||        \
-    defined(ARDUINO_AVR_ATtiny1616) || defined(ARDUINO_AVR_ATtiny1606) ||      \
-    defined(ARDUINO_AVR_ATtiny3216)
+#if defined(ARDUINO_AVR_ATtiny416) || defined(ARDUINO_AVR_ATtiny816) ||        \
+    defined(ARDUINO_AVR_ATtiny806) || defined(ARDUINO_AVR_ATtiny1616) ||       \
+    defined(ARDUINO_AVR_ATtiny1606) || defined(ARDUINO_AVR_ATtiny3216)
 #define UART_DEBUG_RXD 6
 #define UART_DEBUG_TXD 7
 #define ALL_GPIO                                                               \
