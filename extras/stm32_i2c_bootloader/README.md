@@ -26,9 +26,9 @@ Run the following commands from the repository root. Replace `COM65` with
 your bridge's USB serial port; Linux/macOS device paths work too.
 
 ```sh
-pip3 install -r tools/stm32_i2c_bootloader/requirements.txt
-arduino-cli compile --fqbn arduino:avr:nano:cpu=atmega328 tools/stm32_i2c_bootloader/serial_i2c_bridge
-arduino-cli upload --fqbn arduino:avr:nano:cpu=atmega328 --port COM65 tools/stm32_i2c_bootloader/serial_i2c_bridge
+pip3 install -r extras/stm32_i2c_bootloader/requirements.txt
+arduino-cli compile --fqbn arduino:avr:nano:cpu=atmega328 extras/stm32_i2c_bootloader/serial_i2c_bridge
+arduino-cli upload --fqbn arduino:avr:nano:cpu=atmega328 --port COM65 extras/stm32_i2c_bootloader/serial_i2c_bridge
 ```
 
 Use `arduino:avr:uno` for an Uno or Metro Mini. Uploading replaces the bridge
@@ -38,7 +38,7 @@ The bridge uses only Wire and Serial, not the seesaw host library.
 ## 1. Identify the ROM without writing flash
 
 ```sh
-python tools/stm32_i2c_bootloader/i2c_bootloader.py --port COM65 --go
+python extras/stm32_i2c_bootloader/i2c_bootloader.py --port COM65 --go
 ```
 
 This checks seesaw hardware ID `0x90`, sends `00 7E B0 07 10 AD` to its current
@@ -56,7 +56,7 @@ seesaw into a normal GPIO/ADC seesaw while keeping bootloader entry available.
 Its address straps must remain unconnected for the default `0x49` address.
 
 ```sh
-arduino-cli compile --fqbn STMicroelectronics:stm32:GenC0:pnum=GENERIC_C011F6UX,xserial=generic,usb=none,opt=oslto,dbg=none,rtlib=nano --library . --build-property upload.maximum_size=30720 --output-dir tools/stm32_i2c_bootloader/build examples/example_adc
+arduino-cli compile --fqbn STMicroelectronics:stm32:GenC0:pnum=GENERIC_C011F6UX,xserial=generic,usb=none,opt=oslto,dbg=none,rtlib=nano --library . --build-property upload.maximum_size=30720 --output-dir extras/stm32_i2c_bootloader/build examples/example_adc
 ```
 
 Use the generated `example_adc.ino.bin`, not an ELF, HEX, or full-flash dump.
@@ -68,7 +68,7 @@ the serial port. The maximum application size is **30720 bytes**.
 Choose a backup filename that does not already exist:
 
 ```sh
-python tools/stm32_i2c_bootloader/i2c_bootloader.py --port COM65 --image tools/stm32_i2c_bootloader/build/example_adc.ino.bin --backup tools/stm32_i2c_bootloader/before-update.bin --go
+python extras/stm32_i2c_bootloader/i2c_bootloader.py --port COM65 --image extras/stm32_i2c_bootloader/build/example_adc.ino.bin --backup extras/stm32_i2c_bootloader/before-update.bin --go
 ```
 
 The updater:
