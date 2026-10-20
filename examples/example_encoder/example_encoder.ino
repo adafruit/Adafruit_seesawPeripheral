@@ -6,9 +6,10 @@
 //#define USE_PINCHANGE_INTERRUPT    1
 
 // Can have up to 3 addresses
-#if defined(ARDUINO_GENERIC_C011F6UX)
-#define CONFIG_ADDR_0_PIN          6  // PA6
-#define CONFIG_ADDR_1_PIN          7  // PA7
+#if defined(ARDUINO_GENERIC_C011F6UX) || defined(ARDUINO_AVR_ATtiny806) || defined(ARDUINO_AVR_ATtiny816) || defined(ARDUINO_AVR_ATtiny1616)
+// STM32 PA6/PA7, or the 20-pin tinyAVR board's D6/D7.
+#define CONFIG_ADDR_0_PIN          6
+#define CONFIG_ADDR_1_PIN          7
 #else
 #define CONFIG_ADDR_0_PIN          16
 #define CONFIG_ADDR_1_PIN          17
@@ -17,7 +18,7 @@
 #define CONFIG_ADC                 1
 #define CONFIG_PWM                 1
 #define CONFIG_NEOPIXEL            1
-#define CONFIG_NEOPIXEL_BUF_MAX   (60*3) // 30 pixels == 180 bytes
+#define CONFIG_NEOPIXEL_BUF_MAX   (60*3) // 60 pixels == 180 bytes
 
 //* ============== ENCODER =================== *//
 #define CONFIG_ENCODER 1

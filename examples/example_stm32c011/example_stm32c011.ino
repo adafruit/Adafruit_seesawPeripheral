@@ -1,4 +1,6 @@
 // Adafruit STM32C011 seesaw: GPIO, ADC, PWM, NeoPixel, and encoder.
+// This feature configuration also runs on the supported tinyAVR targets.
+// Pin descriptions below are for STM32; use your AVR board's Arduino pin map.
 #define PRODUCT_CODE 0
 #define CONFIG_I2C_PERIPH_ADDR 0x49
 #define CONFIG_ADC 1
@@ -12,8 +14,13 @@
 #define CONFIG_ENCODER0_A_PIN 2
 #define CONFIG_ENCODER0_B_PIN 3
 
-// Optional active-low GPIO change interrupt on D15 / PC14:
+// The AVR encoder backend requires an interrupt output; STM32 can omit it.
+#if !defined(ARDUINO_GENERIC_C011F6UX)
+#define CONFIG_INTERRUPT_PIN 15
+#else
+// Optional active-low GPIO/encoder interrupt on D15 / PC14:
 // #define CONFIG_INTERRUPT_PIN 15
+#endif
 // I2C uses PB7/SDA and PB6/SCL. SWD and the PC15 LED are reserved.
 // Protocol D0..8 = PA0..8, D9/10 = PA11/12, and D15 = PC14.
 // Only D0..10 support ADC; configured address/interrupt pins are excluded.
