@@ -5,6 +5,10 @@ This is a new, provisional seesaw module at **0x13**, advertised by option bit
 including the peripheral header. `examples/example_spi` enables the bridge
 alongside GPIO, ADC, and PWM.
 
+The bridge is currently implemented only for STM32. AVR support is probably
+feasible, but has not been implemented or tested; the restriction does not
+reflect a demonstrated AVR hardware limitation.
+
 C011 uses PA4 (index 4) for active-low CS, PA5 (5) for SCK, PA6 (6) for MISO,
 and PA7 (7) for MOSI. Successful configuration reserves all four pins until
 disabled. Conflicting encoder/NeoPixel assignments reject configuration.
