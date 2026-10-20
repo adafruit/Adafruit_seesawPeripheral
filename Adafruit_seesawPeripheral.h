@@ -33,6 +33,18 @@
 #ifndef CONFIG_FHT
 #define CONFIG_FHT 0
 #endif
+#ifndef CONFIG_BOOTLOADER
+#if defined(ARDUINO_ARCH_STM32)
+#define CONFIG_BOOTLOADER 1 ///< Enable the STM32 factory-ROM boot command.
+#else
+#define CONFIG_BOOTLOADER 0
+#endif
+#endif
+#if CONFIG_BOOTLOADER && !defined(ARDUINO_ARCH_STM32)
+#error "The ROM bootloader command currently requires STM32"
+#endif
+#define SEESAW_STATUS_BOOTLOADER 0x7E      ///< Factory-ROM entry register.
+#define SEESAW_BOOTLOADER_KEY 0xB00710ADUL ///< Exact four-byte BOOTLOAD key.
 
 #if defined(ARDUINO_ARCH_STM32)
 #include "Adafruit_seesawPeripheral_stm32_config.h"

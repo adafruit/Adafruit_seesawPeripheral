@@ -83,6 +83,55 @@ uint8_t Adafruit_seesawPeripheral_applyAddressStraps(uint8_t address) {
 }
 
 namespace SeesawSTM32 {
+#if CONFIG_BOOTLOADER
+const uint32_t systemMemory = 0x1FFF0000; ///< C011 ROM vectors, ST AN2606.
+const uint32_t bootMagic = 0xB007C011;    ///< One-shot reset request signature.
+volatile uint32_t bootRequest[2]
+    __attribute__((section(".noinit"))); ///< Retained across a software reset.
+
+/**
+ * @brief Switch stacks without compiler stack access afterward.
+ * @param vectors Factory-ROM vector table address.
+ */
+__attribute__((naked, noreturn)) void enterSystemMemory(uint32_t vectors) {
+  __asm volatile("ldr r1, [r0]\n"
+                 "ldr r2, [r0, #4]\n"
+                 "msr msp, r1\n"
+                 "cpsie i\n"
+                 "bx r2\n");
+}
+
+/** @brief Reset first so active peripherals cannot interfere with the ROM. */
+void requestBootloader() {
+  bootRequest[0] = bootMagic;
+  bootRequest[1] = ~bootMagic;
+  __DSB();
+  NVIC_SystemReset();
+}
+
+/** @brief Honor a one-shot request before constructors or Arduino setup. */
+void checkBootloader() {
+  bool requested = __HAL_RCC_GET_FLAG(RCC_FLAG_SFTRST) &&
+                   bootRequest[0] == bootMagic && bootRequest[1] == ~bootMagic;
+  bootRequest[0] = bootRequest[1] = 0;
+  if (!requested) {
+    return;
+  }
+
+  // Run immediately after reset, before Arduino configures any peripherals.
+  __disable_irq();
+  __HAL_RCC_SYSCFG_CLK_ENABLE();
+  __HAL_SYSCFG_REMAPMEMORY_SYSTEMFLASH();
+  SCB->VTOR = systemMemory;
+  __set_CONTROL(0);
+  __DSB();
+  __ISB();
+  enterSystemMemory(systemMemory);
+}
+void (*const bootloaderPreinit)() __attribute__((section(".preinit_array"),
+                                                 used)) =
+    checkBootloader; ///< Preserve Arduino startup hooks.
+#endif
 #if CONFIG_EEPROM
 const uint32_t eepromAddress = FLASH_BASE + 30 * 1024; ///< Reserved final page.
 const uint16_t eepromSize = 256; ///< Bytes addressable by the seesaw protocol.
