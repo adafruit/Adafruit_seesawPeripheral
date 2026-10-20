@@ -229,16 +229,16 @@ void updateIRQ() {
 }
 #endif
 
-/** @brief Snapshot exposed GPIOs without touching SWD, I2C, or the LED. */
+/** @brief Read exposed GPIOs without touching SWD, I2C, or the LED. */
 inline uint32_t readGPIO() {
-  // This backend is limited to C011F6Ux: D0..8 = PA0..8, D9/10 = PA11/12,
-  // D15 = PC14. Snapshot each input register once instead of calling
-  // digitalRead() for every pin while the I2C interrupt is waiting.
-  uint32_t portA = GPIOA->IDR;
-  uint32_t portC = GPIOC->IDR;
-  uint32_t value = (portA & 0x01FFUL) | ((portA >> 2) & 0x0600UL) |
-                   ((portC << 1) & 0x8000UL);
-  return value & VALID_GPIO;
+  uint32_t value = 0;
+  for (uint8_t pin = 0; pin < 16; pin++) {
+    uint32_t bit = 1UL << pin;
+    if ((VALID_GPIO & bit) && digitalRead(pin) == HIGH) {
+      value |= bit;
+    }
+  }
+  return value;
 }
 
 /** @brief Apply cached direction, output, and pull state to selected pins. */
@@ -568,7 +568,7 @@ bool Adafruit_seesawPeripheral_commitEEPROMWrite(void) {
 }
 #endif
 
-/** @brief Read a snapshot of the selected valid GPIO pins. */
+/** @brief Read the current levels of the selected valid GPIO pins. */
 uint32_t Adafruit_seesawPeripheral_readBulk(uint32_t validpins = VALID_GPIO) {
   return SeesawSTM32::readGPIO() & validpins;
 }
@@ -762,7 +762,7 @@ void Adafruit_seesawPeripheral_showPixels(void) {
 /** @brief Queue writes so ADC and NeoPixel work run outside I2C interrupts. */
 void receiveEvent(int howMany) { SeesawSTM32::receive(howMany); }
 
-/** @brief Serve a live GPIO snapshot or the last completed ADC conversion. */
+/** @brief Serve live GPIO levels or the last completed ADC conversion. */
 void requestEvent(void) {
   using namespace SeesawSTM32;
   if (selectedBase == SEESAW_GPIO_BASE &&
