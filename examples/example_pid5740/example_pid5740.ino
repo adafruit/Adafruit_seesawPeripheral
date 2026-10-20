@@ -6,7 +6,7 @@
 
 // Can have up to 4 addresses
 #define CONFIG_ADDR_INVERTED
-#if defined(ARDUINO_GENERIC_C011F6UX)
+#if defined(ARDUINO_ARCH_STM32)
 // Alternate STM32 wiring: PA2..PA5; keep SWD and I2C available.
 #define CONFIG_ADDR_0_PIN          2
 #define CONFIG_ADDR_1_PIN          3
@@ -23,7 +23,7 @@
 #define CONFIG_ENCODER 1
 #define CONFIG_ENCODER_2TICKS 1
 #define CONFIG_NUM_ENCODERS 1
-#if defined(ARDUINO_GENERIC_C011F6UX)
+#if defined(ARDUINO_ARCH_STM32)
 #define CONFIG_ENCODER0_A_PIN 0 // PA0
 #define CONFIG_ENCODER0_B_PIN 1 // PA1
 #else

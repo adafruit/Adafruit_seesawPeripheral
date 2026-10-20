@@ -6,7 +6,7 @@
 //#define USE_PINCHANGE_INTERRUPT   1
 
 // Can have up to 3 addresses
-#if defined(ARDUINO_GENERIC_C011F6UX)
+#if defined(ARDUINO_ARCH_STM32)
 // Alternate STM32 wiring: PA7/PA8; keep SWD and I2C available.
 #define CONFIG_ADDR_0_PIN          7
 #define CONFIG_ADDR_1_PIN          8

@@ -4,6 +4,8 @@
 
 #if defined(ARDUINO_GENERIC_C011F6UX)
 #define CONFIG_INTERRUPT_PIN      15 // PC14; leave the SWD pins available
+#elif defined(ARDUINO_ARCH_STM32)
+#define CONFIG_INTERRUPT_PIN      23 // PC14 on C031, C051, and G071
 #else
 #define CONFIG_INTERRUPT_PIN      12
 #endif
