@@ -58,6 +58,14 @@ to one. Temperature sensing is disabled with ADC, including in FHT builds.
 `examples/example_stm32_temperature` prints a reading each second on the debug
 UART (PA0 TX, 115200 baud) while continuing to serve I2C.
 
+All supported STM32 targets expose their factory-programmed 96-bit unique ID
+at status base `0x00`, register `0x05` (`SEESAW_STATUS_UID`). Read 12 bytes:
+UID words 0, 1, and 2 in address order, with each word sent most significant
+byte first. The ID is read-only, survives resets and reflashing, and is available
+without ADC or EEPROM, including in spectrum builds. No conversion delay is
+needed. Host libraries without a UID helper can use a raw 12-byte register read;
+the result can be displayed as a 24-digit hexadecimal serial number.
+
 Protocol GPIO indices 0–8 map to PA0–PA8, 9/10 to PA11/PA12, and 15 to PC14.
 Only indices 0–10 support ADC. SWD, I2C, the PC15 LED, and configured address or
 interrupt pins are excluded from ordinary GPIO/ADC access. Enable
