@@ -72,39 +72,40 @@ modded 7.7.14 - fixed progmem for new avr-gcc (thanks to forum user kirill9617)
 
 #include <avr/pgmspace.h>
 
+// clang-format off
 extern const int16_t __attribute__((used)) _cas_constants[] PROGMEM = {
 #if (FHT_N ==  256)
-  #include <cas_lookup_256.inc>
+  #include "../../dsp/cas_lookup_256.inc"
 #elif (FHT_N ==  128)
-  #include <cas_lookup_128.inc>
+  #include "../../dsp/cas_lookup_128.inc"
 #elif (FHT_N ==  64)
-  #include <cas_lookup_64.inc>
+  #include "../../dsp/cas_lookup_64.inc"
 #elif (FHT_N ==  32)
-  #include <cas_lookup_32.inc>
+  #include "../../dsp/cas_lookup_32.inc"
 #elif (FHT_N ==  16)
-  #include <cas_lookup_16.inc>
+  #include "../../dsp/cas_lookup_16.inc"
 #endif
 };
 
 #if (REORDER == 1)
   extern const uint8_t __attribute__((used)) _reorder_table[] PROGMEM = {
   #if (FHT_N == 256)
-    #include <256_reorder.inc>
+    #include "../../dsp/256_reorder.inc"
   #elif (FHT_N == 128)
-    #include <128_reorder.inc>
+    #include "../../dsp/128_reorder.inc"
   #elif (FHT_N == 64)
-    #include <64_reorder.inc>
+    #include "../../dsp/64_reorder.inc"
   #elif (FHT_N == 32)
-    #include <32_reorder.inc>
+    #include "../../dsp/32_reorder.inc"
   #elif (FHT_N == 16)
-    #include <16_reorder.inc>
+    #include "../../dsp/16_reorder.inc"
   #endif
   };
 #endif
 
 #if ((LOG_OUT == 1)||(OCTAVE == 1))
   extern const uint8_t __attribute__((used)) _log_table[] PROGMEM = {
-    #include <decibel.inc>
+    #include "../../dsp/decibel.inc"
   };
 #endif
 
@@ -114,14 +115,14 @@ extern const int16_t __attribute__((used)) _cas_constants[] PROGMEM = {
 
 #if (LIN_OUT == 1)
   extern const uint8_t __attribute__((used)) _lin_table[] PROGMEM = {
-    #include <sqrtlookup16.inc>
+    #include "../../dsp/sqrtlookup16.inc"
   };
   uint16_t __attribute__((used)) fht_lin_out[(FHT_N/2)]; // FHT linear output magintude buffer
 #endif
 
 #if (LIN_OUT8 == 1)
   extern const uint8_t __attribute__((used)) _lin_table8[] PROGMEM = {
-    #include <sqrtlookup8.inc>
+    #include "../../dsp/sqrtlookup8.inc"
   };
   uint8_t __attribute__((used)) fht_lin_out8[(FHT_N/2)]; // FHT linear output magintude buffer
 #endif
@@ -133,18 +134,19 @@ extern const int16_t __attribute__((used)) _cas_constants[] PROGMEM = {
 #if (WINDOW == 1) // window functions are in 16b signed format
   extern const int16_t __attribute__((used)) _window_func[] PROGMEM = {
   #if (FHT_N ==  256)
-    #include <hann_256.inc>
+    #include "../../dsp/hann_256.inc"
   #elif (FHT_N ==  128)
-    #include <hann_128.inc>
+    #include "../../dsp/hann_128.inc"
   #elif (FHT_N ==  64)
-    #include <hann_64.inc>
+    #include "../../dsp/hann_64.inc"
   #elif (FHT_N ==  32)
-    #include <hann_32.inc>
+    #include "../../dsp/hann_32.inc"
   #elif (FHT_N ==  16)
-    #include <hann_16.inc>
+    #include "../../dsp/hann_16.inc"
   #endif
   };
 #endif
+// clang-format on
 
 
 int __attribute__((used)) fht_input[(FHT_N)]; // FHT input data buffer

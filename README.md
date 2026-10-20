@@ -4,6 +4,14 @@ Library for making seesaw i2c peripherals in Arduino core
 
 To install, use the Arduino Library Manager and search for 'Adafruit seesaw Peripheral' and install the library.
 
+## Source layout
+
+The public include remains `Adafruit_seesawPeripheral.h`. Shared protocol code
+lives in `src/`, with hardware-specific code in `src/arch/avr/` and
+`src/arch/stm32/`. Transform lookup tables shared by the spectrum backends live
+in `src/dsp/`. The AVR FHT implementation and its original documentation remain
+together in `src/arch/avr/`.
+
 ## Example portability
 
 General feature examples, including `example_eeprom` and the combined-feature

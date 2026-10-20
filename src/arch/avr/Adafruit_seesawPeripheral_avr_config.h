@@ -69,8 +69,7 @@
 // there's zero RAM remaining, might have to rely on dirty pool like using
 // one of the other ADC registers not in use (TEMP or CTRLE) as a temporary
 // holding spot to get that value into Adafruit_seesawPeripheral_reset().
-// Also FYI, this depends on the FHT library which is NOT available via the
-// Arduino Library Manager and must be separately installed.
+// The FHT implementation is bundled alongside this AVR backend.
 #if CONFIG_FHT && defined(MEGATINYCORE)
 #if CONFIG_ADC
 #error ("Cannot enable both CONFIG_ADC and CONFIG_FHT")
@@ -80,7 +79,7 @@
 // smaller parts. For now, is set for small part...
 #define FHT_N 128
 #define LOG_OUT 1
-#include <FHT.h>
+#include "FHT.h"
 #define FHT_DEFAULT_PIN 0 // Arduino pin # for input (if no channel select)
 #define DISABLE_MILLIS    // FHT is exclusive (no GPIO, etc.), can do this
 #endif

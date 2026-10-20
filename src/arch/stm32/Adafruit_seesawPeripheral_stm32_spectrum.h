@@ -32,7 +32,7 @@ volatile uint8_t spectrumPublished = 0; ///< Completed result buffer index.
 bool spectrumRunning = false;           ///< Capture initialized successfully.
 const q15_t spectrumWindow[spectrumSamples] = {
 // Existing Open Music Labs Hann table; attribution retained in the include.
-#include "hann_128.inc"
+#include "../../dsp/hann_128.inc"
 };
 
 bool beginADC();
