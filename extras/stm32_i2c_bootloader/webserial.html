@@ -8,7 +8,7 @@
 </style>
 <header><div class="badge">ADAFRUIT · SEESAW PERIPHERAL</div><h1>C011 firmware uploader</h1><p>USB → Metro 328 → I²C → STM32C011F6. Drop a firmware file, then program and verify it. Files stay on your computer.</p></header>
 <section class="card"><h2>1. Prepare your Metro and board</h2><ol>
-<li>Upload <a href="https://github.com/adafruit/Adafruit_seesawPeripheral/tree/main/extras/stm32_i2c_bootloader/serial_i2c_bridge">serial_i2c_bridge.ino</a> to your Metro 328 using Arduino’s <strong>Uno</strong> board selection. Close Serial Monitor.</li>
+<li>Open <strong>File → Examples → Adafruit seesaw Peripheral → serial_i2c_bridge</strong> in Arduino, or get <a href="https://github.com/adafruit/Adafruit_seesawPeripheral/tree/main/examples/serial_i2c_bridge">the bridge sketch</a>. Upload it to your Metro 328 using Arduino’s <strong>Uno</strong> board selection. Close Serial Monitor.</li>
 <li>Connect Metro <strong>A4 → SDA, A5 → SCL, and GND → GND</strong> through the breakout’s level-shifted QT bus. Power the breakout through VIN as usual. <strong>Do not connect a 5 V Metro directly to raw MCU-side SDA/SCL.</strong></li>
 <li>Connect only one C011. For a factory-blank chip, power-cycle it before starting; no BOOT0 wire or ST-Link is needed for initial programming.</li></ol>
 <p class="warning">C011F6 only: 32 KiB flash, 6 KiB RAM, tested Rev Z ROM layout. Application limit: 30 KiB; the last 2 KiB EEPROM page and boot options are preserved. Keep power stable and this tab visible. A failed flash may require ST-Link recovery.</p>
