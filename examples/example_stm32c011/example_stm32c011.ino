@@ -1,12 +1,17 @@
-// Adafruit STM32C011 seesaw: GPIO, ADC, PWM, NeoPixel, and encoder.
+// Adafruit STM32C011 seesaw: GPIO, ADC, PWM, NeoPixel, EEPROM, and encoder.
 // This feature configuration also runs on the supported tinyAVR targets.
 // Pin descriptions below are for STM32; use your AVR board's Arduino pin map.
+#if defined(ARDUINO_GENERIC_C011F6UX)
+#define PRODUCT_CODE 6539
+#define CONFIG_EEPROM 1
+#else
 #define PRODUCT_CODE 0
+#define CONFIG_EEPROM 0
+#endif
 #define CONFIG_I2C_PERIPH_ADDR 0x49
 #define CONFIG_ADC 1
 #define CONFIG_PWM 1
 #define CONFIG_NEOPIXEL 1
-#define CONFIG_EEPROM 0
 #define CONFIG_ENCODER 1
 #ifndef CONFIG_NUM_ENCODERS
 #define CONFIG_NUM_ENCODERS 1
@@ -28,6 +33,10 @@
 // PWM: D0..8, D11, D14, D15, with 16-bit duty commands and shared frequency.
 // D3/D11, D7/D14, D8/D15 share channels: use one pin from each pair at a time.
 // NeoPixel: 800 kHz raw bytes, with a default 192-byte buffer.
+// C011 EEPROM: 256 bytes; reserve its final 2 KiB flash page when compiling:
+// --build-property upload.maximum_size=30720
+// build_opt.h disables the unused printf UART and EXTI callbacks to save RAM.
+// GPIO interrupts and encoders are polled; no attachInterrupt() is used.
 // Encoder 0 uses D2/D3 (PA2/PA3), with internal pull-ups.
 // For more encoders, set CONFIG_NUM_ENCODERS and each additional A/B pair.
 

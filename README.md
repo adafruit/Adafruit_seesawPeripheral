@@ -44,8 +44,13 @@ NeoPixel buffers require a larger chip. ATtiny416 is not in the CI matrix.
 Select STM32duino's generic **STM32C011F6Ux** target and start with
 `examples/example_stm32c011`. This backend supports GPIO direction, bulk
 read/write/toggle, pull-up/pull-down selection, optional active-low GPIO change
-interrupts, 12-bit ADC reads, PWM, NeoPixel, encoders, UART, opt-in EEPROM,
+interrupts, 12-bit ADC reads, PWM, NeoPixel, encoders, UART, EEPROM,
 and an opt-in SPI controller bridge. Audio spectrum capture is described below.
+
+The C011 default example enables GPIO, ADC, PWM, NeoPixel, EEPROM, and one
+encoder, with product code 6539. Its `build_opt.h` disables the unused printf
+UART and core EXTI callbacks to save RAM; GPIO changes and encoders are polled.
+Compile with `--build-property upload.maximum_size=30720` to reserve EEPROM.
 
 I2C uses PB7 (SDA) and PB6 (SCL), with address `0x49` in the example. The target
 requires a 48 MHz peripheral clock and retains hardware clock stretching as a
@@ -96,6 +101,8 @@ frequencies. D3/D11 share TIM1 channel 4, D7/D14 share TIM3 channel 2, and
 D8/D15 share TIM3 channel 3: use only one pin from each pair at a time.
 GPIO configuration or an ADC read
 releases that pin from PWM; a software reset releases all PWM outputs.
+On C011, PWM uses the timer registers directly without allocating
+`HardwareTimer` objects, allowing all five timers to coexist with EEPROM.
 
 Enable `CONFIG_NEOPIXEL` for 800 kHz output through Adafruit_NeoPixel on any
 valid GPIO. Set the output pin and byte length before sending SHOW. The default
@@ -132,7 +139,8 @@ read consumes one byte (0xFF when empty); writes can carry up to 30 bytes with
 the default 32-byte command buffer. Long interrupt-masked NeoPixel shows can
 lose incoming serial bytes. Check flash usage when combining features.
 
-`examples/example_eeprom` enables `CONFIG_EEPROM` (disabled by default on STM32).
+`examples/example_eeprom` and the C011 default example enable `CONFIG_EEPROM`.
+Other sketches must enable it explicitly.
 It emulates 256 bytes in the final 2 KiB flash page at `0x08007800`. Reserve that
 page when linking/programming: the application, including initialized data,
 must fit below it (30 KiB maximum). `begin()` fails if the application overlaps
