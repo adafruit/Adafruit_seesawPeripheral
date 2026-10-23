@@ -49,6 +49,10 @@ static_assert(CONFIG_ADDR_3_PIN < 32 && (ALL_GPIO & (1UL << CONFIG_ADDR_3_PIN)),
 #if (CONFIG_PWM || CONFIG_PWM_16BIT) && defined(ARDUINO_GENERIC_G071GBUX)
 #include "analog.h"
 #endif
+#if (CONFIG_PWM || CONFIG_PWM_16BIT) && defined(ARDUINO_GENERIC_C011F6UX)
+#include "stm32yyxx_ll_tim.h"
+#include "timer.h"
+#endif
 #if CONFIG_FHT
 #include "Adafruit_seesawPeripheral_stm32_spectrum.h"
 #endif
@@ -354,7 +358,70 @@ bool spectrumAllowsPWM(uint8_t pin) {
  * @param value Duty setting from 0 through 65535.
  */
 void writePWM(uint8_t pin, uint16_t value) {
-#if defined(ARDUINO_GENERIC_G071GBUX)
+#if defined(ARDUINO_GENERIC_C011F6UX)
+  // C011 has only 6 KiB RAM. Configure its timers without allocating the
+  // general-purpose HardwareTimer objects, leaving room for EEPROM's page.
+  PinName timerPin = digitalPinToPinName(pwmPins[pin]);
+  TIM_TypeDef *timer = (TIM_TypeDef *)pinmap_peripheral(timerPin, PinMap_PWM);
+  uint32_t channelNumber =
+      STM_PIN_CHANNEL(pinmap_function(timerPin, PinMap_PWM));
+  const uint32_t channels[] = {LL_TIM_CHANNEL_CH1, LL_TIM_CHANNEL_CH2,
+                               LL_TIM_CHANNEL_CH3, LL_TIM_CHANNEL_CH4};
+  uint32_t channel = channels[channelNumber - 1];
+  enableTimerClock(timer);
+
+  // Every C011 timer uses APB1, doubled when its prescaler is not one.
+  uint32_t clock = HAL_RCC_GetPCLK1Freq();
+  if (READ_BIT(RCC->CFGR, RCC_CFGR_PPRE) != RCC_HCLK_DIV1) {
+    clock *= 2;
+  }
+  uint32_t cycles = clock / pwmFrequency;
+  uint32_t prescaler = (cycles - 1) / 65536 + 1;
+  uint32_t period = cycles / prescaler;
+  bool reload = !LL_TIM_IsEnabledCounter(timer) ||
+                LL_TIM_GetPrescaler(timer) != prescaler - 1 ||
+                LL_TIM_GetAutoReload(timer) != period - 1;
+  LL_TIM_SetPrescaler(timer, prescaler - 1);
+  LL_TIM_SetAutoReload(timer, period - 1);
+  LL_TIM_EnableARRPreload(timer);
+
+  // Forced levels make the 0% and 100% endpoints exact, even at ARR=65535.
+  uint32_t mode = LL_TIM_OCMODE_PWM1;
+  if (value == 0) {
+    mode = LL_TIM_OCMODE_FORCED_INACTIVE;
+  } else if (value == 65535) {
+    mode = LL_TIM_OCMODE_FORCED_ACTIVE;
+  }
+  LL_TIM_OC_SetMode(timer, channel, mode);
+  LL_TIM_OC_SetPolarity(timer, channel, LL_TIM_OCPOLARITY_HIGH);
+  LL_TIM_OC_EnablePreload(timer, channel);
+  uint32_t compare = ((uint32_t)value * period) / 65535;
+  switch (channelNumber) {
+  case 1:
+    LL_TIM_OC_SetCompareCH1(timer, compare);
+    break;
+  case 2:
+    LL_TIM_OC_SetCompareCH2(timer, compare);
+    break;
+  case 3:
+    LL_TIM_OC_SetCompareCH3(timer, compare);
+    break;
+  case 4:
+    LL_TIM_OC_SetCompareCH4(timer, compare);
+    break;
+  }
+  if (reload) {
+    // Load the prescaler immediately when starting or changing frequency.
+    // Ordinary duty writes wait for overflow and do not restart the period.
+    LL_TIM_GenerateEvent_UPDATE(timer);
+  }
+  LL_TIM_CC_EnableChannel(timer, channel);
+  if (IS_TIM_BREAK_INSTANCE(timer)) {
+    LL_TIM_EnableAllOutputs(timer);
+  }
+  pinmap_pinout(timerPin, PinMap_PWM);
+  LL_TIM_EnableCounter(timer);
+#elif defined(ARDUINO_GENERIC_G071GBUX)
   // analogWrite() chooses DAC before PWM on PA4/PA5. Use STM32duino's own
   // timer helper explicitly; it still owns HardwareTimer setup and pin muxing.
   pwm_start(digitalPinToPinName(pwmPins[pin]), pwmFrequency, value,
@@ -381,6 +448,11 @@ void stopPWM(uint8_t pin) {
     return;
   }
   pwmActive &= ~bit;
+#if defined(ARDUINO_GENERIC_C011F6UX)
+  // Detach just this pin. A second pin may still use the same timer channel;
+  // leaving its counter running also preserves every other active channel.
+  pinMode(pwmPins[pin], INPUT);
+#else
   // STM32duino 3.0.0 pinMode() stops the whole HardwareTimer. Use the exact
   // alternate-function pin, then restore the other active channels.
 #if defined(ARDUINO_GENERIC_G071GBUX)
@@ -389,6 +461,7 @@ void stopPWM(uint8_t pin) {
 #endif
   pinMode(pwmPins[pin], INPUT);
   applyPWM();
+#endif
 }
 #endif
 #if CONFIG_FHT
@@ -1089,7 +1162,8 @@ int32_t Adafruit_seesawPeripheral_readADC(uint8_t pin) {
 #endif
   pinMode(corePin(pin), INPUT_ANALOG);
   // The core's package-specific map also covers PB0/PB1 on the 28-pin board.
-  uint32_t function = pinmap_function(digitalPinToPinName(corePin(pin)), PinMap_ADC);
+  uint32_t function =
+      pinmap_function(digitalPinToPinName(corePin(pin)), PinMap_ADC);
   uint32_t channel = STM_PIN_CHANNEL(function);
   return readADCChannel(__LL_ADC_DECIMAL_NB_TO_CHANNEL(channel));
 }
@@ -1097,7 +1171,8 @@ int32_t Adafruit_seesawPeripheral_readADC(uint8_t pin) {
 
 #if CONFIG_PWM || CONFIG_PWM_16BIT
 /**
- * @brief Set PWM duty on a validated timer pin using the Arduino core.
+ * @brief Set PWM duty on a validated timer pin.
+ *
  * @param pin Protocol GPIO index with PWM support.
  * @param value Duty setting from 0 through 65535.
  */
