@@ -18,7 +18,7 @@
 #define CONFIG_ADC 1
 #define CONFIG_PWM 1
 
-// Configure all four pins above using seesaw/Arduino digital pin numbers.
+// Configure all four pins above using seesaw protocol GPIO numbers.
 // SCK, MISO, and MOSI must map to the same hardware SPI peripheral.
 // All SPI signals use 3.3 V logic.
 // Other GPIOs may provide a display's D/C, reset, or BUSY signals.

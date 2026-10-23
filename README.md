@@ -24,7 +24,7 @@ The large NeoPixel buffers in `example_neodriver` and `example_pid5690` need
 more RAM than the 8 KiB tinyAVR parts provide. NeoDriver also uses an AVR-only
 activity-LED hook. `example_pid5752` needs the 24-pin tinyAVR pinout: its four
 encoders, address straps, interrupt and NeoPixel need 13 GPIOs, while the
-STM32C011 exposes 12 after reserving I2C, SWD and the board LED.
+STM32C011 has only 12 header GPIOs in addition to its onboard LED.
 
 ## ATtiny416 support
 
@@ -74,17 +74,27 @@ without ADC or EEPROM, including in spectrum builds. No conversion delay is
 needed. Host libraries without a UID helper can use a raw 12-byte register read;
 the result can be displayed as a 24-digit hexadecimal serial number.
 
-Protocol GPIO indices 0–8 map to PA0–PA8, 9/10 to PA11/PA12, and 15 to PC14.
-Only indices 0–10 support ADC. SWD, I2C, the PC15 LED, and configured address or
+Protocol GPIO indices match the C011 breakout labels: 0–8 map to PA0–PA8,
+11/12 to PA11/PA12, 14 to PC14, and 15 to the onboard PC15 LED. The LED
+supports digital output and PWM. All other indices, including 9, 10, and 13,
+are reserved; SWDIO and SWCLK remain available for debugging.
+Only indices 0–8 and 11/12 support ADC. I2C and configured address or
 interrupt pins are excluded from ordinary GPIO/ADC access. Enable
 `CONFIG_INTERRUPT_PIN` only on an exposed GPIO pin; its output is open-drain.
 
-Enable `CONFIG_PWM` (or `CONFIG_PWM_16BIT`) for PWM on indices 0–9 and 15.
+This replaces the earlier C011 mapping of 9/10 to PA11/PA12 and 15 to PC14.
+Update host sketches when installing this firmware. Pin settings for GPIO,
+interrupts, address straps, UART, encoders, and SPI use these protocol numbers.
+`CONFIG_I2C_SDA_PIN` and `CONFIG_I2C_SCL_PIN` still use physical STM32duino pin
+constants, defaulting to `PB7` and `PB6`; their wiring has not changed.
+
+Enable `CONFIG_PWM` (or `CONFIG_PWM_16BIT`) for PWM on indices 0–8, 11, 14, and 15.
 Both settings accept 16-bit duty values, from 0 through 65535. Frequency is
 shared across active PWM outputs, defaults to 1000 Hz, and accepts 1–65535 Hz;
 zero is rejected. Timer resolution limits the available duty steps at high
-frequencies. D3/D9 share TIM1 channel 4, and D7/D15 share TIM3 channel 2: use
-only one pin from each pair at a time. GPIO configuration or an ADC read
+frequencies. D3/D11 share TIM1 channel 4, D7/D14 share TIM3 channel 2, and
+D8/D15 share TIM3 channel 3: use only one pin from each pair at a time.
+GPIO configuration or an ADC read
 releases that pin from PWM; a software reset releases all PWM outputs.
 
 Enable `CONFIG_NEOPIXEL` for 800 kHz output through Adafruit_NeoPixel on any

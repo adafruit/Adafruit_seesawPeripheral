@@ -7,10 +7,10 @@
 
 #if defined(ARDUINO_GENERIC_C011F6UX)
 #define SEESAW_HW_ID 0x90     ///< Provisional STM32C011 hardware ID.
-#define ALL_GPIO 0x000087FFUL ///< D0..10 and D15; SWD/I2C/LED stay reserved.
-#define ALL_ADC 0x000007FFUL  ///< D0..8 = PA0..8, D9/10 = PA11/12.
-#define ALL_PWM 0x000083FFUL  ///< Exposed timer outputs; PA12 has no PWM.
-#define SEESAW_STM32_PIN_COUNT 16        ///< Last usable GPIO is D15 / PC14.
+#define ALL_GPIO 0x0000D9FFUL ///< PA0..8, PA11/12, PC14/15; reserve SWD/I2C.
+#define ALL_ADC 0x000019FFUL  ///< D0..8, D11/12 match PA0..8, PA11/12.
+#define ALL_PWM 0x0000C9FFUL  ///< All exposed pins except D12 / PA12 have PWM.
+#define SEESAW_STM32_PIN_COUNT 16 ///< Last usable GPIO is D15 / PC15 LED.
 #define SEESAW_STM32_FLASH_BYTES 32768UL ///< Physical flash capacity.
 #elif defined(ARDUINO_GENERIC_C031G6UX) || defined(ARDUINO_GENERIC_C051G8UX)
 #if defined(ARDUINO_GENERIC_C031G6UX)
@@ -43,6 +43,50 @@
 #define SEESAW_STM32_PCLK 48000000UL ///< Required peripheral clock in hertz.
 #endif
 
+namespace SeesawSTM32 {
+/**
+ * @brief Translate a protocol GPIO number to the Arduino core pin index.
+ * @param pin Protocol GPIO number, validated by the caller's capability mask.
+ * @return Core pin index, or PNUM_NOT_DEFINED for a reserved C011 number.
+ */
+constexpr uint32_t corePin(uint8_t pin) {
+#if defined(ARDUINO_GENERIC_C011F6UX)
+  switch (pin) {
+  case 11:
+    return PA11;
+  case 12:
+    return PA12;
+  case 14:
+    return PC14;
+  case 15:
+    return PC15;
+  default:
+    if (pin <= 8) {
+      return pin;
+    }
+    return PNUM_NOT_DEFINED;
+  }
+#else
+  return pin;
+#endif
+}
+
+/**
+ * @brief Find the protocol bit for a physical core pin used by I2C.
+ * @param pin Arduino core pin index, not a protocol GPIO number.
+ * @return GPIO protocol mask, or zero when the core pin is not exposed.
+ */
+constexpr uint32_t protocolPinMask(uint32_t pin) {
+  // GPIO masks are protocol bitfields; the core's dense indices may differ.
+  for (uint8_t index = 0; index < SEESAW_STM32_PIN_COUNT; index++) {
+    if ((ALL_GPIO & (1UL << index)) && corePin(index) == pin) {
+      return 1UL << index;
+    }
+  }
+  return 0;
+}
+} // namespace SeesawSTM32
+
 #define UART_DEBUG_RXD 1
 #define UART_DEBUG_TXD 0
 
@@ -68,6 +112,9 @@
 #ifndef CONFIG_I2C_SCL_PIN
 #define CONFIG_I2C_SCL_PIN PB6
 #endif
+#define SEESAW_I2C_PIN_MASK                                                    \
+  (SeesawSTM32::protocolPinMask(CONFIG_I2C_SDA_PIN) |                          \
+   SeesawSTM32::protocolPinMask(CONFIG_I2C_SCL_PIN))
 static_assert(CONFIG_I2C_PERIPH_ADDR >= 8 && CONFIG_I2C_PERIPH_ADDR <= 0x77,
               "Use a non-reserved 7-bit I2C peripheral address");
 #endif

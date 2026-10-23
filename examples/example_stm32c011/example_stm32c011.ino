@@ -18,14 +18,15 @@
 #if !defined(ARDUINO_GENERIC_C011F6UX)
 #define CONFIG_INTERRUPT_PIN 15
 #else
-// Optional active-low GPIO/encoder interrupt on D15 / PC14:
-// #define CONFIG_INTERRUPT_PIN 15
+// Optional active-low GPIO/encoder interrupt on D14 / PC14:
+// #define CONFIG_INTERRUPT_PIN 14
 #endif
-// I2C uses PB7/SDA and PB6/SCL. SWD and the PC15 LED are reserved.
-// Protocol D0..8 = PA0..8, D9/10 = PA11/12, and D15 = PC14.
-// Only D0..10 support ADC; configured address/interrupt pins are excluded.
-// PWM: D0..9 and D15, with 16-bit duty commands and a shared frequency.
-// D3/D9 and D7/D15 share timer channels: use one pin from each pair at a time.
+// I2C uses PB7/SDA and PB6/SCL. SWD remains reserved.
+// Protocol D0..8 = PA0..8, D11/12 = PA11/12, D14 = PC14, D15 = PC15 LED.
+// All other numbers are reserved, including D13 / SWDIO.
+// Only D0..8 and D11/12 support ADC; address/interrupt pins are excluded.
+// PWM: D0..8, D11, D14, D15, with 16-bit duty commands and shared frequency.
+// D3/D11, D7/D14, D8/D15 share channels: use one pin from each pair at a time.
 // NeoPixel: 800 kHz raw bytes, with a default 192-byte buffer.
 // Encoder 0 uses D2/D3 (PA2/PA3), with internal pull-ups.
 // For more encoders, set CONFIG_NUM_ENCODERS and each additional A/B pair.

@@ -96,24 +96,25 @@ extern "C" void SystemClock_Config(void) {
  * @return Address after applying configured straps.
  */
 uint8_t Adafruit_seesawPeripheral_applyAddressStraps(uint8_t address) {
+  using namespace SeesawSTM32;
 #if CONFIG_ADDR_0
-  pinMode(CONFIG_ADDR_0_PIN, INPUT_PULLUP);
-  if (digitalRead(CONFIG_ADDR_0_PIN) == CONFIG_ADDR_INVERTED)
+  pinMode(corePin(CONFIG_ADDR_0_PIN), INPUT_PULLUP);
+  if (digitalRead(corePin(CONFIG_ADDR_0_PIN)) == CONFIG_ADDR_INVERTED)
     address += 1;
 #endif
 #if CONFIG_ADDR_1
-  pinMode(CONFIG_ADDR_1_PIN, INPUT_PULLUP);
-  if (digitalRead(CONFIG_ADDR_1_PIN) == CONFIG_ADDR_INVERTED)
+  pinMode(corePin(CONFIG_ADDR_1_PIN), INPUT_PULLUP);
+  if (digitalRead(corePin(CONFIG_ADDR_1_PIN)) == CONFIG_ADDR_INVERTED)
     address += 2;
 #endif
 #if CONFIG_ADDR_2
-  pinMode(CONFIG_ADDR_2_PIN, INPUT_PULLUP);
-  if (digitalRead(CONFIG_ADDR_2_PIN) == CONFIG_ADDR_INVERTED)
+  pinMode(corePin(CONFIG_ADDR_2_PIN), INPUT_PULLUP);
+  if (digitalRead(corePin(CONFIG_ADDR_2_PIN)) == CONFIG_ADDR_INVERTED)
     address += 4;
 #endif
 #if CONFIG_ADDR_3
-  pinMode(CONFIG_ADDR_3_PIN, INPUT_PULLUP);
-  if (digitalRead(CONFIG_ADDR_3_PIN) == CONFIG_ADDR_INVERTED)
+  pinMode(corePin(CONFIG_ADDR_3_PIN), INPUT_PULLUP);
+  if (digitalRead(corePin(CONFIG_ADDR_3_PIN)) == CONFIG_ADDR_INVERTED)
     address += 8;
 #endif
   return address;
@@ -267,8 +268,8 @@ const uint32_t spiPinMask =
     (1UL << CONFIG_SPI_CS_PIN) | (1UL << CONFIG_SPI_SCK_PIN) |
     (1UL << CONFIG_SPI_MISO_PIN) |
     (1UL << CONFIG_SPI_MOSI_PIN); ///< Pins reserved while SPI is configured.
-SPIClass spiPort(CONFIG_SPI_MOSI_PIN, CONFIG_SPI_MISO_PIN,
-                 CONFIG_SPI_SCK_PIN); ///< Dedicated Arduino SPI controller.
+SPIClass spiPort(corePin(CONFIG_SPI_MOSI_PIN), corePin(CONFIG_SPI_MISO_PIN),
+                 corePin(CONFIG_SPI_SCK_PIN)); ///< Arduino SPI controller.
 volatile bool spiConfigured = false, spiSelected = false; ///< SPI ownership/CS.
 volatile uint8_t spiPending = 0; ///< Queued commands, including the active one.
 volatile uint8_t spiError = 0, spiSequence = 0; ///< Error and completion count.
@@ -300,11 +301,24 @@ uint16_t pwmValues[SEESAW_STM32_PIN_COUNT] =
     {}; ///< Duty settings retained across frequency changes.
 uint16_t pwmFrequency = 1000; ///< Shared PWM frequency in hertz.
 #if defined(ARDUINO_GENERIC_C011F6UX)
-// Select non-complementary outputs. D3/D9 share TIM1_CH4, and D7/D15
-// share TIM3_CH2; use only one pin from each pair at a time.
-const uint16_t pwmPins[SEESAW_STM32_PIN_COUNT] = {
-    PA0_ALT1, PA1_ALT1, 2,  PA3_ALT1, PA4_ALT1, 5,  6,  PA7_ALT1,
-    PA8_ALT3, 9,        10, 11,       12,       13, 14, 15};
+// Select non-complementary outputs. D3/D11 share TIM1_CH4, D7/D14 share
+// TIM3_CH2, and D8/D15 share TIM3_CH3; use one pin from each pair at a time.
+const uint32_t pwmPins[SEESAW_STM32_PIN_COUNT] = {PA0_ALT1,
+                                                  PA1_ALT1,
+                                                  PA2,
+                                                  PA3_ALT1,
+                                                  PA4_ALT1,
+                                                  PA5,
+                                                  PA6,
+                                                  PA7_ALT1,
+                                                  PA8_ALT3,
+                                                  PNUM_NOT_DEFINED,
+                                                  PNUM_NOT_DEFINED,
+                                                  PA11,
+                                                  PA12,
+                                                  PNUM_NOT_DEFINED,
+                                                  PC14,
+                                                  PC15};
 #elif defined(ARDUINO_GENERIC_C051G8UX)
 // Keep the C031 timer assignments. C051's extra TIM2 changes alternate indices.
 const uint16_t pwmPins[SEESAW_STM32_PIN_COUNT] = {
@@ -447,21 +461,21 @@ void updateIRQ() {
   // A read-to-clear callback may have run before interrupts were masked.
   active = pendingIRQ();
   if (active) {
-    digitalWrite(CONFIG_INTERRUPT_PIN, LOW);
+    digitalWrite(corePin(CONFIG_INTERRUPT_PIN), LOW);
   } else {
-    digitalWrite(CONFIG_INTERRUPT_PIN, HIGH);
+    digitalWrite(corePin(CONFIG_INTERRUPT_PIN), HIGH);
   }
   irqActive = active;
   __set_PRIMASK(savedMask);
 }
 #endif
 
-/** @brief Read exposed GPIOs without touching SWD, I2C, or the LED. */
+/** @brief Read exposed GPIOs without touching reserved pins such as SWD/I2C. */
 inline uint32_t readGPIO() {
   uint32_t value = 0;
   for (uint8_t pin = 0; pin < SEESAW_STM32_PIN_COUNT; pin++) {
     uint32_t bit = 1UL << pin;
-    if ((AVAILABLE_GPIO & bit) && digitalRead(pin) == HIGH) {
+    if ((AVAILABLE_GPIO & bit) && digitalRead(corePin(pin)) == HIGH) {
       value |= bit;
     }
   }
@@ -479,12 +493,12 @@ void applyGPIO(uint32_t pins) {
     stopPWM(pin);
 #endif
     if (direction & bit) {
-      digitalWrite(pin, (output & bit) ? HIGH : LOW);
-      pinMode(pin, OUTPUT);
+      digitalWrite(corePin(pin), (output & bit) ? HIGH : LOW);
+      pinMode(corePin(pin), OUTPUT);
     } else if (pull & bit) {
-      pinMode(pin, (output & bit) ? INPUT_PULLUP : INPUT_PULLDOWN);
+      pinMode(corePin(pin), (output & bit) ? INPUT_PULLUP : INPUT_PULLDOWN);
     } else {
-      pinMode(pin, INPUT);
+      pinMode(corePin(pin), INPUT);
     }
   }
 }
@@ -779,7 +793,7 @@ void readTemperature() {
 void reset() {
 #if CONFIG_FHT
   stopSpectrum();
-  pinMode(spectrumChannel, INPUT);
+  pinMode(corePin(spectrumChannel), INPUT);
 #endif
 #if CONFIG_SPI
   spiStop();
@@ -795,8 +809,8 @@ void reset() {
   g_uart_status = g_uart_inten = g_uart_tx_len = 0;
   g_uart_baud = 9600;
   CONFIG_UART_SERCOM.end();
-  CONFIG_UART_SERCOM.setRx(CONFIG_UART_RX_PIN);
-  CONFIG_UART_SERCOM.setTx(CONFIG_UART_TX_PIN);
+  CONFIG_UART_SERCOM.setRx(corePin(CONFIG_UART_RX_PIN));
+  CONFIG_UART_SERCOM.setTx(corePin(CONFIG_UART_TX_PIN));
   CONFIG_UART_SERCOM.begin(g_uart_baud);
 #endif
 #if CONFIG_ENCODER
@@ -804,15 +818,16 @@ void reset() {
   encoderInterrupts = 0;
 #endif
   for (uint8_t encoder = 0; encoder < CONFIG_NUM_ENCODERS; encoder++) {
-    pinMode(encoderPins[encoder][0], INPUT_PULLUP);
-    pinMode(encoderPins[encoder][1], INPUT_PULLUP);
+    pinMode(corePin(encoderPins[encoder][0]), INPUT_PULLUP);
+    pinMode(corePin(encoderPins[encoder][1]), INPUT_PULLUP);
     uint32_t bits =
         (1UL << encoderPins[encoder][0]) | (1UL << encoderPins[encoder][1]);
     pull |= bits;
     output |= bits;
     // The shared decoder uses active-low phases; sample the actual idle state.
-    g_enc_prev_pos[encoder] = 3 ^ (digitalRead(encoderPins[encoder][0]) |
-                                   (digitalRead(encoderPins[encoder][1]) << 1));
+    g_enc_prev_pos[encoder] =
+        3 ^ (digitalRead(corePin(encoderPins[encoder][0])) |
+             (digitalRead(corePin(encoderPins[encoder][1])) << 1));
     g_enc_value[encoder] = g_enc_delta[encoder] = 0;
     g_enc_flags[encoder] = 0;
   }
@@ -846,10 +861,10 @@ void reset() {
   adcReady = beginSpectrum();
 #endif
 #if CONFIG_INTERRUPT
-  pinMode(CONFIG_INTERRUPT_PIN, OUTPUT_OPEN_DRAIN);
-  digitalWrite(CONFIG_INTERRUPT_PIN, HIGH);
+  pinMode(corePin(CONFIG_INTERRUPT_PIN), OUTPUT_OPEN_DRAIN);
+  digitalWrite(corePin(CONFIG_INTERRUPT_PIN), HIGH);
   // Keep a real open-drain output with a weak pull-up in the 3.3 V domain.
-  PinName irqPin = digitalPinToPinName(CONFIG_INTERRUPT_PIN);
+  PinName irqPin = digitalPinToPinName(corePin(CONFIG_INTERRUPT_PIN));
   pin_function(irqPin, STM_PIN_DATA(STM_MODE_OUTPUT_OD, LL_GPIO_PULL_UP, 0));
   irqActive = false;
 #endif
@@ -1072,9 +1087,9 @@ int32_t Adafruit_seesawPeripheral_readADC(uint8_t pin) {
 #if CONFIG_PWM || CONFIG_PWM_16BIT
   stopPWM(pin);
 #endif
-  pinMode(pin, INPUT_ANALOG);
+  pinMode(corePin(pin), INPUT_ANALOG);
   // The core's package-specific map also covers PB0/PB1 on the 28-pin board.
-  uint32_t function = pinmap_function(digitalPinToPinName(pin), PinMap_ADC);
+  uint32_t function = pinmap_function(digitalPinToPinName(corePin(pin)), PinMap_ADC);
   uint32_t channel = STM_PIN_CHANNEL(function);
   return readADCChannel(__LL_ADC_DECIMAL_NB_TO_CHANNEL(channel));
 }
@@ -1124,12 +1139,12 @@ void Adafruit_seesawPeripheral_showPixels(void) {
 #if CONFIG_PWM || CONFIG_PWM_16BIT
   stopPWM(g_neopixel_pin);
 #endif
-  pixels.setPin(g_neopixel_pin);
+  pixels.setPin(corePin(g_neopixel_pin));
   pixels.byteLength(g_neopixel_bufsize);
   // GPIO/ADC commands may have changed the mode since the previous SHOW.
   // STM32 needs no extra NeoPixel resources; configure this output directly.
-  pinMode(g_neopixel_pin, OUTPUT);
-  digitalWrite(g_neopixel_pin, LOW);
+  pinMode(corePin(g_neopixel_pin), OUTPUT);
+  digitalWrite(corePin(g_neopixel_pin), LOW);
   pixels.show();
 }
 #endif
