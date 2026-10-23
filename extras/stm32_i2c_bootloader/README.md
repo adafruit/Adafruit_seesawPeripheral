@@ -2,12 +2,49 @@
 
 This demo updates a **STM32C011F6 seesaw** over its existing I2C connection.
 A classic Arduino Nano, Uno, or Adafruit Metro Mini bridges USB serial to I2C;
-Python handles ST's factory-ROM protocol. No BOOT0 wire is needed.
+Python or the standalone Web Serial page handles ST's factory-ROM protocol.
+No BOOT0 wire is needed.
 
 This is **C011-specific**, including its Rev Z ROM command-frame layout.
 Do not use it for C031, C051, G071, or other STM32 parts: their ROM addresses,
-flash sizes, and command behavior differ. The target must already run seesaw
+flash sizes, and command behavior differ. The Python updater requires seesaw
 firmware with `CONFIG_BOOTLOADER` enabled and the `B0 07 10 AD` entry key.
+The browser uploader also supports factory-blank chips already in ROM.
+
+## Metro 328 + Web Serial (HEX or BIN)
+
+Upload `serial_i2c_bridge/serial_i2c_bridge.ino` to the Metro 328 using the
+Arduino Uno board selection (`arduino:avr:uno`), then close Serial Monitor.
+Use the wiring below. Open [the uploader](https://adafruit.github.io/Adafruit_seesawPeripheral/bootloader/)
+in desktop Chrome or Edge. Alternatively, download `webserial.html` and open
+that standalone file locally. Ordinary HTTP LAN hosting cannot use Web Serial.
+
+1. Power-cycle the factory-blank C011 and connect the Metro's USB serial port.
+2. Drop a C011 application HEX or BIN file onto the page. BIN starts at
+   `0x08000000`; HEX uses absolute flash addresses and checked record checksums.
+3. Leave **Factory blank / already in ROM** selected. Confirm the firmware
+   target, then click **Back up, upload & verify** and choose a new backup file.
+4. The page identifies ROM, saves and verifies a full-flash backup before erase,
+   programs only required application pages, compares every programmed byte,
+   checks EEPROM/options unchanged, and sends Go only after all checks pass.
+5. Power-cycle the C011 to confirm the application starts normally.
+
+Files stay on your computer. No Python installation is needed. The page rejects
+images over 30720 bytes, bad vectors, overlapping HEX records, and data outside
+the application area, including the reserved EEPROM page. It never changes boot
+options or protection. Keep the tab visible and power stable during programming.
+If programming fails, stop and recover with SWD; there is no automatic retry.
+
+For subsequent updates, choose **Running bootloader-enabled seesaw** and enter
+its current hexadecimal I2C address. The installed firmware must retain the
+seesaw boot-entry command, or another existing ROM-entry method is needed.
+Factory-blank auto-entry is not a persistent bootloader-entry mechanism after
+the chip is programmed. The browser reports verified flash and Go acknowledgement,
+not a functional test of the application. The Python updater's seesaw restart
+checks below remain separate.
+
+The GitHub Pages workflow publishes this page at `/bootloader/` after merging
+to `main`; repository Pages settings must use **GitHub Actions** as the source.
 
 ## Connections and prerequisites
 
