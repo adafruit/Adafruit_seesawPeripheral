@@ -2,7 +2,11 @@
 #define CONFIG_I2C_PERIPH_ADDR  0x49
 //#define CONFIG_UART_DEBUG          1
 
+#if defined(ARDUINO_GENERIC_C011F6UX)
+#define CONFIG_INTERRUPT_PIN      14 // PC14
+#else
 #define CONFIG_INTERRUPT_PIN      15
+#endif
 //#define USE_PINCHANGE_INTERRUPT    1
 
 // Can have up to 3 addresses

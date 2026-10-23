@@ -36,7 +36,7 @@ enum {
 /*! Release CS without changing the configured SPI pins. */
 void spiRelease() {
   if (spiSelected) {
-    digitalWrite(CONFIG_SPI_CS_PIN, HIGH);
+    digitalWrite(corePin(CONFIG_SPI_CS_PIN), HIGH);
     spiPort.endTransaction();
   }
   spiSelected = false;
@@ -56,7 +56,7 @@ void spiStop() {
   pwmActive &= ~spiPinMask;
 #endif
   for (uint16_t pin : spiPins)
-    pinMode(pin, INPUT);
+    pinMode(corePin(pin), INPUT);
 }
 
 /*! Latch an error and release CS. @param error SPI module error code. */
@@ -153,11 +153,11 @@ void spiProcess(uint8_t reg, const volatile uint8_t *data, uint8_t length) {
     }
     // Use the core's pin maps: all three signal pins must reach the same
     // hardware SPI peripheral. CS is an ordinary software-controlled GPIO.
-    void *mosi = pinmap_peripheral(digitalPinToPinName(CONFIG_SPI_MOSI_PIN),
+    void *mosi = pinmap_peripheral(digitalPinToPinName(corePin(CONFIG_SPI_MOSI_PIN)),
                                    PinMap_SPI_MOSI);
-    void *miso = pinmap_peripheral(digitalPinToPinName(CONFIG_SPI_MISO_PIN),
+    void *miso = pinmap_peripheral(digitalPinToPinName(corePin(CONFIG_SPI_MISO_PIN)),
                                    PinMap_SPI_MISO);
-    void *sck = pinmap_peripheral(digitalPinToPinName(CONFIG_SPI_SCK_PIN),
+    void *sck = pinmap_peripheral(digitalPinToPinName(corePin(CONFIG_SPI_SCK_PIN)),
                                   PinMap_SPI_SCLK);
     if (mosi == NP || mosi != miso || mosi != sck) {
       spiFail(spiBadConfig);
@@ -170,8 +170,8 @@ void spiProcess(uint8_t reg, const volatile uint8_t *data, uint8_t length) {
     spiMode = data[0];
     spiOrder = data[1];
     spiFrequency = frequency;
-    digitalWrite(CONFIG_SPI_CS_PIN, HIGH);
-    pinMode(CONFIG_SPI_CS_PIN, OUTPUT);
+    digitalWrite(corePin(CONFIG_SPI_CS_PIN), HIGH);
+    pinMode(corePin(CONFIG_SPI_CS_PIN), OUTPUT);
     const uint8_t modes[] = {SPI_MODE0, SPI_MODE1, SPI_MODE2, SPI_MODE3};
     // STM32duino 3.0.0 retains its settings cache across end(). Force a
     // different setting first so an identical reconfiguration reinitializes
@@ -202,7 +202,7 @@ void spiProcess(uint8_t reg, const volatile uint8_t *data, uint8_t length) {
     return;
   }
   if (flags & spiBeginFlag) {
-    digitalWrite(CONFIG_SPI_CS_PIN, LOW);
+    digitalWrite(corePin(CONFIG_SPI_CS_PIN), LOW);
     spiSelected = true;
   }
   uint8_t count = length - 1;
@@ -217,7 +217,7 @@ void spiProcess(uint8_t reg, const volatile uint8_t *data, uint8_t length) {
     return;
   }
   if (flags & spiEndFlag) {
-    digitalWrite(CONFIG_SPI_CS_PIN, HIGH);
+    digitalWrite(corePin(CONFIG_SPI_CS_PIN), HIGH);
     spiPort.endTransaction();
     spiSelected = false;
   }

@@ -146,10 +146,7 @@ uint16_t DATE_CODE = 0;
 
 /********************** Available/taken GPIO configuration macros */
 
-#if defined(ARDUINO_ARCH_STM32)
-#define SEESAW_I2C_PIN_MASK                                                    \
-  ((1UL << CONFIG_I2C_SDA_PIN) | (1UL << CONFIG_I2C_SCL_PIN))
-#else
+#if !defined(ARDUINO_ARCH_STM32)
 #define SEESAW_I2C_PIN_MASK ((1UL << SDA) | (1UL << SCL))
 #define SEESAW_UART_PIN_MASK 0UL
 #endif

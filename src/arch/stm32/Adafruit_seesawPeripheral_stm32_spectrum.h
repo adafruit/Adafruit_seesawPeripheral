@@ -70,9 +70,9 @@ void startSpectrum() {
 
 /** @brief Select the physical ADC channel, using the core's package pin map. */
 bool selectSpectrumChannel() {
-  pinMode(spectrumChannel, INPUT_ANALOG);
+  pinMode(corePin(spectrumChannel), INPUT_ANALOG);
   uint32_t function =
-      pinmap_function(digitalPinToPinName(spectrumChannel), PinMap_ADC);
+      pinmap_function(digitalPinToPinName(corePin(spectrumChannel)), PinMap_ADC);
   uint32_t channel = STM_PIN_CHANNEL(function);
   LL_ADC_ClearFlag_CCRDY(ADC1);
   LL_ADC_REG_SetSequencerChannels(ADC1,
@@ -247,7 +247,7 @@ void Adafruit_seesawPeripheral_setSpectrumChannel(uint8_t pin) {
   if (!spectrumRunning || !stopSpectrum()) {
     return;
   }
-  pinMode(spectrumChannel, INPUT);
+  pinMode(corePin(spectrumChannel), INPUT);
   spectrumChannel = pin;
   if (selectSpectrumChannel()) {
     startSpectrum();

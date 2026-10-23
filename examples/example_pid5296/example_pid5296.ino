@@ -4,7 +4,11 @@
 #define CONFIG_I2C_PERIPH_ADDR  0x3A
 //#define CONFIG_UART_DEBUG          1
 
+#if defined(ARDUINO_GENERIC_C011F6UX)
+#define CONFIG_INTERRUPT_PIN      11 // PA11
+#else
 #define CONFIG_INTERRUPT_PIN      9  // PB02
+#endif
 
 #define CONFIG_ADDR_INVERTED
 #define CONFIG_ADDR_0_PIN         3  // PA07
