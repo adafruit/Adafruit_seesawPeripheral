@@ -6,14 +6,18 @@ const vm = require('node:vm');
 const path = require('node:path');
 const html = fs.readFileSync(path.join(__dirname, 'webserial.html'), 'utf8');
 assert.ok(!html.includes('showSaveFilePicker'));
-assert.ok(!html.includes('type="checkbox"'));
+assert.ok(!html.includes('id="confirm"'));
+assert.ok(html.includes('id="verifyAfterFlash" checked'));
 assert.ok(!html.includes('id="backup"'));
+assert.ok(!html.includes('<footer>'));
 const elements = new Map();
+let downloadedBlob;
 const context = vm.createContext({
-  Uint8Array, DataView, TextEncoder, TextDecoder, Blob, URL, setTimeout, clearTimeout,
+  Uint8Array, DataView, TextEncoder, TextDecoder, Blob, setTimeout, clearTimeout,
+  URL: {createObjectURL(blob) { downloadedBlob = blob; return 'blob:readout'; }, revokeObjectURL() {}},
   navigator: {serial: {}}, window: {isSecureContext: true, addEventListener() {}},
   document: {getElementById(id) {
-    if (!elements.has(id)) elements.set(id, {textContent: '', value: '', classList: {add() {}, remove() {}, toggle() {}}, addEventListener() {}});
+    if (!elements.has(id)) elements.set(id, {textContent: '', value: '', classList: {add() {}, remove() {}, toggle() {}}, addEventListener() {}, click() { this.clicked = true; }});
     return elements.get(id);
   }}
 });
@@ -108,21 +112,53 @@ class ROM {
   bridge.writer = {write: async () => { bridge.pending.resolve('OK'); bridge.pending = null; }};
   assert.equal(await bridge.command('W', [0x64, 0, 255]), 'OK');
   bridge.lines.push('OK'); await assert.rejects(() => bridge.command('W', [0x64, 0, 255]), /stale/);
-  // Exercise the Upload button path without a checkbox or file-save API.
+  // Write uses default-on verification, with no confirmation or file-save API.
   const direct = new ROM(); context.testDevice = direct; context.testImage = image;
+  context.document.getElementById('verifyAfterFlash').checked = true;
   vm.runInContext('bridge = testDevice; firmware = {image: testImage}; controls();', context);
-  assert.equal(elements.get('upload').disabled, false);
-  await vm.runInContext('upload()', context);
+  assert.equal(elements.get('write').disabled, false);
+  await vm.runInContext('runOperation("write")', context);
   assert.equal(direct.goRequested, true); assert.equal(direct.closed, true);
-  assert.ok(elements.get('status').textContent.startsWith('Upload verified.'));
+  assert.ok(elements.get('status').textContent.startsWith('Write verified.'));
   assert.ok(!direct.reads.some(r => r.beforeErase && r.address >= base && r.address < base + 30720), 'No application backup reads before erase');
   assert.ok(direct.memory.slice(30720).every(v => v === 0x5A));
   assert.ok(direct.options.every(v => v === 0xAA));
   assert.ok(!elements.has('confirm') && !elements.has('backup'));
   const directFailure = new ROM(); directFailure.failWrite = true; context.testDevice = directFailure;
   vm.runInContext('bridge = testDevice;', context);
-  await vm.runInContext('upload()', context);
+  await vm.runInContext('runOperation("write")', context);
   assert.equal(directFailure.goRequested, false); assert.equal(directFailure.closed, true);
   assert.ok(elements.get('status').textContent.startsWith('Stopped.'));
-  process.stdout.write('PASS: HEX/BIN validation, ROM packets, EEPROM exclusion, serial framing, direct upload without backup/checkbox, and failure stop before Go.\n');
+  // Unchecked verification skips only application readback after Write.
+  const unchecked = new ROM(); context.testDevice = unchecked;
+  context.document.getElementById('verifyAfterFlash').checked = false;
+  vm.runInContext('bridge = testDevice;', context);
+  await vm.runInContext('runOperation("write")', context);
+  assert.equal(unchecked.goRequested, true);
+  assert.ok(!unchecked.reads.some(r => r.address >= base && r.address < base + 30720));
+  assert.ok(elements.get('status').textContent.startsWith('Write complete (not verified).'));
+  // Verify is read-only, including when Verify after flash is unchecked.
+  const verifyDevice = new ROM(); verifyDevice.memory.set(padded); context.testDevice = verifyDevice;
+  vm.runInContext('bridge = testDevice;', context);
+  await vm.runInContext('runOperation("verify")', context);
+  assert.equal(verifyDevice.writes, 0); assert.equal(verifyDevice.erases.length, 0);
+  assert.equal(verifyDevice.goRequested, false);
+  assert.ok(elements.get('status').textContent.startsWith('Verify passed.'));
+  const mismatch = new ROM(); mismatch.memory.set(padded); mismatch.memory[16] ^= 1; context.testDevice = mismatch;
+  vm.runInContext('bridge = testDevice;', context);
+  await vm.runInContext('runOperation("verify")', context);
+  assert.ok(elements.get('status').textContent.startsWith('Stopped.'));
+  assert.equal(mismatch.writes, 0); assert.equal(mismatch.erases.length, 0);
+  assert.equal(mismatch.goRequested, false);
+  // Read needs no input file and downloads every flash byte, including EEPROM.
+  const readDevice = new ROM(); context.testDevice = readDevice;
+  vm.runInContext('bridge = testDevice; firmware = null; controls();', context);
+  assert.equal(elements.get('read').disabled, false);
+  assert.equal(elements.get('write').disabled, true); assert.equal(elements.get('verify').disabled, true);
+  await vm.runInContext('runOperation("read")', context);
+  assert.deepEqual(new Uint8Array(await downloadedBlob.arrayBuffer()), readDevice.memory);
+  assert.equal(elements.get('readout').clicked, true);
+  assert.equal(readDevice.writes, 0); assert.equal(readDevice.erases.length, 0);
+  assert.equal(readDevice.goRequested, false); assert.equal(readDevice.closed, true);
+  process.stdout.write('PASS: HEX/BIN validation, ROM packets, EEPROM exclusion, serial framing, Write with verification on/off, Read download, Verify match/mismatch, and failure stop.\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });

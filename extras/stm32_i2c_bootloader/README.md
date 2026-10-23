@@ -24,11 +24,12 @@ that standalone file locally. Ordinary HTTP LAN hosting cannot use Web Serial.
 1. Power-cycle the factory-blank C011 and connect the Metro's USB serial port.
 2. Drop a C011 application HEX or BIN file onto the page. BIN starts at
    `0x08000000`; HEX uses absolute flash addresses and checked record checksums.
-3. Leave **Factory blank / already in ROM** selected, then click
-   **Upload & verify**. There is no confirmation checkbox or backup-file dialog.
+3. Leave **Factory blank / already in ROM** selected, then click **Write**.
+   **Verify after flash** is checked by default. No backup-file dialog is shown.
 4. The page identifies ROM, reads EEPROM/options for comparison, programs only
-   required application pages, compares every programmed byte, checks
-   EEPROM/options unchanged, and sends Go only after all checks pass.
+   required application pages, compares every programmed byte when verification
+   is enabled, checks EEPROM/options unchanged, then sends Go. Unchecking
+   **Verify after flash** skips application readback, not EEPROM/option checks.
 5. Power-cycle the C011 to confirm the application starts normally.
 
 Files stay on your computer. No Python installation is needed. The page rejects
@@ -36,16 +37,23 @@ images over 30720 bytes, bad vectors, overlapping HEX records, and data outside
 the application area, including the reserved EEPROM page. It never changes boot
 options or protection. Keep the tab visible and power stable during programming.
 If programming fails, stop and recover with SWD; there is no automatic retry.
-The browser uploader does not create a firmware backup. The Python updater
-below retains its separate backup workflow.
+**Read** downloads a full 32768-byte BIN backup, including EEPROM, without
+requiring a selected firmware file. If the browser blocks the automatic download,
+use **Save readout**. This full-flash backup is not an application input for Write.
+**Verify** compares the selected firmware and its doubleword padding with flash
+without erasing or programming it, regardless of the Verify after flash checkbox.
+Read and Verify do not send Go; power-cycle afterward to return to an existing
+application. Reconnect the Metro before each operation. Write never creates a
+backup automatically; use Read first if you want one. The Python updater below
+retains its separate backup workflow.
 
 For subsequent updates, choose **Running bootloader-enabled seesaw** and enter
 its current hexadecimal I2C address. The installed firmware must retain the
 seesaw boot-entry command, or another existing ROM-entry method is needed.
 Factory-blank auto-entry is not a persistent bootloader-entry mechanism after
-the chip is programmed. The browser reports verified flash and Go acknowledgement,
-not a functional test of the application. The Python updater's seesaw restart
-checks below remain separate.
+the chip is programmed. Write reports whether application readback was verified
+and whether Go was acknowledged, not a functional test of the application.
+The Python updater's seesaw restart checks below remain separate.
 
 The GitHub Pages workflow publishes this page at `/bootloader/` after merging
 to `main`; repository Pages settings must use **GitHub Actions** as the source.
