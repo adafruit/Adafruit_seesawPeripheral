@@ -1,7 +1,8 @@
 // Adafruit STM32C011 bootloader USB-to-I2C bridge.
 // Run this on a classic Nano, Uno, Metro 328, or Metro Mini, NOT on the STM32.
-// Use the breakout's level-shifted QT bus with a 5 V host. See ../README.md.
-// Use ../webserial.html for drag-and-drop HEX/BIN programming from a browser.
+// Use the breakout's level-shifted QT bus with a 5 V host.
+// Wiring: extras/stm32_i2c_bootloader/README.md in this library.
+// Web uploader: https://adafruit.github.io/Adafruit_seesawPeripheral/bootloader/
 // A factory-blank C011 enters ROM at power-on; the bridge needs no BOOT0 wire.
 // ASCII commands use hexadecimal bytes:
 // W address data... ; U address count ; R address module register count.
@@ -14,11 +15,11 @@ bool discardLine = false;
 void setup() {
   Serial.begin(115200);
   Wire.begin();
-  // Use the breakout's external pull-ups, not AVR pull-ups to 5 V.
-  digitalWrite(SDA, LOW);
-  digitalWrite(SCL, LOW);
   Wire.setClock(100000);
+#ifndef ARDUINO_AVR_METRO
+  // The legacy Adafruit Metro Wire library does not provide this timeout API.
   Wire.setWireTimeout(25000, true);
+#endif
   delay(250);
   Serial.print(F("Adafruit STM32C011 I2C bootloader bridge READY\n\r"));
 }

@@ -6,7 +6,7 @@ on:
     paths:
       - extras/stm32_i2c_bootloader/webserial.html
       - extras/stm32_i2c_bootloader/test_webserial.cjs
-      - extras/stm32_i2c_bootloader/serial_i2c_bridge/**
+      - examples/serial_i2c_bridge/**
       - .github/workflows/bootloader-pages.yml
   workflow_dispatch:
 
@@ -36,7 +36,7 @@ jobs:
         run: |
           mkdir -p _site/bootloader/serial_i2c_bridge
           cp extras/stm32_i2c_bootloader/webserial.html _site/bootloader/index.html
-          cp extras/stm32_i2c_bootloader/serial_i2c_bridge/serial_i2c_bridge.ino _site/bootloader/serial_i2c_bridge/
+          cp examples/serial_i2c_bridge/serial_i2c_bridge.ino _site/bootloader/serial_i2c_bridge/
       - uses: actions/upload-pages-artifact@v4
         with:
           path: _site

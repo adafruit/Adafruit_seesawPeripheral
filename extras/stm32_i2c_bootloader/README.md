@@ -13,8 +13,10 @@ The browser uploader also supports factory-blank chips already in ROM.
 
 ## Metro 328 + Web Serial (HEX or BIN)
 
-Upload `serial_i2c_bridge/serial_i2c_bridge.ino` to the Metro 328 using the
-Arduino Uno board selection (`arduino:avr:uno`), then close Serial Monitor.
+Open **File > Examples > Adafruit seesaw Peripheral > serial_i2c_bridge** in
+the Arduino IDE, or open `examples/serial_i2c_bridge/serial_i2c_bridge.ino` in
+this repository. Upload it to the Metro 328 using the Arduino Uno board
+selection (`arduino:avr:uno`), then close Serial Monitor.
 Use the wiring below. Open [the uploader](https://adafruit.github.io/Adafruit_seesawPeripheral/bootloader/)
 in desktop Chrome or Edge. Alternatively, download `webserial.html` and open
 that standalone file locally. Ordinary HTTP LAN hosting cannot use Web Serial.
@@ -64,13 +66,17 @@ your bridge's USB serial port; Linux/macOS device paths work too.
 
 ```sh
 pip3 install -r extras/stm32_i2c_bootloader/requirements.txt
-arduino-cli compile --fqbn arduino:avr:nano:cpu=atmega328 extras/stm32_i2c_bootloader/serial_i2c_bridge
-arduino-cli upload --fqbn arduino:avr:nano:cpu=atmega328 --port COM65 extras/stm32_i2c_bootloader/serial_i2c_bridge
+arduino-cli compile --fqbn arduino:avr:nano:cpu=atmega328 examples/serial_i2c_bridge
+arduino-cli upload --fqbn arduino:avr:nano:cpu=atmega328 --port COM65 examples/serial_i2c_bridge
 ```
 
 Use `arduino:avr:uno` for an Uno or Metro Mini. Uploading replaces the bridge
 board's application sketch; save any sketch you need to restore first.
 The bridge uses only Wire and Serial, not the seesaw host library.
+The legacy Adafruit Metro board package also works, but its Wire library lacks
+the I2C timeout API. If its bus stalls, reset the Metro before reconnecting.
+Its `.none.test.only` marker excludes it from this library's peripheral-target
+CI matrix; compile it for the AVR host board using the commands above.
 
 ## 1. Identify the ROM without writing flash
 
