@@ -1,6 +1,8 @@
 // Adafruit STM32C011 bootloader USB-to-I2C bridge.
-// Run this on a classic Nano, Uno, or Metro Mini, NOT on the STM32 target.
+// Run this on a classic Nano, Uno, Metro 328, or Metro Mini, NOT on the STM32.
 // Use the breakout's level-shifted QT bus with a 5 V host. See ../README.md.
+// Use ../webserial.html for drag-and-drop HEX/BIN programming from a browser.
+// A factory-blank C011 enters ROM at power-on; the bridge needs no BOOT0 wire.
 // ASCII commands use hexadecimal bytes:
 // W address data... ; U address count ; R address module register count.
 #include <Wire.h>

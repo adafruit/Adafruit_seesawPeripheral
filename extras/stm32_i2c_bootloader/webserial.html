@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Adafruit C011 firmware uploader</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#11171c;color:#edf3f5}*{box-sizing:border-box}body{max-width:850px;margin:48px auto;padding:0 22px}h1{font-size:2.2rem;margin-bottom:10px}h2{font-size:1.2rem}p,li{line-height:1.6;color:#bacbd4}a{color:#68dccc}.badge{color:#68dccc;letter-spacing:.12em;font-size:.8rem;font-weight:700}.card{background:#1b252d;border:1px solid #384954;border-radius:14px;padding:22px;margin:20px 0}button,.download{font:inherit;border:0;border-radius:8px;padding:12px 18px;background:#68dccc;color:#112626;font-weight:650;cursor:pointer;display:inline-block;text-decoration:none}button:disabled{opacity:.4;cursor:not-allowed}button.secondary{background:#344651;color:white}select,input{font:inherit;padding:8px;border:1px solid #687b88;border-radius:6px;background:#11171c;color:white}label{display:block;margin:14px 0}#drop{border:2px dashed #64828e;padding:30px 18px;text-align:center;border-radius:12px}#drop.over{border-color:#68dccc;background:#203b3e}#file{max-width:100%}#filename{overflow-wrap:anywhere}#log{white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;font:13px/1.6 ui-monospace,monospace}progress{width:100%;accent-color:#68dccc;height:14px}.warning{color:#ffcc89}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}small{color:#bacbd4}.hidden{display:none!important}
+</style>
+<header><div class="badge">ADAFRUIT · SEESAW PERIPHERAL</div><h1>C011 firmware uploader</h1><p>USB → Metro 328 → I²C → STM32C011F6. Drop a firmware file, then program and verify it. Files stay on your computer.</p></header>
+<section class="card"><h2>1. Prepare your Metro and board</h2><ol>
+<li>Upload <a href="https://github.com/adafruit/Adafruit_seesawPeripheral/tree/main/extras/stm32_i2c_bootloader/serial_i2c_bridge">serial_i2c_bridge.ino</a> to your Metro 328 using Arduino’s <strong>Uno</strong> board selection. Close Serial Monitor.</li>
+<li>Connect Metro <strong>A4 → SDA, A5 → SCL, and GND → GND</strong> through the breakout’s level-shifted QT bus. Power the breakout through VIN as usual. <strong>Do not connect a 5 V Metro directly to raw MCU-side SDA/SCL.</strong></li>
+<li>Connect only one C011. For a factory-blank chip, power-cycle it before starting; no BOOT0 wire or ST-Link is needed for initial programming.</li></ol>
+<p class="warning">C011F6 only: 32 KiB flash, 6 KiB RAM, tested Rev Z ROM layout. Application limit: 30 KiB; the last 2 KiB EEPROM page and boot options are preserved. Keep power stable and this tab visible. A failed flash may require ST-Link recovery.</p>
+<p id="compat" class="warning"></p><button id="connect">Connect Metro</button> <span id="connection">Not connected</span></section>
+<section class="card"><h2>2. Choose firmware</h2><div id="drop"><p>Drop one STM32 application <strong>.hex</strong> or <strong>.bin</strong> here</p><input id="file" type="file" accept=".hex,.bin" aria-label="Choose firmware"></div><p id="filename">No file selected.</p>
+<small>BIN starts at 0x08000000. HEX must use absolute STM32 flash addresses. AVR/Metro HEX files, full-flash dumps, and option-byte records are rejected.</small>
+<label>Bootloader entry <select id="entry"><option value="rom">Factory blank / already in ROM</option><option value="seesaw">Running bootloader-enabled seesaw</option></select></label>
+<label id="addressLabel" class="hidden">Seesaw I²C address <input id="address" value="49" maxlength="2" size="3" aria-label="Seesaw hexadecimal address"> (hex)</label>
+<p class="warning">For later I²C updates, the new firmware must support bootloader entry (seesaw CONFIG_BOOTLOADER), or BOOT0 must already be configured. This tool does not change boot options.</p>
+<label><input type="checkbox" id="confirm"> I selected firmware built for this C011F6 board and want to replace its application.</label>
+<div class="row"><button id="upload" disabled>Back up, upload &amp; verify</button><a id="backup" class="download hidden" download>Download last backup</a></div>
+<p id="status" role="status" aria-live="polite">Ready when you are.</p><progress id="progress" value="0" max="1" aria-label="Upload progress"></progress></section>
+<section class="card"><h2>Activity</h2><pre id="log" aria-label="Activity log"></pre></section>
+<footer><p>No mass erase. No option-byte writes. No automatic flash retries. <a href="https://github.com/adafruit/Adafruit_seesawPeripheral/tree/main/extras/stm32_i2c_bootloader">Source and protocol notes</a>.</p></footer>
+<script>
+'use strict';
+// ST AN4221 packet encodings; kept in step with i2c_bootloader.py.
+const FLASH_BASE = 0x08000000, FLASH_SIZE = 32768, PAGE_SIZE = 2048;
+const APP_SIZE = FLASH_SIZE - PAGE_SIZE, OPTIONS = 0x1fff7800, OPTION_SIZE = 128;
+const ROM_ADDRESS = 0x64, ACK = 0x79, BUSY = 0x76;
+const GET = 0x00, GET_ID = 0x02, READ = 0x11, GO = 0x21, WRITE = 0x32, ERASE = 0x45;
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const check = (condition, message) => { if (!condition) throw new Error(message); };
+const hex = n => n.toString(16).toUpperCase().padStart(2, '0');
+const equal = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+// XOR and complement below are required by the bootloader's wire protocol.
+const checksum = bytes => [...bytes, bytes.reduce((a, b) => a ^ b, 0)];
+const be32 = n => [Math.floor(n / 0x1000000) % 256, Math.floor(n / 65536) % 256, Math.floor(n / 256) % 256, n % 256];
+function validateImage(image) {
+  check(image.length >= 8 && image.length <= APP_SIZE, 'Application must be 8–30720 bytes (EEPROM is reserved).');
+  const view = new DataView(image.buffer, image.byteOffset, image.byteLength);
+  const stack = view.getUint32(0, true), entry = view.getUint32(4, true);
+  check(stack > 0x20000000 && stack <= 0x20001800 && stack % 8 === 0, 'Invalid C011 stack pointer; is this STM32C011 firmware?');
+  check(entry % 2 === 1 && entry >= FLASH_BASE && entry < FLASH_BASE + image.length, 'Invalid C011 reset vector.');
+  return image;
+}
+function parseHex(text) {
+  const data = new Uint8Array(APP_SIZE).fill(255), used = new Uint8Array(APP_SIZE);
+  let base = 0, end = 0, eof = false;
+  for (const [index, raw] of text.trim().split(/\r?\n/).entries()) {
+    const line = raw.trim();
+    if (!line) continue;
+    check(!eof && /^:([0-9a-f]{2})+$/i.test(line), `Invalid HEX record on line ${index + 1}.`);
+    const bytes = line.slice(1).match(/../g).map(v => parseInt(v, 16));
+    const count = bytes[0], address = bytes[1] * 256 + bytes[2], type = bytes[3];
+    check(bytes.length === count + 5 && bytes.reduce((a, b) => a + b, 0) % 256 === 0, `HEX length/checksum error on line ${index + 1}.`);
+    const payload = bytes.slice(4, -1);
+    if (type === 0) {
+      check(address + count <= 65536, 'HEX record crosses a 64 KiB boundary.');
+      const offset = base + address - FLASH_BASE;
+      check(offset >= 0 && offset + count <= APP_SIZE, 'HEX contains data outside the C011 application area (or in reserved EEPROM).');
+      payload.forEach((value, i) => {
+        check(!used[offset + i], 'Overlapping HEX data records.');
+        used[offset + i] = 1; data[offset + i] = value;
+      });
+      end = Math.max(end, offset + count);
+    } else if (type === 1) {
+      check(count === 0 && address === 0, 'Invalid HEX end record.'); eof = true;
+    } else if (type === 2 || type === 4) {
+      check(count === 2 && address === 0, 'Invalid HEX extended address.');
+      base = (payload[0] * 256 + payload[1]) * (type === 2 ? 16 : 65536);
+    } else if (type === 3 || type === 5) {
+      check(count === 4 && address === 0, 'Invalid HEX start address.');
+      // Cortex-M starts from its vector table; HEX start-address metadata is unused.
+    } else throw new Error(`Unsupported HEX record type ${type}.`);
+  }
+  check(eof && used.slice(0, 8).every(Boolean), 'HEX needs an EOF record and complete vectors at 0x08000000.');
+  const image = validateImage(data.slice(0, end));
+  const entry = new DataView(image.buffer).getUint32(4, true) - 1 - FLASH_BASE;
+  check(used[entry], 'HEX reset vector points into an unpopulated gap.');
+  return image;
+}
+class SerialBridge {
+  constructor(port) { this.port = port; this.lines = []; this.pending = null; this.failure = null; this.buffer = ''; }
+  async open() {
+    await this.port.open({baudRate: 115200});
+    this.writer = this.port.writable.getWriter(); this.reader = this.port.readable.getReader();
+    this.reading = this.readLoop();
+    await sleep(2200); // USB serial DTR resets a Metro 328.
+    this.lines = []; this.buffer = '';
+  }
+  async readLoop() {
+    try {
+      const decoder = new TextDecoder();
+      while (true) {
+        const {value, done} = await this.reader.read();
+        if (done) throw new Error('Serial connection closed.');
+        this.buffer += decoder.decode(value, {stream: true}).replace(/\r/g, '');
+        check(this.buffer.length < 4096, 'Unexpected serial output; check the bridge sketch.');
+        let end;
+        while ((end = this.buffer.indexOf('\n')) >= 0) {
+          const line = this.buffer.slice(0, end).trim(); this.buffer = this.buffer.slice(end + 1);
+          if (!line || line.includes('bridge READY')) continue;
+          if (this.pending) { const request = this.pending; this.pending = null; request.resolve(line); }
+          else { this.lines.push(line); check(this.lines.length < 20, 'Unexpected serial output.'); }
+        }
+      }
+    } catch (error) {
+      this.failure = error;
+      if (this.pending) { this.pending.reject(error); this.pending = null; }
+    }
+  }
+  async command(operation, values) {
+    if (this.failure) throw this.failure;
+    check(!this.pending && this.lines.length === 0, 'Unexpected/stale bridge response; reconnect before trying again.');
+    const line = `${operation} ${values.map(hex).join(' ')}\n`;
+    let timer;
+    const reply = new Promise((resolve, reject) => {
+      this.pending = {resolve, reject};
+      timer = setTimeout(() => { this.failure = new Error('Metro serial timeout; reconnect before retrying.'); this.pending = null; reject(this.failure); }, 3000);
+    });
+    // Attach the rejection handler immediately, including while a write is pending.
+    const sending = this.writer.write(new TextEncoder().encode(line));
+    try {
+      const [, answer] = await Promise.all([sending, reply]);
+      check(!answer.startsWith('ERR'), answer); return answer;
+    } finally { clearTimeout(timer); }
+  }
+  async close() {
+    if (this.reader) { await this.reader.cancel().catch(() => {}); await this.reading; this.reader.releaseLock(); }
+    if (this.writer) this.writer.releaseLock();
+    await this.port.close().catch(() => {});
+  }
+}
+class Bootloader {
+  constructor(bridge) { this.bridge = bridge; }
+  async write(bytes) {
+    check(bytes.length >= 2 && bytes.length <= 32, 'Packet exceeds AVR Wire buffer.');
+    check(await this.bridge.command('W', [ROM_ADDRESS, ...bytes]) === 'OK', 'ROM write failed.');
+  }
+  async read(count) {
+    check(count >= 1 && count <= 32, 'Read exceeds AVR Wire buffer.');
+    const answer = await this.bridge.command('U', [ROM_ADDRESS, count]);
+    check(/^DATA( [0-9A-F]{2})+$/i.test(answer), `Invalid bridge response: ${answer}`);
+    const data = Uint8Array.from(answer.slice(5).split(' ').map(v => parseInt(v, 16)));
+    check(data.length === count, 'Short ROM response.'); return data;
+  }
+  async ack() {
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const result = (await this.read(1))[0];
+      if (result === ACK) return;
+      check(result === BUSY, `ROM returned 0x${hex(result)}, expected ACK.`);
+      await sleep(5);
+    }
+    throw new Error('ROM stayed busy for over five seconds.');
+  }
+  async command(code) { await this.write([code, code ^ 255]); await this.ack(); }
+  async address(address) { await this.write(checksum(be32(address))); await this.ack(); }
+  async identify() {
+    await this.command(GET_ID); const id = await this.read(3); await this.ack();
+    check(equal(id, [1, 4, 0x43]), 'Not an STM32C011 (expected product ID 0x0443).');
+    await this.command(GET); const info = await this.read(20); await this.ack();
+    check(info[0] === 18 && [READ, GO, WRITE, ERASE].every(v => info.slice(2).includes(v)), 'Unsupported C011 ROM layout/commands.');
+    log(`C011 ROM identified: 0x0443, protocol 0x${hex(info[1])}.`);
+  }
+  async readMemory(address, length, progress = () => {}) {
+    const result = new Uint8Array(length);
+    for (let offset = 0; offset < length; offset += 32) {
+      const count = Math.min(32, length - offset);
+      await this.command(READ); await this.address(address + offset);
+      await this.write([count - 1, (count - 1) ^ 255]); await this.ack();
+      result.set(await this.read(count), offset); progress((offset + count) / length);
+    }
+    return result;
+  }
+  async erase(length) {
+    const pages = Math.ceil(length / PAGE_SIZE);
+    check(pages >= 1 && pages <= 15, 'Refusing to erase EEPROM.');
+    await this.command(ERASE); await this.write(checksum([0, pages - 1])); await this.ack();
+    const list = []; for (let page = 0; page < pages; page++) list.push(0, page);
+    await this.write(checksum(list)); await this.ack();
+  }
+  async program(image, progress = () => {}) {
+    validateImage(image);
+    const padded = new Uint8Array(Math.ceil(image.length / 8) * 8).fill(255); padded.set(image);
+    // 24 data bytes + length/checksum fit the AVR's 32-byte Wire buffer.
+    for (let offset = 0; offset < padded.length; offset += 24) {
+      const block = padded.slice(offset, offset + 24);
+      await this.command(WRITE); await this.address(FLASH_BASE + offset);
+      await this.write(checksum([block.length - 1, ...block])); await this.ack();
+      progress((offset + block.length) / padded.length);
+    }
+    return padded;
+  }
+  async go() { await this.command(GO); await this.address(FLASH_BASE); }
+}
+let bridge = null, firmware = null, busy = false, backupURL = null;
+const supported = window.isSecureContext && 'serial' in navigator && typeof window.showSaveFilePicker === 'function';
+function log(message) { $('log').textContent += message + '\n'; $('log').scrollTop = $('log').scrollHeight; }
+function status(message, fraction = 0) { $('status').textContent = message; $('progress').value = fraction; }
+function controls() {
+  $('upload').disabled = busy || !bridge || !firmware || !$('confirm').checked;
+  for (const id of ['connect', 'file', 'entry', 'address', 'confirm']) $(id).disabled = busy;
+  $('connect').disabled = busy || !supported;
+}
+async function chooseFile(file) {
+  if (busy || !file) return;
+  busy = true; firmware = null; $('confirm').checked = false; controls();
+  try {
+    check(file.size <= 200000, 'File is too large for C011 firmware.');
+    const name = file.name.toLowerCase();
+    check(name.endsWith('.hex') || name.endsWith('.bin'), 'Choose a .hex or .bin file.');
+    const image = name.endsWith('.hex') ? parseHex(await file.text()) : validateImage(new Uint8Array(await file.arrayBuffer()));
+    firmware = {name: file.name, image};
+    $('filename').textContent = `${file.name} — ${image.length.toLocaleString()} bytes at 0x08000000. Vectors checked.`;
+    status('Firmware ready. Connect the Metro and confirm the target.');
+  } catch (error) { $('filename').textContent = error.message; status('Firmware rejected. No device changes.'); }
+  busy = false; controls();
+}
+async function connect() {
+  busy = true; controls();
+  try {
+    if (bridge) { await bridge.close(); bridge = null; $('connection').textContent = 'Not connected'; $('connect').textContent = 'Connect Metro'; return; }
+    const port = await navigator.serial.requestPort();
+    const candidate = new SerialBridge(port);
+    try { await candidate.open(); } catch (error) { await candidate.close(); throw error; }
+    bridge = candidate; $('connection').textContent = 'Metro serial port open'; $('connect').textContent = 'Disconnect';
+    log('Serial connected at 115200 baud. No target writes yet.');
+  } catch (error) { status(error.message); }
+  finally { busy = false; controls(); }
+}
+async function upload() {
+  if (busy || !bridge || !firmware || !$('confirm').checked) return;
+  busy = true; controls(); let changed = false, saved = false, backupHandle;
+  try {
+    // Ask for the destination before entering ROM; no idle file dialog during flashing.
+    check(typeof window.showSaveFilePicker === 'function', 'Use desktop Chrome or Edge with file-save support.');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    backupHandle = await window.showSaveFilePicker({suggestedName: `c011-before-${stamp}.bin`, types: [{description: 'Full C011 flash backup', accept: {'application/octet-stream': ['.bin']}}]});
+    check((await backupHandle.getFile()).size === 0, 'Choose a new empty backup file; existing files will not be overwritten.');
+    const rom = new Bootloader(bridge);
+    if ($('entry').value === 'seesaw') {
+      check(/^[0-9a-f]{2}$/i.test($('address').value), 'Enter a two-digit hexadecimal I²C address.');
+      const address = parseInt($('address').value, 16);
+      check(address >= 8 && address <= 0x77, 'Invalid 7-bit I²C address.');
+      check(await bridge.command('R', [address, 0, 1, 1]) === 'DATA 90', 'Expected seesaw C011 hardware ID.');
+      check(await bridge.command('W', [address, 0, 0x7e, 0xb0, 7, 0x10, 0xad]) === 'OK', 'Bootloader entry failed.');
+      await sleep(500);
+    }
+    status('Identifying factory ROM…'); await rom.identify();
+    const options = await rom.readMemory(OPTIONS, OPTION_SIZE);
+    status('Reading full flash backup…');
+    const original = await rom.readMemory(FLASH_BASE, FLASH_SIZE, p => status('Reading full flash backup…', p));
+    const file = await backupHandle.createWritable(); await file.write(original); await file.close();
+    check(equal(new Uint8Array(await (await backupHandle.getFile()).arrayBuffer()), original), 'Saved backup did not verify.'); saved = true;
+    if (backupURL) URL.revokeObjectURL(backupURL);
+    backupURL = URL.createObjectURL(new Blob([original], {type: 'application/octet-stream'}));
+    $('backup').href = backupURL; $('backup').download = backupHandle.name; $('backup').classList.remove('hidden');
+    log('Saved and verified all 32768 flash bytes before erase.');
+    // Re-identify after disk I/O in case the ROM timed out while saving.
+    await rom.identify();
+    status('Erasing required application pages…'); changed = true; await rom.erase(firmware.image.length);
+    log('Application pages erased; EEPROM page excluded.');
+    const padded = await rom.program(firmware.image, p => status('Writing firmware…', p));
+    const actual = await rom.readMemory(FLASH_BASE, padded.length, p => status('Verifying firmware…', p));
+    check(equal(actual, padded), 'Application readback mismatch.'); log('Every programmed byte verified.');
+    status('Checking EEPROM and boot options…');
+    check(equal(await rom.readMemory(FLASH_BASE + APP_SIZE, PAGE_SIZE), original.slice(APP_SIZE)), 'EEPROM page changed.');
+    check(equal(await rom.readMemory(OPTIONS, OPTION_SIZE), options), 'Option bytes changed.');
+    log('EEPROM and option bytes verified unchanged.');
+    await rom.go();
+    log('ROM Go acknowledged. Firmware execution was requested; application behavior is not checked.');
+    status('Upload verified. Power-cycle the C011 to confirm normal startup.', 1);
+  } catch (error) {
+    const suffix = changed ? ' STOP: no automatic retry or Go. The chip may reset into partial firmware; use SWD recovery.' : ' No flash erase/write was attempted.';
+    log(error.message + suffix); status(error.name === 'AbortError' ? 'Cancelled before programming.' : 'Stopped. See activity log.');
+    if (saved) log('Your full-flash backup is saved on disk.');
+  } finally {
+    // A fresh connection is required after every run, including failures.
+    if (bridge) await bridge.close(); bridge = null;
+    $('connection').textContent = 'Not connected'; $('connect').textContent = 'Connect Metro';
+    $('confirm').checked = false; busy = false; controls();
+  }
+}
+$('connect').onclick = connect; $('upload').onclick = upload;
+$('file').onchange = event => chooseFile(event.target.files[0]); $('confirm').onchange = controls;
+$('entry').onchange = () => $('addressLabel').classList.toggle('hidden', $('entry').value !== 'seesaw');
+for (const name of ['dragover', 'dragleave', 'drop']) $('drop').addEventListener(name, event => {
+  event.preventDefault(); $('drop').classList.toggle('over', name === 'dragover' && !busy);
+  if (name === 'drop' && !busy) {
+    if (event.dataTransfer.files.length === 1) chooseFile(event.dataTransfer.files[0]);
+    else status('Drop exactly one firmware file.');
+  }
+});
+window.addEventListener('dragover', event => event.preventDefault());
+window.addEventListener('drop', event => event.preventDefault());
+window.addEventListener('beforeunload', event => { if (busy) { event.preventDefault(); event.returnValue = ''; } });
+if (!supported) {
+  $('compat').textContent = 'Open this page in desktop Chrome or Edge over HTTPS, or download the HTML and open it locally. Web Serial and file-save access are required.';
+  $('connect').disabled = true;
+}
+</script>
+</html>
