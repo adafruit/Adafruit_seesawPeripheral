@@ -15,9 +15,10 @@
 // A meter showing about 1.65V does not by itself prove the PWM waveform.
 // Remove external jumpers before enabling an output or selecting another pin.
 //
-// PA11 is seesaw pin 9; PA12 is 10; PC14 is 15 (not the port pin number).
-// PA12 has ADC but no PWM; PC14 has PWM but no ADC.
-// PA3/PA11 and PA7/PC14 share timer channels, so only one output runs at once.
+// Use the label-matching firmware: PA11/PA12 are 11/12, PC14/PC15 are 14/15.
+// PA12 has ADC but no PWM; PC14 and the PC15 LED have PWM but no ADC.
+// PA3/PA11, PA7/PC14, and PA8/PC15 share channels; one output runs at a time.
+// Test the onboard LED with 0/1 or w; input jumper tests are for header pins.
 // This is a manual electrical test, not an automatic PASS/FAIL fixture.
 
 #include <Adafruit_seesaw.h>
@@ -28,9 +29,9 @@
 
 Adafruit_seesaw ss;
 
-const uint8_t testPins[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15};
+const uint8_t testPins[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 14, 15};
 const char *pinLabels[] = {"PA0", "PA1", "PA2", "PA3", "PA4", "PA5",
-                           "PA6", "PA7", "PA8", "PA11", "PA12", "PC14"};
+                           "PA6", "PA7", "PA8", "PA11", "PA12", "PC14", "PC15 LED"};
 const uint8_t pinCount = sizeof(testPins) / sizeof(testPins[0]);
 uint8_t selected = 0;
 char readingMode = 0;
@@ -109,8 +110,8 @@ void loop() {
         break;
 
       case 'a':
-        if (pin == 15) {
-          Serial.print(F("PC14 has no ADC. Select another pin.\n\r"));
+        if (pin >= 14) {
+          Serial.print(F("PC14 and PC15 have no ADC. Select another pin.\n\r"));
           break;
         }
         ss.pinMode(pin, INPUT);
@@ -119,7 +120,7 @@ void loop() {
         break;
 
       case 'w':
-        if (pin == 10) {
+        if (pin == 12) {
           Serial.print(F("PA12 has no PWM. Select another pin.\n\r"));
           break;
         }
@@ -190,10 +191,10 @@ void printSelectedPin() {
   Serial.print(F(" (seesaw pin "));
   Serial.print(testPins[selected]);
   Serial.print(F("). GPIO"));
-  if (testPins[selected] != 15) {
+  if (testPins[selected] < 14) {
     Serial.print(F(" + ADC"));
   }
-  if (testPins[selected] != 10) {
+  if (testPins[selected] != 12) {
     Serial.print(F(" + PWM"));
   }
   Serial.print(F("\n\r"));
