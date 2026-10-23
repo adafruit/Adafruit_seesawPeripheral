@@ -75,8 +75,8 @@ board's application sketch; save any sketch you need to restore first.
 The bridge uses only Wire and Serial, not the seesaw host library.
 The legacy Adafruit Metro board package also works, but its Wire library lacks
 the I2C timeout API. If its bus stalls, reset the Metro before reconnecting.
-Its `.none.test.only` marker excludes it from this library's peripheral-target
-CI matrix; compile it for the AVR host board using the commands above.
+Its `.uno.test.only` marker selects the AVR host rather than the peripheral
+targets. CI compiles this bridge separately as `arduino:avr:uno` for Metro 328.
 
 ## 1. Identify the ROM without writing flash
 
