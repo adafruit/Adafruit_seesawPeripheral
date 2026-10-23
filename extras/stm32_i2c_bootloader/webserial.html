@@ -18,8 +18,7 @@
 <label>Bootloader entry <select id="entry"><option value="rom">Factory blank / already in ROM</option><option value="seesaw">Running bootloader-enabled seesaw</option></select></label>
 <label id="addressLabel" class="hidden">Seesaw I²C address <input id="address" value="49" maxlength="2" size="3" aria-label="Seesaw hexadecimal address"> (hex)</label>
 <p class="warning">For later I²C updates, the new firmware must support bootloader entry (seesaw CONFIG_BOOTLOADER), or BOOT0 must already be configured. This tool does not change boot options.</p>
-<label><input type="checkbox" id="confirm"> I selected firmware built for this C011F6 board and want to replace its application.</label>
-<div class="row"><button id="upload" disabled>Back up, upload &amp; verify</button><a id="backup" class="download hidden" download>Download last backup</a></div>
+<button id="upload" disabled>Upload &amp; verify</button>
 <p id="status" role="status" aria-live="polite">Ready when you are.</p><progress id="progress" value="0" max="1" aria-label="Upload progress"></progress></section>
 <section class="card"><h2>Activity</h2><pre id="log" aria-label="Activity log"></pre></section>
 <footer><p>No mass erase. No option-byte writes. No automatic flash retries. <a href="https://github.com/adafruit/Adafruit_seesawPeripheral/tree/main/extras/stm32_i2c_bootloader">Source and protocol notes</a>.</p></footer>
@@ -197,18 +196,18 @@ class Bootloader {
   }
   async go() { await this.command(GO); await this.address(FLASH_BASE); }
 }
-let bridge = null, firmware = null, busy = false, backupURL = null;
-const supported = window.isSecureContext && 'serial' in navigator && typeof window.showSaveFilePicker === 'function';
+let bridge = null, firmware = null, busy = false;
+const supported = window.isSecureContext && 'serial' in navigator;
 function log(message) { $('log').textContent += message + '\n'; $('log').scrollTop = $('log').scrollHeight; }
 function status(message, fraction = 0) { $('status').textContent = message; $('progress').value = fraction; }
 function controls() {
-  $('upload').disabled = busy || !bridge || !firmware || !$('confirm').checked;
-  for (const id of ['connect', 'file', 'entry', 'address', 'confirm']) $(id).disabled = busy;
+  $('upload').disabled = busy || !bridge || !firmware;
+  for (const id of ['connect', 'file', 'entry', 'address']) $(id).disabled = busy;
   $('connect').disabled = busy || !supported;
 }
 async function chooseFile(file) {
   if (busy || !file) return;
-  busy = true; firmware = null; $('confirm').checked = false; controls();
+  busy = true; firmware = null; controls();
   try {
     check(file.size <= 200000, 'File is too large for C011 firmware.');
     const name = file.name.toLowerCase();
@@ -216,7 +215,7 @@ async function chooseFile(file) {
     const image = name.endsWith('.hex') ? parseHex(await file.text()) : validateImage(new Uint8Array(await file.arrayBuffer()));
     firmware = {name: file.name, image};
     $('filename').textContent = `${file.name} — ${image.length.toLocaleString()} bytes at 0x08000000. Vectors checked.`;
-    status('Firmware ready. Connect the Metro and confirm the target.');
+    status('Firmware ready. Connect the Metro, then click Upload & verify.');
   } catch (error) { $('filename').textContent = error.message; status('Firmware rejected. No device changes.'); }
   busy = false; controls();
 }
@@ -233,14 +232,9 @@ async function connect() {
   finally { busy = false; controls(); }
 }
 async function upload() {
-  if (busy || !bridge || !firmware || !$('confirm').checked) return;
-  busy = true; controls(); let changed = false, saved = false, backupHandle;
+  if (busy || !bridge || !firmware) return;
+  busy = true; controls(); let changed = false;
   try {
-    // Ask for the destination before entering ROM; no idle file dialog during flashing.
-    check(typeof window.showSaveFilePicker === 'function', 'Use desktop Chrome or Edge with file-save support.');
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    backupHandle = await window.showSaveFilePicker({suggestedName: `c011-before-${stamp}.bin`, types: [{description: 'Full C011 flash backup', accept: {'application/octet-stream': ['.bin']}}]});
-    check((await backupHandle.getFile()).size === 0, 'Choose a new empty backup file; existing files will not be overwritten.');
     const rom = new Bootloader(bridge);
     if ($('entry').value === 'seesaw') {
       check(/^[0-9a-f]{2}$/i.test($('address').value), 'Enter a two-digit hexadecimal I²C address.');
@@ -251,24 +245,16 @@ async function upload() {
       await sleep(500);
     }
     status('Identifying factory ROM…'); await rom.identify();
+    status('Reading EEPROM and boot options…');
     const options = await rom.readMemory(OPTIONS, OPTION_SIZE);
-    status('Reading full flash backup…');
-    const original = await rom.readMemory(FLASH_BASE, FLASH_SIZE, p => status('Reading full flash backup…', p));
-    const file = await backupHandle.createWritable(); await file.write(original); await file.close();
-    check(equal(new Uint8Array(await (await backupHandle.getFile()).arrayBuffer()), original), 'Saved backup did not verify.'); saved = true;
-    if (backupURL) URL.revokeObjectURL(backupURL);
-    backupURL = URL.createObjectURL(new Blob([original], {type: 'application/octet-stream'}));
-    $('backup').href = backupURL; $('backup').download = backupHandle.name; $('backup').classList.remove('hidden');
-    log('Saved and verified all 32768 flash bytes before erase.');
-    // Re-identify after disk I/O in case the ROM timed out while saving.
-    await rom.identify();
+    const eeprom = await rom.readMemory(FLASH_BASE + APP_SIZE, PAGE_SIZE);
     status('Erasing required application pages…'); changed = true; await rom.erase(firmware.image.length);
     log('Application pages erased; EEPROM page excluded.');
     const padded = await rom.program(firmware.image, p => status('Writing firmware…', p));
     const actual = await rom.readMemory(FLASH_BASE, padded.length, p => status('Verifying firmware…', p));
     check(equal(actual, padded), 'Application readback mismatch.'); log('Every programmed byte verified.');
     status('Checking EEPROM and boot options…');
-    check(equal(await rom.readMemory(FLASH_BASE + APP_SIZE, PAGE_SIZE), original.slice(APP_SIZE)), 'EEPROM page changed.');
+    check(equal(await rom.readMemory(FLASH_BASE + APP_SIZE, PAGE_SIZE), eeprom), 'EEPROM page changed.');
     check(equal(await rom.readMemory(OPTIONS, OPTION_SIZE), options), 'Option bytes changed.');
     log('EEPROM and option bytes verified unchanged.');
     await rom.go();
@@ -276,17 +262,16 @@ async function upload() {
     status('Upload verified. Power-cycle the C011 to confirm normal startup.', 1);
   } catch (error) {
     const suffix = changed ? ' STOP: no automatic retry or Go. The chip may reset into partial firmware; use SWD recovery.' : ' No flash erase/write was attempted.';
-    log(error.message + suffix); status(error.name === 'AbortError' ? 'Cancelled before programming.' : 'Stopped. See activity log.');
-    if (saved) log('Your full-flash backup is saved on disk.');
+    log(error.message + suffix); status('Stopped. See activity log.');
   } finally {
     // A fresh connection is required after every run, including failures.
     if (bridge) await bridge.close(); bridge = null;
     $('connection').textContent = 'Not connected'; $('connect').textContent = 'Connect Metro';
-    $('confirm').checked = false; busy = false; controls();
+    busy = false; controls();
   }
 }
 $('connect').onclick = connect; $('upload').onclick = upload;
-$('file').onchange = event => chooseFile(event.target.files[0]); $('confirm').onchange = controls;
+$('file').onchange = event => chooseFile(event.target.files[0]);
 $('entry').onchange = () => $('addressLabel').classList.toggle('hidden', $('entry').value !== 'seesaw');
 for (const name of ['dragover', 'dragleave', 'drop']) $('drop').addEventListener(name, event => {
   event.preventDefault(); $('drop').classList.toggle('over', name === 'dragover' && !busy);
@@ -299,7 +284,7 @@ window.addEventListener('dragover', event => event.preventDefault());
 window.addEventListener('drop', event => event.preventDefault());
 window.addEventListener('beforeunload', event => { if (busy) { event.preventDefault(); event.returnValue = ''; } });
 if (!supported) {
-  $('compat').textContent = 'Open this page in desktop Chrome or Edge over HTTPS, or download the HTML and open it locally. Web Serial and file-save access are required.';
+  $('compat').textContent = 'Open this page in desktop Chrome or Edge over HTTPS, or download the HTML and open it locally. Web Serial is required.';
   $('connect').disabled = true;
 }
 </script>
