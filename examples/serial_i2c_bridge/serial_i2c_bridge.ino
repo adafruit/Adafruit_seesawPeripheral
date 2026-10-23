@@ -15,11 +15,11 @@ bool discardLine = false;
 void setup() {
   Serial.begin(115200);
   Wire.begin();
-  // Use the breakout's external pull-ups, not AVR pull-ups to 5 V.
-  digitalWrite(SDA, LOW);
-  digitalWrite(SCL, LOW);
   Wire.setClock(100000);
+#ifndef ARDUINO_AVR_METRO
+  // The legacy Adafruit Metro Wire library does not provide this timeout API.
   Wire.setWireTimeout(25000, true);
+#endif
   delay(250);
   Serial.print(F("Adafruit STM32C011 I2C bootloader bridge READY\n\r"));
 }

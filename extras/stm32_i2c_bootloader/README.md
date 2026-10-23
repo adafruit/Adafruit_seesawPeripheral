@@ -73,6 +73,8 @@ arduino-cli upload --fqbn arduino:avr:nano:cpu=atmega328 --port COM65 examples/s
 Use `arduino:avr:uno` for an Uno or Metro Mini. Uploading replaces the bridge
 board's application sketch; save any sketch you need to restore first.
 The bridge uses only Wire and Serial, not the seesaw host library.
+The legacy Adafruit Metro board package also works, but its Wire library lacks
+the I2C timeout API. If its bus stalls, reset the Metro before reconnecting.
 Its `.none.test.only` marker excludes it from this library's peripheral-target
 CI matrix; compile it for the AVR host board using the commands above.
 
