@@ -5,12 +5,19 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const html = fs.readFileSync(path.join(__dirname, 'webserial.html'), 'utf8');
+assert.ok(!html.includes('showSaveFilePicker'));
+assert.ok(!html.includes('id="confirm"'));
+assert.ok(html.includes('id="verifyAfterFlash" checked'));
+assert.ok(!html.includes('id="backup"'));
+assert.ok(!html.includes('<footer>'));
 const elements = new Map();
+let downloadedBlob;
 const context = vm.createContext({
-  Uint8Array, DataView, TextEncoder, TextDecoder, Blob, URL, setTimeout, clearTimeout,
-  navigator: {serial: {}}, window: {isSecureContext: true, showSaveFilePicker() {}, addEventListener() {}},
+  Uint8Array, DataView, TextEncoder, TextDecoder, Blob, setTimeout, clearTimeout,
+  URL: {createObjectURL(blob) { downloadedBlob = blob; return 'blob:readout'; }, revokeObjectURL() {}},
+  navigator: {serial: {}}, window: {isSecureContext: true, addEventListener() {}},
   document: {getElementById(id) {
-    if (!elements.has(id)) elements.set(id, {textContent: '', value: '', classList: {add() {}, remove() {}, toggle() {}}, addEventListener() {}});
+    if (!elements.has(id)) elements.set(id, {textContent: '', value: '', classList: {add() {}, remove() {}, toggle() {}}, addEventListener() {}, click() { this.clicked = true; }});
     return elements.get(id);
   }}
 });
@@ -47,7 +54,8 @@ assert.throws(() => parseHex([header, record(0, 0, [...image.slice(0, 8)]), reco
 
 // Simulate the exact W/U transport boundary, including all AN4221 packets.
 class ROM {
-  constructor() { this.memory = new Uint8Array(32768).fill(255); this.memory.fill(0x5A, 30720); this.queue = []; this.state = 'command'; this.writes = 0; this.erases = []; this.failWrite = false; }
+  constructor() { this.memory = new Uint8Array(32768).fill(255); this.memory.fill(0x5A, 30720); this.options = new Uint8Array(128).fill(0xAA); this.reads = []; this.goRequested = false; this.queue = []; this.state = 'command'; this.writes = 0; this.erases = []; this.failWrite = false; }
+  async close() { this.closed = true; }
   async command(operation, values) {
     assert.equal(values[0], 0x64);
     if (operation === 'U') {
@@ -64,6 +72,7 @@ class ROM {
     } else if (this.state === 'address') {
       assert.equal(bytes.reduce((a, b) => a ^ b, 0), 0);
       this.address = bytes.slice(0, 4).reduce((a, b) => a * 256 + b, 0); ack();
+      if (this.code === 0x21) this.goRequested = true;
       this.state = this.code === 0x21 ? 'command' : 'data';
     } else if (this.state === 'page-count') {
       assert.equal(bytes.reduce((a, b) => a ^ b, 0), 0); this.pages = bytes[0] * 256 + bytes[1] + 1; this.state = 'pages'; ack();
@@ -73,7 +82,11 @@ class ROM {
       this.state = 'command'; ack();
     } else if (this.code === 0x11) {
       assert.equal(bytes[1], bytes[0] ^ 255); ack();
-      this.queue.push([...this.memory.slice(this.address - base, this.address - base + bytes[0] + 1)]); this.state = 'command';
+      this.reads.push({address: this.address, count: bytes[0] + 1, beforeErase: this.erases.length === 0});
+      const optionRead = this.address >= 0x1FFF7800;
+      const memory = optionRead ? this.options : this.memory;
+      const offset = this.address - (optionRead ? 0x1FFF7800 : base);
+      this.queue.push([...memory.slice(offset, offset + bytes[0] + 1)]); this.state = 'command';
     } else {
       assert.equal(this.code, 0x32); assert.equal(bytes.reduce((a, b) => a ^ b, 0), 0);
       const block = bytes.slice(1, -1); assert.equal(block.length, bytes[0] + 1); assert.equal(block.length % 8, 0); assert.equal(this.address % 8, 0);
@@ -99,5 +112,53 @@ class ROM {
   bridge.writer = {write: async () => { bridge.pending.resolve('OK'); bridge.pending = null; }};
   assert.equal(await bridge.command('W', [0x64, 0, 255]), 'OK');
   bridge.lines.push('OK'); await assert.rejects(() => bridge.command('W', [0x64, 0, 255]), /stale/);
-  process.stdout.write('PASS: HEX/BIN validation, bounds, checksums, sparse HEX, ROM identification, erase/write/read/Go packets, EEPROM exclusion, failure stop, serial framing.\n');
+  // Write uses default-on verification, with no confirmation or file-save API.
+  const direct = new ROM(); context.testDevice = direct; context.testImage = image;
+  context.document.getElementById('verifyAfterFlash').checked = true;
+  vm.runInContext('bridge = testDevice; firmware = {image: testImage}; controls();', context);
+  assert.equal(elements.get('write').disabled, false);
+  await vm.runInContext('runOperation("write")', context);
+  assert.equal(direct.goRequested, true); assert.equal(direct.closed, true);
+  assert.ok(elements.get('status').textContent.startsWith('Write verified.'));
+  assert.ok(!direct.reads.some(r => r.beforeErase && r.address >= base && r.address < base + 30720), 'No application backup reads before erase');
+  assert.ok(direct.memory.slice(30720).every(v => v === 0x5A));
+  assert.ok(direct.options.every(v => v === 0xAA));
+  assert.ok(!elements.has('confirm') && !elements.has('backup'));
+  const directFailure = new ROM(); directFailure.failWrite = true; context.testDevice = directFailure;
+  vm.runInContext('bridge = testDevice;', context);
+  await vm.runInContext('runOperation("write")', context);
+  assert.equal(directFailure.goRequested, false); assert.equal(directFailure.closed, true);
+  assert.ok(elements.get('status').textContent.startsWith('Stopped.'));
+  // Unchecked verification skips only application readback after Write.
+  const unchecked = new ROM(); context.testDevice = unchecked;
+  context.document.getElementById('verifyAfterFlash').checked = false;
+  vm.runInContext('bridge = testDevice;', context);
+  await vm.runInContext('runOperation("write")', context);
+  assert.equal(unchecked.goRequested, true);
+  assert.ok(!unchecked.reads.some(r => r.address >= base && r.address < base + 30720));
+  assert.ok(elements.get('status').textContent.startsWith('Write complete (not verified).'));
+  // Verify is read-only, including when Verify after flash is unchecked.
+  const verifyDevice = new ROM(); verifyDevice.memory.set(padded); context.testDevice = verifyDevice;
+  vm.runInContext('bridge = testDevice;', context);
+  await vm.runInContext('runOperation("verify")', context);
+  assert.equal(verifyDevice.writes, 0); assert.equal(verifyDevice.erases.length, 0);
+  assert.equal(verifyDevice.goRequested, false);
+  assert.ok(elements.get('status').textContent.startsWith('Verify passed.'));
+  const mismatch = new ROM(); mismatch.memory.set(padded); mismatch.memory[16] ^= 1; context.testDevice = mismatch;
+  vm.runInContext('bridge = testDevice;', context);
+  await vm.runInContext('runOperation("verify")', context);
+  assert.ok(elements.get('status').textContent.startsWith('Stopped.'));
+  assert.equal(mismatch.writes, 0); assert.equal(mismatch.erases.length, 0);
+  assert.equal(mismatch.goRequested, false);
+  // Read needs no input file and downloads every flash byte, including EEPROM.
+  const readDevice = new ROM(); context.testDevice = readDevice;
+  vm.runInContext('bridge = testDevice; firmware = null; controls();', context);
+  assert.equal(elements.get('read').disabled, false);
+  assert.equal(elements.get('write').disabled, true); assert.equal(elements.get('verify').disabled, true);
+  await vm.runInContext('runOperation("read")', context);
+  assert.deepEqual(new Uint8Array(await downloadedBlob.arrayBuffer()), readDevice.memory);
+  assert.equal(elements.get('readout').clicked, true);
+  assert.equal(readDevice.writes, 0); assert.equal(readDevice.erases.length, 0);
+  assert.equal(readDevice.goRequested, false); assert.equal(readDevice.closed, true);
+  process.stdout.write('PASS: HEX/BIN validation, ROM packets, EEPROM exclusion, serial framing, Write with verification on/off, Read download, Verify match/mismatch, and failure stop.\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });
