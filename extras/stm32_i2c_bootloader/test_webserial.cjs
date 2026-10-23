@@ -11,11 +11,12 @@ assert.ok(html.includes('id="verifyAfterFlash" checked'));
 assert.ok(!html.includes('id="backup"'));
 assert.ok(!html.includes('<footer>'));
 const elements = new Map();
+const windowEvents = new Map();
 let downloadedBlob;
 const context = vm.createContext({
   Uint8Array, DataView, TextEncoder, TextDecoder, Blob, setTimeout, clearTimeout,
   URL: {createObjectURL(blob) { downloadedBlob = blob; return 'blob:readout'; }, revokeObjectURL() {}},
-  navigator: {serial: {}}, window: {isSecureContext: true, addEventListener() {}},
+  navigator: {serial: {}}, window: {isSecureContext: true, addEventListener(name, handler) { windowEvents.set(name, handler); }},
   document: {getElementById(id) {
     if (!elements.has(id)) elements.set(id, {textContent: '', value: '', classList: {add() {}, remove() {}, toggle() {}}, addEventListener() {}, click() { this.clicked = true; }});
     return elements.get(id);
@@ -160,5 +161,111 @@ class ROM {
   assert.equal(elements.get('readout').clicked, true);
   assert.equal(readDevice.writes, 0); assert.equal(readDevice.erases.length, 0);
   assert.equal(readDevice.goRequested, false); assert.equal(readDevice.closed, true);
-  process.stdout.write('PASS: HEX/BIN validation, ROM packets, EEPROM exclusion, serial framing, Write with verification on/off, Read download, Verify match/mismatch, and failure stop.\n');
+  // O replies are framed by a serial-only END command, including optional lines.
+  const optionDump = 'OPTIONS' + ' AA'.repeat(128);
+  const summary = 'nBOOT_SEL=0 nBOOT1=1 nBOOT0=1 BOOT_LOCK=0 RDP=0xAA';
+  const verified = 'VERIFIED boot options and all other defined settings; complements valid';
+  const ack = 'ACK option write; readback still required';
+  const optionBridge = new SerialBridge({});
+  const serialWrites = [];
+  optionBridge.writer = {write: async bytes => {
+    serialWrites.push(new TextDecoder().decode(bytes));
+    for (const line of [optionDump, summary, verified, 'ERR operation']) optionBridge.pending.resolve(line);
+  }};
+  assert.deepEqual(Array.from(await optionBridge.command('O', [0x64])), [optionDump, summary, verified]);
+  assert.equal(serialWrites[0], 'O 64\nEND\n');
+  assert.equal(optionBridge.pending, null); assert.equal(optionBridge.lines.length, 0);
+  // Exercise the real reader with fragmented LF/CR output and the boundary in
+  // the same chunk as the last response, not only the command's resolver.
+  const streamBridge = new SerialBridge({});
+  let finishRead;
+  const chunks = ['Adafruit STM32C011 I2C bootloader bridge READY\n\r', optionDump.slice(0, 99), optionDump.slice(99) + '\n\r' + summary + '\n', '\rERR operation\n\r'];
+  streamBridge.reader = {read: async () => chunks.length
+    ? {value: new TextEncoder().encode(chunks.shift()), done: false}
+    : new Promise(resolve => { finishRead = resolve; })};
+  streamBridge.writer = {write: async () => { streamBridge.reading = streamBridge.readLoop(); }};
+  assert.deepEqual(Array.from(await streamBridge.command('O', [0x64])), [optionDump, summary]);
+  assert.equal(streamBridge.lines.length, 0);
+  finishRead({done: true}); await streamBridge.reading;
+
+  class OptionBridge {
+    constructor(replies) { this.replies = replies; this.commands = []; }
+    async command(operation, values) { this.commands.push([operation, ...values]); return this.replies; }
+    async close() { this.closed = true; }
+  }
+  const installOptions = replies => {
+    const device = new OptionBridge(replies); context.testDevice = device;
+    vm.runInContext('bridge = testDevice; firmware = null; optionPending = false; optionStopped = false;', context);
+    elements.get('entry').value = 'rom'; elements.get('targetReset').checked = false;
+    return device;
+  };
+  const query = installOptions([optionDump, summary]);
+  vm.runInContext('controls()', context);
+  assert.equal(elements.get('readOptions').disabled, false);
+  assert.equal(elements.get('enableBoot0').disabled, true);
+  await vm.runInContext('runBootOptions()', context);
+  assert.deepEqual(query.commands.map(command => Array.from(command)), [['O', 0x64]]);
+  assert.equal(query.closed, undefined);
+  assert.equal(elements.get('bootOptions').textContent, summary);
+  assert.match(elements.get('optionStatus').textContent, /no option write/);
+
+  const enable = installOptions([optionDump, summary, ack, 'Keep Metro powered. Reset/power-cycle C011 before another option write', 'Re-enter ROM, then query O 64 (or O 49 from running seesaw) to verify']);
+  await vm.runInContext('runBootOptions("boot0")', context);
+  assert.equal(enable.commands.length, 0, 'Reset acknowledgement is required');
+  elements.get('entry').value = 'seesaw'; elements.get('address').value = '49';
+  elements.get('targetReset').checked = true;
+  await vm.runInContext('runBootOptions("boot0")', context);
+  assert.deepEqual(Array.from(enable.commands[0]), ['O', 0x49, 0, 1, 1]);
+  assert.equal(elements.get('targetReset').checked, false);
+  assert.match(elements.get('optionStatus').textContent, /NOT verified/);
+  assert.equal(enable.closed, undefined);
+  assert.equal(elements.get('write').disabled, true);
+  assert.equal(elements.get('enableBoot0').disabled, true);
+  assert.equal(elements.get('readOptions').disabled, false);
+  let warnedBeforeClosing = false;
+  windowEvents.get('beforeunload')({preventDefault() { warnedBeforeClosing = true; }});
+  assert.equal(warnedBeforeClosing, true);
+  await vm.runInContext('runBootOptions("flash"); runOperation("read");', context);
+  assert.equal(enable.commands.length, 1, 'No write or unrelated operation during pending verification');
+  enable.replies = [optionDump, summary, verified];
+  await vm.runInContext('runBootOptions()', context);
+  assert.deepEqual(Array.from(enable.commands[1]), ['O', 0x64]);
+  assert.match(elements.get('optionStatus').textContent, /^Verified:/);
+  assert.equal(vm.runInContext('optionPending', context), false);
+
+  const flash = installOptions([optionDump, summary, 'OK boot options already match; no write']);
+  elements.get('targetReset').checked = true;
+  await vm.runInContext('runBootOptions("flash")', context);
+  assert.deepEqual(Array.from(flash.commands[0]), ['O', 0x64, 1, 1, 1]);
+  assert.equal(vm.runInContext('optionPending', context), false);
+  assert.match(elements.get('optionStatus').textContent, /no write was needed/);
+
+  for (const replies of [
+    ['ERR command'], [optionDump, summary, 'ERR requires RDP level 0 and BOOT_LOCK=0; refusing write'],
+    [optionDump, summary, 'ERR option write unconfirmed; do not retry'],
+    [optionDump, summary, 'ERR pending option write does not match; no further writes'],
+    [optionDump], [optionDump, summary]
+  ]) {
+    const failure = installOptions(replies); elements.get('targetReset').checked = true;
+    await vm.runInContext('runBootOptions("boot0")', context);
+    assert.equal(failure.commands.length, 1);
+    assert.equal(failure.closed, undefined);
+    assert.equal(vm.runInContext('optionStopped', context), true);
+    assert.equal(elements.get('enableBoot0').disabled, true);
+    assert.match(elements.get('optionStatus').textContent, /Stopped; no automatic retry/);
+  }
+  const lostSnapshot = installOptions([optionDump, summary]);
+  vm.runInContext('optionPending = true;', context);
+  await vm.runInContext('runBootOptions()', context);
+  assert.equal(vm.runInContext('optionPending', context), true);
+  assert.match(elements.get('optionStatus').textContent, /may have reset/);
+  let confirmations = 0;
+  context.window.confirm = () => { confirmations++; return false; };
+  await vm.runInContext('connect()', context);
+  assert.equal(confirmations, 1); assert.equal(lostSnapshot.closed, undefined);
+  context.window.confirm = () => true;
+  await vm.runInContext('connect()', context);
+  assert.equal(lostSnapshot.closed, true);
+  assert.match(elements.get('optionStatus').textContent, /without verification/);
+  process.stdout.write('PASS: HEX/BIN validation, ROM packets, EEPROM exclusion, serial framing, Write/Read/Verify, multiline boot options, safe presets, reset gate, pending verification, failure stops, and disconnect warning.\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });

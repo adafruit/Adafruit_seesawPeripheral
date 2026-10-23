@@ -34,8 +34,9 @@ that standalone file locally. Ordinary HTTP LAN hosting cannot use Web Serial.
 
 Files stay on your computer. No Python installation is needed. The page rejects
 images over 30720 bytes, bad vectors, overlapping HEX records, and data outside
-the application area, including the reserved EEPROM page. It never changes boot
-options or protection. Keep the tab visible and power stable during programming.
+the application area, including the reserved EEPROM page. Firmware Write never
+changes boot options or protection; boot-option changes use the separate controls
+below. Keep the tab visible and power stable during programming.
 If programming fails, stop and recover with SWD; there is no automatic retry.
 **Read** downloads a full 32768-byte BIN backup, including EEPROM, without
 requiring a selected firmware file. If the browser blocks the automatic download,
@@ -54,6 +55,37 @@ Factory-blank auto-entry is not a persistent bootloader-entry mechanism after
 the chip is programmed. Write reports whether application readback was verified
 and whether Go was acknowledged, not a functional test of the application.
 The Python updater's seesaw restart checks below remain separate.
+
+### Browser boot-option controls
+
+Use the latest Metro bridge sketch (with the `O` command). No firmware file is
+needed. The **Boot options** section uses the bootloader entry and seesaw address
+selected above. **Read boot options / Verify pending write** displays nBOOT_SEL,
+nBOOT1, nBOOT0, BOOT_LOCK, and RDP. A query leaves the C011 in ROM and selects
+**Factory blank / already in ROM** for subsequent queries.
+
+Before **every** option write, reset or power-cycle the C011, select its current
+bootloader entry, and check the reset acknowledgement. Resetting the Metro alone
+does not count. Choose **Enable BOOT0 recovery** for `0 1 1`, or **Use normal flash
+boot** for `1 1 1`. The bridge requires RDP level 0 and BOOT_LOCK=0 and preserves
+all other defined settings. Firmware Write and the Python updater still never
+write options.
+
+An acknowledged write is **not verified**. Keep the Metro powered and the page
+connected so the bridge retains its expected snapshot. Other programming controls
+are disabled while verification is pending. To verify BOOT0 recovery, disconnect
+ST-Link from PA14/SWCLK, tie B0 to **3.3 V**, reset/power-cycle only the C011, select
+**Factory blank / already in ROM**, and click **Read boot options / Verify pending
+write**. Require the **Verified** result. Remove the B0 jumper and reset afterward
+to run the application. For normal flash boot, reset the C011 and select
+**Running bootloader-enabled seesaw** to re-enter ROM, if that firmware is
+installed. The page cannot drive the C011 reset pin or B0 for you.
+
+Errors stop further writes in that connection; readback remains available. There
+is no automatic retry. A disconnect warning protects pending verification, but
+resetting the Metro or reconnecting loses its saved comparison. A plain read
+afterward is not verification of the earlier write. See the Serial Monitor
+section below for recovery precautions and the exact preservation checks.
 
 The GitHub Pages workflow publishes this page at `/bootloader/` after merging
 to `main`; repository Pages settings must use **GitHub Actions** as the source.
@@ -95,8 +127,8 @@ optional three arguments change **only** `nBOOT_SEL`, `nBOOT1`, and `nBOOT0`.
 Protection, watchdog, reset configuration, BOOT_LOCK, and all other defined
 settings are preserved. The C011 ROM normalizes reserved bits in its option
 registers; their raw bytes can change even when sent unchanged. This is not an
-unrestricted option-byte programmer. The browser
-uploader and Python application updater still never change option bytes.
+unrestricted option-byte programmer. The browser's separate boot-option controls
+use this command; its firmware Write and the Python updater never change options.
 
 Use Serial Monitor at **115200 baud**, with **Newline** or **Both NL & CR**.
 Close the browser's serial connection first. All arguments are hexadecimal:

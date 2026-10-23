@@ -17,11 +17,21 @@
 <small>BIN starts at 0x08000000. HEX must use absolute STM32 flash addresses. AVR/Metro HEX files, full-flash dumps, and option-byte records are rejected.</small>
 <label>Bootloader entry <select id="entry"><option value="rom">Factory blank / already in ROM</option><option value="seesaw">Running bootloader-enabled seesaw</option></select></label>
 <label id="addressLabel" class="hidden">Seesaw I²C address <input id="address" value="49" maxlength="2" size="3" aria-label="Seesaw hexadecimal address"> (hex)</label>
-<p class="warning">For later I²C updates, the new firmware must support bootloader entry (seesaw CONFIG_BOOTLOADER), or BOOT0 must already be configured. This tool does not change boot options.</p>
+<p class="warning">For later I²C updates, the new firmware must support bootloader entry (seesaw CONFIG_BOOTLOADER), or enable BOOT0 recovery below. Firmware Write preserves boot options.</p>
 <label><input type="checkbox" id="verifyAfterFlash" checked> Verify after flash</label>
 <div class="row"><button id="write" disabled>Write</button><button id="read" class="secondary" disabled>Read</button><button id="verify" class="secondary" disabled>Verify</button><a id="readout" class="download hidden" download>Save readout</a></div>
 <p><small>Write programs the selected file. Read downloads all 32 KiB, including EEPROM; no input file is needed. Verify compares the selected file without programming.</small></p>
 <p id="status" role="status" aria-live="polite">Ready when you are.</p><progress id="progress" value="0" max="1" aria-label="Upload progress"></progress></section>
+<section class="card"><h2>3. Boot options (optional)</h2>
+<p>Use the bootloader entry and address selected above. No firmware file is needed. Upload the latest bridge sketch first; older sketches do not support these controls.</p>
+<p id="bootOptions" role="status" aria-live="polite">Boot options have not been read.</p>
+<button id="readOptions" class="secondary" disabled>Read boot options / Verify pending write</button>
+<p class="warning">Reset or power-cycle the <strong>C011 before every option write</strong>, then select its current bootloader entry above. Resetting the Metro does not count. Keep power stable; an interrupted option write may require ST-Link recovery. Protection and other defined settings are preserved.</p>
+<label><input id="targetReset" type="checkbox"> I reset or power-cycled the C011 before this option write.</label>
+<div class="row"><button id="enableBoot0" disabled>Enable BOOT0 recovery</button><button id="flashBoot" class="secondary" disabled>Use normal flash boot</button></div>
+<p><small>Enable BOOT0: nBOOT_SEL=0, nBOOT1=1, nBOOT0=1 (B0 low = application, high = ROM). Normal flash: all three bits = 1 (B0 ignored). RDP must be AA and BOOT_LOCK must be 0; neither is changed.</small></p>
+<p id="optionStatus">After a write, keep this tab connected and the Metro powered until readback verification passes. Disconnect ST-Link from PA14/SWCLK before connecting B0 to 3.3 V. Never use 5 V on B0.</p>
+</section>
 <section class="card"><h2>Activity</h2><pre id="log" aria-label="Activity log"></pre></section>
 <script>
 'use strict';
@@ -103,7 +113,7 @@ class SerialBridge {
         while ((end = this.buffer.indexOf('\n')) >= 0) {
           const line = this.buffer.slice(0, end).trim(); this.buffer = this.buffer.slice(end + 1);
           if (!line || line.includes('bridge READY')) continue;
-          if (this.pending) { const request = this.pending; this.pending = null; request.resolve(line); }
+          if (this.pending) this.pending.resolve(line);
           else { this.lines.push(line); check(this.lines.length < 20, 'Unexpected serial output.'); }
         }
       }
@@ -115,17 +125,30 @@ class SerialBridge {
   async command(operation, values) {
     if (this.failure) throw this.failure;
     check(!this.pending && this.lines.length === 0, 'Unexpected/stale bridge response; reconnect before trying again.');
-    const line = `${operation} ${values.map(hex).join(' ')}\n`;
+    const multiline = operation === 'O';
+    // O has multiple human-readable replies, with no final marker. The existing
+    // parser rejects END with "ERR operation" and performs no I2C transaction.
+    // Queue it after O as a serial-only boundary, not an idle-time guess.
+    const line = `${operation} ${values.map(hex).join(' ')}\n` + (multiline ? 'END\n' : '');
+    const answers = [];
     let timer;
     const reply = new Promise((resolve, reject) => {
-      this.pending = {resolve, reject};
-      timer = setTimeout(() => { this.failure = new Error('Metro serial timeout; reconnect before retrying.'); this.pending = null; reject(this.failure); }, 3000);
+      this.pending = {resolve: answer => {
+        if (multiline && answer !== 'ERR operation') {
+          check(answers.length < 20, 'Unexpected boot-option output; check the bridge sketch.');
+          answers.push(answer); return;
+        }
+        this.pending = null;
+        resolve(multiline ? answers : answer);
+      }, reject};
+      timer = setTimeout(() => { this.failure = new Error('Metro serial timeout; reconnect before retrying.'); this.pending = null; reject(this.failure); }, multiline ? 30000 : 3000);
     });
     // Attach the rejection handler immediately, including while a write is pending.
     const sending = this.writer.write(new TextEncoder().encode(line));
     try {
       const [, answer] = await Promise.all([sending, reply]);
-      check(!answer.startsWith('ERR'), answer); return answer;
+      if (!multiline) check(!answer.startsWith('ERR'), answer);
+      return answer;
     } finally { clearTimeout(timer); }
   }
   async close() {
@@ -198,12 +221,16 @@ class Bootloader {
   async go() { await this.command(GO); await this.address(FLASH_BASE); }
 }
 let bridge = null, firmware = null, busy = false, readoutURL = null;
+let optionPending = false, optionStopped = false;
 const supported = window.isSecureContext && 'serial' in navigator;
 function log(message) { $('log').textContent += message + '\n'; $('log').scrollTop = $('log').scrollHeight; }
 function status(message, fraction = 0) { $('status').textContent = message; $('progress').value = fraction; }
 function controls() {
-  $('write').disabled = $('verify').disabled = busy || !bridge || !firmware;
-  $('read').disabled = busy || !bridge;
+  $('write').disabled = $('verify').disabled = busy || optionPending || optionStopped || !bridge || !firmware;
+  $('read').disabled = busy || optionPending || optionStopped || !bridge;
+  $('readOptions').disabled = busy || !bridge;
+  $('enableBoot0').disabled = $('flashBoot').disabled = busy || !bridge || optionPending || optionStopped || !$('targetReset').checked;
+  $('targetReset').disabled = busy || optionPending || optionStopped;
   for (const id of ['connect', 'file', 'entry', 'address', 'verifyAfterFlash']) $(id).disabled = busy;
   $('connect').disabled = busy || !supported;
 }
@@ -222,19 +249,30 @@ async function chooseFile(file) {
   busy = false; controls();
 }
 async function connect() {
+  if (busy) return;
+  if (bridge && optionPending && !window.confirm('The option write is not verified. Disconnecting can lose the Metro’s saved comparison. Disconnect anyway?')) return;
   busy = true; controls();
   try {
-    if (bridge) { await bridge.close(); bridge = null; $('connection').textContent = 'Not connected'; $('connect').textContent = 'Connect Metro'; return; }
+    if (bridge) {
+      await bridge.close(); bridge = null; $('connection').textContent = 'Not connected'; $('connect').textContent = 'Connect Metro';
+      if (optionPending) $('optionStatus').textContent = 'Disconnected without verification. A later read cannot verify the lost snapshot; inspect the settings before proceeding.';
+      return;
+    }
     const port = await navigator.serial.requestPort();
     const candidate = new SerialBridge(port);
     try { await candidate.open(); } catch (error) { await candidate.close(); throw error; }
     bridge = candidate; $('connection').textContent = 'Metro serial port open'; $('connect').textContent = 'Disconnect';
+    $('optionStatus').textContent = optionPending
+      ? 'Previous option write was not verified. The Metro has restarted; a new read cannot verify the lost snapshot. Inspect the settings before proceeding.'
+      : 'Read the current boot options, or reset the C011 before choosing an option write.';
+    optionPending = false; optionStopped = false; $('targetReset').checked = false;
+    $('bootOptions').textContent = 'Boot options have not been read in this connection.';
     log('Serial connected at 115200 baud. No target writes yet.');
   } catch (error) { status(error.message); }
   finally { busy = false; controls(); }
 }
 async function runOperation(operation) {
-  if (busy || !bridge || !['write', 'read', 'verify'].includes(operation) || (operation !== 'read' && !firmware)) return;
+  if (busy || optionPending || optionStopped || !bridge || !['write', 'read', 'verify'].includes(operation) || (operation !== 'read' && !firmware)) return;
   busy = true; controls(); let changed = false;
   const verifyAfterFlash = $('verifyAfterFlash').checked;
   try {
@@ -296,10 +334,63 @@ async function runOperation(operation) {
     busy = false; controls();
   }
 }
+async function runBootOptions(mode = 'read') {
+  if (busy || !bridge || !['read', 'boot0', 'flash'].includes(mode)) return;
+  const writing = mode !== 'read';
+  if (writing && (optionPending || optionStopped || !$('targetReset').checked)) return;
+  busy = true; controls();
+  let sent = false;
+  try {
+    let address = ROM_ADDRESS;
+    if ($('entry').value === 'seesaw') {
+      check(/^[0-9a-f]{2}$/i.test($('address').value), 'Enter a two-digit hexadecimal I²C address.');
+      address = parseInt($('address').value, 16);
+      check(address >= 8 && address <= 0x77 && address !== ROM_ADDRESS, 'Invalid seesaw address; select already in ROM for 64.');
+    }
+    const values = [address];
+    if (writing) {
+      values.push(mode === 'boot0' ? 0 : 1, 1, 1);
+      optionPending = true; $('targetReset').checked = false;
+    }
+    $('optionStatus').textContent = writing ? 'Writing boot options… Do not disconnect.' : 'Reading boot options…';
+    sent = true;
+    const replies = await bridge.command('O', values);
+    for (const reply of replies) log(reply);
+    const error = replies.find(reply => reply.startsWith('ERR'));
+    check(!error, error === 'ERR command' ? 'Update the Metro bridge sketch to use boot-option controls.' : error);
+    const summary = replies.find(reply => /^nBOOT_SEL=[01] nBOOT1=[01] nBOOT0=[01] BOOT_LOCK=[01] RDP=0x[0-9A-F]{1,2}$/i.test(reply));
+    check(summary && replies.some(reply => /^OPTIONS(?: [0-9A-F]{2}){128}$/i.test(reply)), 'Incomplete boot-option response; no verification claimed.');
+    $('bootOptions').textContent = summary + (writing ? ' (before requested change)' : '');
+    const verified = replies.includes('VERIFIED boot options and all other defined settings; complements valid');
+    const unchanged = replies.includes('OK boot options already match; no write');
+    if (writing && !unchanged) {
+      check(replies.includes('ACK option write; readback still required'), 'Option write was not acknowledged. Do not retry.');
+      $('optionStatus').textContent = mode === 'boot0'
+        ? 'Write acknowledged, NOT verified. Keep Metro connected. Disconnect ST-Link from PA14/SWCLK, tie B0 to 3.3 V, and reset/power-cycle only the C011. Select already in ROM, then Read boot options to verify. Remove the B0 jumper and reset afterward to run the application.'
+        : 'Write acknowledged, NOT verified. Keep Metro connected. Reset/power-cycle only the C011, select running bootloader-enabled seesaw (or already in ROM if appropriate), then Read boot options to verify.';
+    } else {
+      check(!optionPending || unchanged || verified, 'Pending write was not verified; the Metro may have reset and lost its snapshot.');
+      optionPending = false;
+      $('optionStatus').textContent = verified
+        ? 'Verified: boot options and all other defined settings match; complements valid. Reset the C011 before another option write.'
+        : unchanged ? 'Boot options already match; no write was needed.'
+        : 'Options read; no option write. The C011 is now in ROM. Reset before any option write, then choose its current bootloader entry above.';
+    }
+    $('entry').value = 'rom'; $('addressLabel').classList.add('hidden');
+  } catch (error) {
+    if (sent) optionStopped = true;
+    $('optionStatus').textContent = error.message + ' Stopped; no automatic retry. Keep Metro connected to read back any pending write. Investigate before further writes.';
+    log($('optionStatus').textContent);
+  } finally { busy = false; controls(); }
+}
 $('connect').onclick = connect;
 $('write').onclick = () => runOperation('write');
 $('read').onclick = () => runOperation('read');
 $('verify').onclick = () => runOperation('verify');
+$('readOptions').onclick = () => runBootOptions();
+$('enableBoot0').onclick = () => runBootOptions('boot0');
+$('flashBoot').onclick = () => runBootOptions('flash');
+$('targetReset').onchange = controls;
 $('file').onchange = event => chooseFile(event.target.files[0]);
 $('entry').onchange = () => $('addressLabel').classList.toggle('hidden', $('entry').value !== 'seesaw');
 for (const name of ['dragover', 'dragleave', 'drop']) $('drop').addEventListener(name, event => {
@@ -311,7 +402,7 @@ for (const name of ['dragover', 'dragleave', 'drop']) $('drop').addEventListener
 });
 window.addEventListener('dragover', event => event.preventDefault());
 window.addEventListener('drop', event => event.preventDefault());
-window.addEventListener('beforeunload', event => { if (busy) { event.preventDefault(); event.returnValue = ''; } });
+window.addEventListener('beforeunload', event => { if (busy || optionPending) { event.preventDefault(); event.returnValue = ''; } });
 if (!supported) {
   $('compat').textContent = 'Open this page in desktop Chrome or Edge over HTTPS, or download the HTML and open it locally. Web Serial is required.';
   $('connect').disabled = true;
