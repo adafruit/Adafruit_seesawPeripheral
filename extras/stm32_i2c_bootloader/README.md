@@ -88,6 +88,73 @@ the I2C timeout API. If its bus stalls, reset the Metro before reconnecting.
 Its `.none.test.only` marker excludes it from this library's peripheral-target
 CI matrix; compile it for the AVR host board using the commands above.
 
+## Serial Monitor: query and set boot options
+
+The bridge's `O` command reads the complete 128-byte C011 option area. Its
+optional three arguments change **only** `nBOOT_SEL`, `nBOOT1`, and `nBOOT0`.
+Protection, watchdog, reset configuration, BOOT_LOCK, and all other defined
+settings are preserved. The C011 ROM normalizes reserved bits in its option
+registers; their raw bytes can change even when sent unchanged. This is not an
+unrestricted option-byte programmer. The browser
+uploader and Python application updater still never change option bytes.
+
+Use Serial Monitor at **115200 baud**, with **Newline** or **Both NL & CR**.
+Close the browser's serial connection first. All arguments are hexadecimal:
+
+```text
+O 49             Query options, entering ROM from seesaw at address 0x49
+O 64             Query options when the C011 is already in ROM
+O 49 00 01 01    Enable physical BOOT0 selection, starting from running seesaw
+O 64 00 01 01    Enable physical BOOT0 selection, starting from ROM
+O 64 01 01 01    Select normal flash boot independently of the BOOT0 pin
+```
+
+The setter syntax is `O address nBOOT_SEL nBOOT1 nBOOT0`, with each bit `00` or
+`01`. For jumper-based recovery use `00 01 01`: BOOT0 low boots the application;
+BOOT0 high boots ROM. Other combinations can select ROM unconditionally or SRAM;
+do not choose them unless that is intentional. BOOT_LOCK is query-only and must
+already be zero. Readout protection must be level 0 (`RDP=AA`). The command checks
+the C011 ID, ROM protocol, and each implemented option word's complement before
+writing. If the requested values already match, it does not write.
+
+Option programming requires **stable power and a clean reset line**. Keep SWD
+recovery available. It is separate from application programming and can leave
+the chip needing SWD recovery if interrupted. The bridge reads the existing
+options, changes the three requested bits and their complements, and sends the
+entire 128-byte snapshot in one ROM no-stretch write. The ATmega328P's TWI
+hardware sends this one long packet because the standard Wire buffer is only
+32 bytes; normal W/U/R commands are unchanged. There is no automatic write retry.
+
+**Reset or power-cycle the C011 before every option write**, even if it is still
+responding in ROM. Use one option write per ROM session. Readback queries can
+use the current session, but do not issue a second write without resetting the
+target first. Resetting only the Metro is not a target reset. The bridge cannot
+control the C011 reset pin through the I2C wiring.
+
+An ACK means the ROM accepted the write, **not** that readback passed. Keep the
+Metro powered and the Serial Monitor open so it retains the expected snapshot.
+To verify enabling BOOT0:
+
+1. Disconnect ST-Link from PA14/SWCLK before strapping that shared pin.
+2. Tie C011 B0 to **3.3 V**, then power-cycle **only the C011**.
+3. Send `O 64`. Require `VERIFIED boot options and all other defined settings; complements valid`
+   and `nBOOT_SEL=0 nBOOT1=1 nBOOT0=1 BOOT_LOCK=0 RDP=0xAA`.
+4. Remove B0's jumper and reset the C011 to return to the application.
+
+For a setting that boots the application, re-enter ROM with `O 49` instead, if
+the installed application supports boot entry. Resetting the Metro loses its
+pending comparison; subsequent queries still show the actual bytes but cannot
+claim verification against that earlier snapshot. A mismatch blocks further
+option writes for that session. Verification checks all of OPTR, every defined
+C011 protection field, every implemented word's complement, and the remaining
+unimplemented bytes; only reserved register bits may differ. Stop and investigate
+any error; do not blindly repeat a write. Query commands leave the C011 in ROM
+until it resets or times out.
+
+These commands cannot enter ROM on an already-corrupted application when the
+BOOT0 pin is disabled. Configure hardware recovery while the application still
+works, while factory-blank ROM entry is available, or using ST-Link.
+
 ## 1. Identify the ROM without writing flash
 
 ```sh
