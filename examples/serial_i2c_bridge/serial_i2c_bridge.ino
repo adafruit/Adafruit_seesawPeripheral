@@ -5,6 +5,7 @@
 // Web uploader: https://adafruit.github.io/Adafruit_seesawPeripheral/bootloader/
 // A factory-blank C011 enters ROM at power-on; the bridge needs no BOOT0 wire.
 // ASCII commands use hexadecimal bytes:
+// S scans 7-bit I2C addresses (address-only probes, no register writes).
 // W address data... ; U address count ; R address module register count.
 // O address queries C011 option bytes (64 = already in ROM, else seesaw address).
 // O address nBOOT_SEL nBOOT1 nBOOT0 sets only those three bits (each 00 or 01).
@@ -118,6 +119,10 @@ void executeCommand() {
     }
     bytes[count++] = value;
   }
+  if (operation == 'S' && count == 0) {
+    scanBus();
+    return;
+  }
   if (operation == 'O') {
     if ((count != 1 && count != 4) || bytes[0] < 8 || bytes[0] > 0x77 ||
         (count == 4 && (bytes[1] > 1 || bytes[2] > 1 || bytes[3] > 1))) {
@@ -165,6 +170,33 @@ void executeCommand() {
     if (value < 16)
       Serial.print('0');
     Serial.print(value, HEX);
+  }
+  Serial.print(F("\n\r"));
+}
+
+void scanBus() {
+  uint8_t found[112];
+  uint8_t count = 0;
+  for (uint8_t address = 0x08; address <= 0x77; address++) {
+    Wire.beginTransmission(address);
+    uint8_t error = Wire.endTransmission();
+    if (error == 0) {
+      found[count++] = address;
+    } else if (error != 2) { // Address NACK means no device; other errors stop.
+      Serial.print(F("ERR I2C scan failed at 0x"));
+      Serial.print(address, HEX);
+      Serial.print(F(" status="));
+      Serial.print(error);
+      Serial.print(F("\n\r"));
+      return;
+    }
+  }
+  Serial.print(F("SCAN"));
+  for (uint8_t i = 0; i < count; i++) {
+    Serial.print(' ');
+    if (found[i] < 16)
+      Serial.print('0');
+    Serial.print(found[i], HEX);
   }
   Serial.print(F("\n\r"));
 }

@@ -8,26 +8,31 @@
 </style>
 <header><div class="badge">ADAFRUIT · SEESAW PERIPHERAL</div><h1>C011 firmware uploader</h1><p>USB → Metro 328 → I²C → STM32C011F6. Write firmware, read a backup, or verify a file against flash. Files stay on your computer.</p></header>
 <section class="card"><h2>1. Prepare your Metro and board</h2><ol>
-<li>Open <strong>File → Examples → Adafruit seesaw Peripheral → serial_i2c_bridge</strong> in Arduino, or get <a href="https://github.com/adafruit/Adafruit_seesawPeripheral/tree/main/examples/serial_i2c_bridge">the bridge sketch</a>. Upload it to your Metro 328 using Arduino’s <strong>Uno</strong> board selection. Close Serial Monitor.</li>
+<li><a href="https://adafruit.github.io/Adafruit_seesawPeripheral/bootloader/serial_i2c_bridge/serial_i2c_bridge.ino" download>Download the latest bridge sketch</a> and open it in Arduino. <strong>Scan support requires this updated sketch</strong>; an installed library example may be older. Upload it to your Metro 328 using Arduino’s <strong>Uno</strong> board selection. Close Serial Monitor.</li>
 <li>Connect Metro <strong>A4 → SDA, A5 → SCL, and GND → GND</strong> through the breakout’s level-shifted QT bus. Power the breakout through VIN as usual. <strong>Do not connect a 5 V Metro directly to raw MCU-side SDA/SCL.</strong></li>
-<li>Connect only one C011. For a factory-blank chip, power-cycle it before starting; no BOOT0 wire or ST-Link is needed for initial programming.</li></ol>
+<li>Only one C011 may be in ROM at a time (ROM always uses 0x64). Devices sharing an address cannot be distinguished. For a factory-blank chip, power-cycle it before starting; no BOOT0 wire or ST-Link is needed for initial programming.</li></ol>
 <p class="warning">C011F6 only: 32 KiB flash, 6 KiB RAM, tested Rev Z ROM layout. Application limit: 30 KiB; the last 2 KiB EEPROM page and boot options are preserved. Keep power stable and this tab visible. A failed flash may require ST-Link recovery.</p>
 <p id="compat" class="warning"></p><button id="connect">Connect Metro</button> <span id="connection">Not connected</span></section>
-<section class="card"><h2>2. Choose firmware</h2><div id="drop"><p>Drop one STM32 application <strong>.hex</strong> or <strong>.bin</strong> here</p><input id="file" type="file" accept=".hex,.bin" aria-label="Choose firmware"></div><p id="filename">No file selected.</p>
+<section class="card"><h2>2. Find your C011 and enter ROM</h2>
+<p>Connecting scans the I²C bus. The page checks responding devices for the C011 seesaw hardware ID, and checks 0x64 for the C011 ROM protocol. Unknown devices cannot be programmed.</p>
+<div class="row"><button id="scan" class="secondary" disabled>Scan I²C bus</button><button id="resetScan" class="secondary" disabled>I reset the C011 — scan again</button></div>
+<label>Device <select id="device" disabled><option value="">Connect Metro to find devices</option></select></label>
+<button id="bootRom" disabled>Boot selected C011 into ROM</button>
+<p id="deviceStatus" role="status" aria-live="polite">First connect your Metro. Use the latest bridge sketch with scan support.</p>
+<p class="warning">Before each boot-option write, reset or power-cycle <strong>only the C011</strong>, then click <strong>I reset the C011 — scan again</strong>. If it is found running seesaw, select it and click <strong>Boot selected C011 into ROM</strong>. Keep the Metro connected during pending verification.</p>
+</section>
+<section class="card"><h2>3. Firmware (optional)</h2><div id="drop"><p>Drop one STM32 application <strong>.hex</strong> or <strong>.bin</strong> here</p><input id="file" type="file" accept=".hex,.bin" aria-label="Choose firmware"></div><p id="filename">No file selected.</p>
 <small>BIN starts at 0x08000000. HEX must use absolute STM32 flash addresses. AVR/Metro HEX files, full-flash dumps, and option-byte records are rejected.</small>
-<label>Bootloader entry <select id="entry"><option value="rom">Factory blank / already in ROM</option><option value="seesaw">Running bootloader-enabled seesaw</option></select></label>
-<label id="addressLabel" class="hidden">Seesaw I²C address <input id="address" value="49" maxlength="2" size="3" aria-label="Seesaw hexadecimal address"> (hex)</label>
 <p class="warning">For later I²C updates, the new firmware must support bootloader entry (seesaw CONFIG_BOOTLOADER), or enable BOOT0 recovery below. Firmware Write preserves boot options.</p>
 <label><input type="checkbox" id="verifyAfterFlash" checked> Verify after flash</label>
 <div class="row"><button id="write" disabled>Write</button><button id="read" class="secondary" disabled>Read</button><button id="verify" class="secondary" disabled>Verify</button><a id="readout" class="download hidden" download>Save readout</a></div>
 <p><small>Write programs the selected file. Read downloads all 32 KiB, including EEPROM; no input file is needed. Verify compares the selected file without programming.</small></p>
 <p id="status" role="status" aria-live="polite">Ready when you are.</p><progress id="progress" value="0" max="1" aria-label="Upload progress"></progress></section>
-<section class="card"><h2>3. Boot options (optional)</h2>
-<p>Use the bootloader entry and address selected above. No firmware file is needed. Upload the latest bridge sketch first; older sketches do not support these controls.</p>
+<section class="card"><h2>4. Boot options (optional)</h2>
+<p>First complete step 2 so the selected C011 is in ROM. No firmware file is needed.</p>
 <p id="bootOptions" role="status" aria-live="polite">Boot options have not been read.</p>
 <button id="readOptions" class="secondary" disabled>Read boot options / Verify pending write</button>
-<p class="warning">Reset or power-cycle the <strong>C011 before every option write</strong>, then select its current bootloader entry above. Resetting the Metro does not count. Keep power stable; an interrupted option write may require ST-Link recovery. Protection and other defined settings are preserved.</p>
-<label><input id="targetReset" type="checkbox"> I reset or power-cycled the C011 before this option write.</label>
+<p class="warning">Option writes unlock after the reset-and-scan step above. Keep power stable; an interrupted option write may require ST-Link recovery. Protection and other defined settings are preserved.</p>
 <div class="row"><button id="enableBoot0" disabled>Enable BOOT0 recovery</button><button id="flashBoot" class="secondary" disabled>Use normal flash boot</button></div>
 <p><small>Enable BOOT0: nBOOT_SEL=0, nBOOT1=1, nBOOT0=1 (B0 low = application, high = ROM). Normal flash: all three bits = 1 (B0 ignored). RDP must be AA and BOOT_LOCK must be 0; neither is changed.</small></p>
 <p id="optionStatus">After a write, keep this tab connected and the Metro powered until readback verification passes. Disconnect ST-Link from PA14/SWCLK before connecting B0 to 3.3 V. Never use 5 V on B0.</p>
@@ -141,7 +146,7 @@ class SerialBridge {
         this.pending = null;
         resolve(multiline ? answers : answer);
       }, reject};
-      timer = setTimeout(() => { this.failure = new Error('Metro serial timeout; reconnect before retrying.'); this.pending = null; reject(this.failure); }, multiline ? 30000 : 3000);
+      timer = setTimeout(() => { this.failure = new Error('Metro serial timeout; reconnect before retrying.'); this.pending = null; reject(this.failure); }, multiline ? 30000 : operation === 'S' ? 10000 : 3000);
     });
     // Attach the rejection handler immediately, including while a write is pending.
     const sending = this.writer.write(new TextEncoder().encode(line));
@@ -186,7 +191,7 @@ class Bootloader {
     await this.command(GET_ID); const id = await this.read(3); await this.ack();
     check(equal(id, [1, 4, 0x43]), 'Not an STM32C011 (expected product ID 0x0443).');
     await this.command(GET); const info = await this.read(20); await this.ack();
-    check(info[0] === 18 && [READ, GO, WRITE, ERASE].every(v => info.slice(2).includes(v)), 'Unsupported C011 ROM layout/commands.');
+    check(info[0] === 18 && info[1] === 0x11 && [READ, GO, WRITE, ERASE].every(v => info.slice(2).includes(v)), 'Unsupported C011 ROM version/layout/commands.');
     log(`C011 ROM identified: 0x0443, protocol 0x${hex(info[1])}.`);
   }
   async readMemory(address, length, progress = () => {}) {
@@ -222,17 +227,101 @@ class Bootloader {
 }
 let bridge = null, firmware = null, busy = false, readoutURL = null;
 let optionPending = false, optionStopped = false;
+let devices = [], romReady = false, targetResetConfirmed = false;
 const supported = window.isSecureContext && 'serial' in navigator;
 function log(message) { $('log').textContent += message + '\n'; $('log').scrollTop = $('log').scrollHeight; }
 function status(message, fraction = 0) { $('status').textContent = message; $('progress').value = fraction; }
 function controls() {
-  $('write').disabled = $('verify').disabled = busy || optionPending || optionStopped || !bridge || !firmware;
-  $('read').disabled = busy || optionPending || optionStopped || !bridge;
-  $('readOptions').disabled = busy || !bridge;
-  $('enableBoot0').disabled = $('flashBoot').disabled = busy || !bridge || optionPending || optionStopped || !$('targetReset').checked;
-  $('targetReset').disabled = busy || optionPending || optionStopped;
-  for (const id of ['connect', 'file', 'entry', 'address', 'verifyAfterFlash']) $(id).disabled = busy;
+  $('write').disabled = $('verify').disabled = busy || !romReady || optionPending || optionStopped || !bridge || !firmware;
+  $('read').disabled = busy || !romReady || optionPending || optionStopped || !bridge;
+  $('readOptions').disabled = busy || !romReady || !bridge;
+  $('enableBoot0').disabled = $('flashBoot').disabled = busy || !romReady || !bridge || optionPending || optionStopped || !targetResetConfirmed;
+  $('scan').disabled = $('resetScan').disabled = busy || !bridge;
+  $('device').disabled = busy || !bridge || !devices.length;
+  const selected = devices.find(device => String(device.address) === $('device').value);
+  $('bootRom').disabled = busy || !bridge || !selected || selected.kind !== 'seesaw' || devices.some(device => device.address === ROM_ADDRESS);
+  for (const id of ['connect', 'file', 'verifyAfterFlash']) $(id).disabled = busy;
   $('connect').disabled = busy || !supported;
+}
+function selectDevice() {
+  const selected = devices.find(device => String(device.address) === $('device').value);
+  romReady = Boolean(selected && selected.kind === 'rom');
+  if (romReady) $('deviceStatus').textContent = optionPending
+    ? 'C011 ROM found at 0x64. Next: Read boot options / Verify pending write.'
+    : 'C011 ROM found at 0x64. Ready for firmware or boot options below.';
+  else if (selected && selected.kind === 'seesaw') $('deviceStatus').textContent = devices.some(device => device.address === ROM_ADDRESS)
+    ? 'Address 0x64 is occupied. Disconnect that device before booting another C011 into ROM, then scan again.'
+    : `C011 seesaw selected at 0x${hex(selected.address)}. Next: Boot selected C011 into ROM.`;
+  else $('deviceStatus').textContent = 'Select a detected C011. Unknown devices are not supported.';
+  controls();
+}
+function showDevices() {
+  $('device').innerHTML = '<option value="">Select a C011 device…</option>' + devices.map(device =>
+    `<option value="${device.address}"${device.kind === 'unknown' ? ' disabled' : ''}>0x${hex(device.address)} — ${device.kind === 'rom' ? 'C011 ROM bootloader' : device.kind === 'seesaw' ? 'C011 seesaw (application)' : 'Unknown / unsupported device'}</option>`).join('');
+  const supportedDevices = devices.filter(device => device.kind !== 'unknown');
+  $('device').value = supportedDevices.length === 1 ? String(supportedDevices[0].address) : '';
+  selectDevice();
+}
+async function scanDevices(afterReset = false) {
+  if (busy || !bridge) return;
+  busy = true; romReady = false; devices = []; targetResetConfirmed = false; showDevices(); controls();
+  $('deviceStatus').textContent = 'Scanning I²C addresses…';
+  try {
+    let answer;
+    try { answer = await bridge.command('S', []); }
+    catch (error) {
+      if (error.message === 'ERR command') throw new Error('This Metro sketch has no scan support. Upload the latest serial_i2c_bridge sketch, then reconnect.');
+      throw error;
+    }
+    check(/^SCAN(?: [0-9A-F]{2})*$/i.test(answer), 'Invalid scan response from Metro.');
+    const addresses = answer === 'SCAN' ? [] : answer.slice(5).split(' ').map(value => parseInt(value, 16));
+    check(new Set(addresses).size === addresses.length && addresses.every(address => address >= 8 && address <= 0x77), 'Invalid I²C address list.');
+    log(addresses.length ? 'I²C scan: ' + addresses.map(address => '0x' + hex(address)).join(', ') : 'I²C scan: no devices found.');
+    for (const address of addresses) {
+      const device = {address, kind: 'unknown'};
+      try {
+        if (address === ROM_ADDRESS) {
+          // Never send seesaw register bytes to the ROM command parser.
+          await new Bootloader(bridge).identify(); device.kind = 'rom';
+        } else if (await bridge.command('R', [address, 0, 1, 1]) === 'DATA 90') device.kind = 'seesaw';
+      } catch (error) {
+        if (bridge.failure) throw error;
+        log(`0x${hex(address)} identification: ${error.message}`);
+      }
+      devices.push(device);
+    }
+    targetResetConfirmed = afterReset;
+    showDevices();
+    if (!addresses.length) $('deviceStatus').textContent = 'No I²C devices found. Check C011 power, SDA/SCL and common ground, then scan again. A factory-blank C011 may need a power-cycle.';
+    else if (!devices.some(device => device.kind !== 'unknown')) $('deviceStatus').textContent = 'Devices responded, but no supported C011 was identified. Check the board/firmware. Address 0x64 is reserved here for ROM.';
+  } catch (error) {
+    devices = []; showDevices(); $('deviceStatus').textContent = error.message; log(error.message);
+  } finally { busy = false; controls(); }
+}
+async function bootIntoROM() {
+  const selected = devices.find(device => String(device.address) === $('device').value);
+  if (busy || !bridge || !selected || selected.kind !== 'seesaw' || devices.some(device => device.address === ROM_ADDRESS)) return;
+  busy = true; romReady = false; controls();
+  try {
+    $('deviceStatus').textContent = `Checking seesaw at 0x${hex(selected.address)}…`;
+    check(await bridge.command('R', [selected.address, 0, 1, 1]) === 'DATA 90', 'Selected C011 no longer responds. Scan again.');
+    // Check the reserved destination again in case the bus changed since scan.
+    const scan = await bridge.command('S', []);
+    check(/^SCAN(?: [0-9A-F]{2})*$/i.test(scan), 'Invalid scan response from Metro.');
+    check(!scan.split(' ').slice(1).some(value => parseInt(value, 16) === ROM_ADDRESS), 'Address 0x64 is now occupied. Scan again before booting another C011.');
+    $('deviceStatus').textContent = 'Asking the selected seesaw to boot into ROM…';
+    check(await bridge.command('W', [selected.address, 0, 0x7e, 0xb0, 7, 0x10, 0xad]) === 'OK', 'Seesaw boot-entry request failed.');
+    await sleep(500);
+    try { await new Bootloader(bridge).identify(); }
+    catch (error) { throw new Error('Boot request sent, but C011 ROM did not identify. The application may lack boot-entry support. Reset the C011 and scan again; use configured BOOT0 or ST-Link if needed. ' + error.message); }
+    devices = devices.filter(device => device !== selected);
+    devices.push({address: ROM_ADDRESS, kind: 'rom'});
+    showDevices(); $('device').value = String(ROM_ADDRESS); selectDevice();
+    log(`C011 at 0x${hex(selected.address)} entered ROM at 0x64. No flash/options written.`);
+  } catch (error) {
+    devices = []; showDevices(); targetResetConfirmed = false;
+    $('deviceStatus').textContent = error.message; log(error.message);
+  } finally { busy = false; controls(); }
 }
 async function chooseFile(file) {
   if (busy || !file) return;
@@ -244,7 +333,7 @@ async function chooseFile(file) {
     const image = name.endsWith('.hex') ? parseHex(await file.text()) : validateImage(new Uint8Array(await file.arrayBuffer()));
     firmware = {name: file.name, image};
     $('filename').textContent = `${file.name} — ${image.length.toLocaleString()} bytes at 0x08000000. Vectors checked.`;
-    status('Firmware ready. Connect the Metro, then choose Write or Verify.');
+    status('Firmware ready. Complete device discovery in step 2, then choose Write or Verify.');
   } catch (error) { $('filename').textContent = error.message; status('Firmware rejected. No device changes.'); }
   busy = false; controls();
 }
@@ -255,6 +344,8 @@ async function connect() {
   try {
     if (bridge) {
       await bridge.close(); bridge = null; $('connection').textContent = 'Not connected'; $('connect').textContent = 'Connect Metro';
+      devices = []; romReady = false; targetResetConfirmed = false; showDevices();
+      $('deviceStatus').textContent = 'Metro disconnected. Connect again to scan the C011’s current state.';
       if (optionPending) $('optionStatus').textContent = 'Disconnected without verification. A later read cannot verify the lost snapshot; inspect the settings before proceeding.';
       return;
     }
@@ -265,26 +356,19 @@ async function connect() {
     $('optionStatus').textContent = optionPending
       ? 'Previous option write was not verified. The Metro has restarted; a new read cannot verify the lost snapshot. Inspect the settings before proceeding.'
       : 'Read the current boot options, or reset the C011 before choosing an option write.';
-    optionPending = false; optionStopped = false; $('targetReset').checked = false;
+    optionPending = false; optionStopped = false; targetResetConfirmed = false;
     $('bootOptions').textContent = 'Boot options have not been read in this connection.';
     log('Serial connected at 115200 baud. No target writes yet.');
   } catch (error) { status(error.message); }
   finally { busy = false; controls(); }
+  if (bridge) await scanDevices();
 }
 async function runOperation(operation) {
-  if (busy || optionPending || optionStopped || !bridge || !['write', 'read', 'verify'].includes(operation) || (operation !== 'read' && !firmware)) return;
+  if (busy || !romReady || optionPending || optionStopped || !bridge || !['write', 'read', 'verify'].includes(operation) || (operation !== 'read' && !firmware)) return;
   busy = true; controls(); let changed = false;
   const verifyAfterFlash = $('verifyAfterFlash').checked;
   try {
     const rom = new Bootloader(bridge);
-    if ($('entry').value === 'seesaw') {
-      check(/^[0-9a-f]{2}$/i.test($('address').value), 'Enter a two-digit hexadecimal I²C address.');
-      const address = parseInt($('address').value, 16);
-      check(address >= 8 && address <= 0x77, 'Invalid 7-bit I²C address.');
-      check(await bridge.command('R', [address, 0, 1, 1]) === 'DATA 90', 'Expected seesaw C011 hardware ID.');
-      check(await bridge.command('W', [address, 0, 0x7e, 0xb0, 7, 0x10, 0xad]) === 'OK', 'Bootloader entry failed.');
-      await sleep(500);
-    }
     status('Identifying factory ROM…'); await rom.identify();
     if (operation === 'read') {
       const data = await rom.readMemory(FLASH_BASE, FLASH_SIZE, p => status('Reading flash…', p));
@@ -330,33 +414,36 @@ async function runOperation(operation) {
   } finally {
     // A fresh connection is required after every run, including failures.
     if (bridge) await bridge.close(); bridge = null;
+    devices = []; romReady = false; targetResetConfirmed = false; showDevices();
+    $('deviceStatus').textContent = 'Metro disconnected. Connect again to scan the C011’s current state.';
     $('connection').textContent = 'Not connected'; $('connect').textContent = 'Connect Metro';
     busy = false; controls();
   }
 }
 async function runBootOptions(mode = 'read') {
-  if (busy || !bridge || !['read', 'boot0', 'flash'].includes(mode)) return;
+  if (busy || !romReady || !bridge || !['read', 'boot0', 'flash'].includes(mode)) return;
   const writing = mode !== 'read';
-  if (writing && (optionPending || optionStopped || !$('targetReset').checked)) return;
+  if (writing && (optionPending || optionStopped || !targetResetConfirmed)) return;
   busy = true; controls();
   let sent = false;
   try {
-    let address = ROM_ADDRESS;
-    if ($('entry').value === 'seesaw') {
-      check(/^[0-9a-f]{2}$/i.test($('address').value), 'Enter a two-digit hexadecimal I²C address.');
-      address = parseInt($('address').value, 16);
-      check(address >= 8 && address <= 0x77 && address !== ROM_ADDRESS, 'Invalid seesaw address; select already in ROM for 64.');
-    }
-    const values = [address];
+    const values = [ROM_ADDRESS];
     if (writing) {
       values.push(mode === 'boot0' ? 0 : 1, 1, 1);
-      optionPending = true; $('targetReset').checked = false;
+      optionPending = true; targetResetConfirmed = false;
     }
     $('optionStatus').textContent = writing ? 'Writing boot options… Do not disconnect.' : 'Reading boot options…';
     sent = true;
     const replies = await bridge.command('O', values);
     for (const reply of replies) log(reply);
     const error = replies.find(reply => reply.startsWith('ERR'));
+    // These bridge errors return before any option data is sent. Do not invent
+    // a pending snapshot that the Metro never saved; other failures are uncertain.
+    const beforeWriteErrors = ['ERR command', 'ERR C011 ROM entry/identification failed',
+      'ERR option read failed', 'ERR option/complement mismatch; refusing write',
+      'ERR requires RDP level 0 and BOOT_LOCK=0; refusing write',
+      'ERR option write setup failed; no data sent'];
+    if (writing && beforeWriteErrors.includes(error)) optionPending = false;
     check(!error, error === 'ERR command' ? 'Update the Metro bridge sketch to use boot-option controls.' : error);
     const summary = replies.find(reply => /^nBOOT_SEL=[01] nBOOT1=[01] nBOOT0=[01] BOOT_LOCK=[01] RDP=0x[0-9A-F]{1,2}$/i.test(reply));
     check(summary && replies.some(reply => /^OPTIONS(?: [0-9A-F]{2}){128}$/i.test(reply)), 'Incomplete boot-option response; no verification claimed.');
@@ -366,33 +453,37 @@ async function runBootOptions(mode = 'read') {
     if (writing && !unchanged) {
       check(replies.includes('ACK option write; readback still required'), 'Option write was not acknowledged. Do not retry.');
       $('optionStatus').textContent = mode === 'boot0'
-        ? 'Write acknowledged, NOT verified. Keep Metro connected. Disconnect ST-Link from PA14/SWCLK, tie B0 to 3.3 V, and reset/power-cycle only the C011. Select already in ROM, then Read boot options to verify. Remove the B0 jumper and reset afterward to run the application.'
-        : 'Write acknowledged, NOT verified. Keep Metro connected. Reset/power-cycle only the C011, select running bootloader-enabled seesaw (or already in ROM if appropriate), then Read boot options to verify.';
+        ? 'Write acknowledged, NOT verified. Keep Metro connected. Disconnect ST-Link from PA14/SWCLK, tie B0 to 3.3 V, and reset/power-cycle only the C011. In step 2 click I reset the C011 — scan again, then Read boot options to verify. Remove the B0 jumper and reset afterward to run the application.'
+        : 'Write acknowledged, NOT verified. Keep Metro connected. Reset/power-cycle only the C011, then use the reset-and-scan button in step 2. If seesaw is found, select it and Boot into ROM. Then Read boot options to verify.';
+      devices = []; romReady = false; showDevices();
+      $('deviceStatus').textContent = 'Option write awaiting verification. Follow the reset instructions in step 4, then use the reset-and-scan button here.';
     } else {
       check(!optionPending || unchanged || verified, 'Pending write was not verified; the Metro may have reset and lost its snapshot.');
       optionPending = false;
+      optionStopped = false;
       $('optionStatus').textContent = verified
         ? 'Verified: boot options and all other defined settings match; complements valid. Reset the C011 before another option write.'
         : unchanged ? 'Boot options already match; no write was needed.'
-        : 'Options read; no option write. The C011 is now in ROM. Reset before any option write, then choose its current bootloader entry above.';
+        : 'Options read; no option write. To change options, reset only the C011 and use the reset-and-scan button in step 2 first.';
     }
-    $('entry').value = 'rom'; $('addressLabel').classList.add('hidden');
   } catch (error) {
-    if (sent) optionStopped = true;
-    $('optionStatus').textContent = error.message + ' Stopped; no automatic retry. Keep Metro connected to read back any pending write. Investigate before further writes.';
+    if (sent) { optionStopped = true; romReady = false; devices = []; showDevices(); }
+    $('optionStatus').textContent = error.message + ' Stopped; no automatic retry. Keep Metro connected. Reset only the C011 and scan in step 2 to find its current state before reading back a pending write.';
     log($('optionStatus').textContent);
   } finally { busy = false; controls(); }
 }
 $('connect').onclick = connect;
+$('scan').onclick = () => scanDevices();
+$('resetScan').onclick = () => scanDevices(true);
+$('device').onchange = selectDevice;
+$('bootRom').onclick = bootIntoROM;
 $('write').onclick = () => runOperation('write');
 $('read').onclick = () => runOperation('read');
 $('verify').onclick = () => runOperation('verify');
 $('readOptions').onclick = () => runBootOptions();
 $('enableBoot0').onclick = () => runBootOptions('boot0');
 $('flashBoot').onclick = () => runBootOptions('flash');
-$('targetReset').onchange = controls;
 $('file').onchange = event => chooseFile(event.target.files[0]);
-$('entry').onchange = () => $('addressLabel').classList.toggle('hidden', $('entry').value !== 'seesaw');
 for (const name of ['dragover', 'dragleave', 'drop']) $('drop').addEventListener(name, event => {
   event.preventDefault(); $('drop').classList.toggle('over', name === 'dragover' && !busy);
   if (name === 'drop' && !busy) {
