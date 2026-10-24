@@ -209,7 +209,7 @@ class ROM {
   assert.equal(elements.get('bootOptions').textContent, summary);
   assert.match(elements.get('optionStatus').textContent, /no option write/);
 
-  const enable = installOptions([optionDump, summary, ack, 'Keep Metro powered. Reset/power-cycle C011 before another option write', 'Re-enter ROM, then query O 64 (or O 49 from running seesaw) to verify']);
+  const enable = installOptions([optionDump, summary, ack, 'Keep bridge powered. Reset/power-cycle C011 before another option write', 'Re-enter ROM, then query O 64 (or O 49 from running seesaw) to verify']);
   await vm.runInContext('runBootOptions("boot0")', context);
   assert.equal(enable.commands.length, 0, 'Reset acknowledgement is required');
   vm.runInContext('targetResetConfirmed = true;', context);
@@ -243,6 +243,8 @@ class ROM {
   for (const replies of [
     ['ERR command'], [optionDump, summary, 'ERR requires RDP level 0 and BOOT_LOCK=0; refusing write'],
     ['ERR C011 ROM entry/identification failed'],
+    ['ERR bridge needs a 130-byte I2C transmit buffer; no option write'],
+    ['ERR bridge I2C initialization failed; check SDA/SCL pins'],
     [optionDump, summary, 'ERR option write unconfirmed; do not retry'],
     [optionDump, summary, 'ERR pending option write does not match; no further writes'],
     [optionDump], [optionDump, summary]
@@ -254,7 +256,7 @@ class ROM {
     assert.equal(vm.runInContext('optionStopped', context), true);
     assert.equal(elements.get('enableBoot0').disabled, true);
     assert.match(elements.get('optionStatus').textContent, /Stopped; no automatic retry/);
-    if (replies.includes('ERR C011 ROM entry/identification failed')) {
+    if (replies.includes('ERR C011 ROM entry/identification failed') || replies.includes('ERR bridge needs a 130-byte I2C transmit buffer; no option write')) {
       assert.equal(vm.runInContext('optionPending', context), false, 'No write occurred, so there is no pending snapshot');
       failure.replies = [optionDump, summary];
       vm.runInContext('romReady = true;', context);
