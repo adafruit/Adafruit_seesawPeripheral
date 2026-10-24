@@ -335,9 +335,10 @@ const uint16_t pwmPins[SEESAW_STM32_PIN_COUNT] = {
 // C031: select normal rather than complementary outputs. Several pins share
 // timer channels; see the README before enabling those outputs together.
 const uint16_t pwmPins[SEESAW_STM32_PIN_COUNT] = {
-    PA0_ALT1, PA1_ALT1, PA2,  PA3_ALT1, PA4_ALT1, PA5,  PA6,      PA7_ALT1,
-    PA8_ALT3, PA11,     PA12, PA13,     PA14,     PA15, PB0_ALT1, PB1_ALT2,
-    PB3,      PB4,      PB5,  PB6,      PB7,      PB8,  PC6,      PC14};
+    PA0_ALT1, PA1_ALT1, PA2,  PA3_ALT1, PA4_ALT1, PA5,  PA6,
+    PA7_ALT1, PA8_ALT3, PA11, PA12,     PA13,     PA14, PA15,
+    PB0_ALT1, PB1_ALT2, PB3,  PB4,      PB5,      PB6,  PB7,
+    PB8,      PC6,      PC14, PC15};
 #endif
 
 #if CONFIG_FHT
