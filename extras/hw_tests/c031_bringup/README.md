@@ -92,6 +92,15 @@ provisional 19-byte frame. The uploader now requires that observed framing.
   the captures confirmed the nonzero first byte on the wire.
   D24 interrupt flags also passed all six bus/read modes, with the interrupt
   pin asserting and releasing correctly on flag reads.
+- Clock stretching is **not eliminated**. At 400 kHz, the original read-address
+  ACK lows were 2.3–2.7 us against ordinary bit lows of 1.4–1.6 us. Releasing
+  ADDR before loading TXDR reduced the observed read-address ACK lows to
+  2.0–2.3 us; write-address ACK lows remained about 1.8–2.0 us. Another 4,800
+  reads passed all six bus/read modes at the unchanged 48 MHz CPU clock.
+  These are 10 MS/s Nano-bus captures, not a guaranteed worst-case bound or a
+  throughput measurement: controller byte-boundary pauses remain. Stretching
+  remains enabled for late TXDR service, EEPROM writes and NeoPixel output;
+  busy-case timing was not measured in this follow-up.
 - GPIO interrupts and four encoders passed independent and simultaneous
   direction/count/interrupt tests. The older bench needed its interrupt-enable
   payload byte restored and stale deltas drained before each interrupt test.
