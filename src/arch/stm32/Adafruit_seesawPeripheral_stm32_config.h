@@ -21,11 +21,18 @@
 #define SEESAW_STM32_FLASH_BYTES 65536UL ///< Physical flash capacity.
 #endif
 // D0..10: PA0..8, PA11/12; D13..18: PA15, PB0/1/3/4/5;
-// D21..23: PB8, PC6, PC14. Reserve SWD, I2C, PC15 LED, reset and remap aliases.
+// D21..23: PB8, PC6, PC14. C031 also exposes PC15 LED at D24.
+// Reserve SWD, I2C, reset and remap aliases; C051 still reserves its LED.
+#if defined(ARDUINO_GENERIC_C031G6UX)
+#define ALL_GPIO 0x01E7E7FFUL ///< Exposed headers plus PC15 LED at D24.
+#define ALL_PWM 0x01E7E3FFUL  ///< All exposed GPIOs except PA12 have timers.
+#define SEESAW_STM32_PIN_COUNT 25 ///< Last usable GPIO is D24 / PC15 LED.
+#else
 #define ALL_GPIO 0x00E7E7FFUL
+#define ALL_PWM 0x00E7E3FFUL
+#define SEESAW_STM32_PIN_COUNT 24
+#endif
 #define ALL_ADC 0x0000C7FFUL ///< PA0..8, PA11/12, PB0/1.
-#define ALL_PWM 0x00E7E3FFUL ///< All exposed GPIOs except PA12 have timers.
-#define SEESAW_STM32_PIN_COUNT 24 ///< Last usable GPIO is D23 / PC14.
 #elif defined(ARDUINO_GENERIC_G071GBUX)
 #define SEESAW_HW_ID 0x93     ///< Provisional STM32G071 hardware ID.
 #define ALL_GPIO 0x00E7E7FFUL ///< Same exposed 28-pin GPIO map as C031/C051.

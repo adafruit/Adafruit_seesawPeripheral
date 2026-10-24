@@ -1,16 +1,16 @@
-// Adafruit STM32C011 bootloader USB-to-I2C bridge.
+// Adafruit STM32C011/C031 bootloader USB-to-I2C bridge.
 // Run this on the USB host bridge, NOT on the STM32 being programmed.
 // Supports classic AVR, Arduino-Pico RP2040/RP2350, ESP32, and ESP8266 hosts.
 // Use the breakout's level-shifted QT bus with a 5 V host.
 // Wiring: extras/stm32_i2c_bootloader/README.md in this library.
 // Web uploader: https://adafruit.github.io/Adafruit_seesawPeripheral/bootloader/
-// A factory-blank C011 enters ROM at power-on; the bridge needs no BOOT0 wire.
+// A factory-blank C011/C031 enters ROM at power-on; no BOOT0 wire is needed.
 // ASCII commands use hexadecimal bytes:
 // S scans 7-bit I2C addresses (address-only probes, no register writes).
 // W address data... ; U address count ; R address module register count.
-// O address queries C011 option bytes (64 = already in ROM, else seesaw address).
+// O address queries C011/C031 options (64/63 = ROM, else seesaw address).
 // O address nBOOT_SEL nBOOT1 nBOOT0 sets only those three bits (each 00 or 01).
-// Reset/power-cycle the C011 before EACH option write: one write per ROM session.
+// Reset/power-cycle the STM32 before EACH option write: one write per ROM session.
 #include <Wire.h>
 
 // Optional pin overrides for RP2040/RP2350 and ESP32/ESP8266. Otherwise use
@@ -46,7 +46,10 @@
 #endif
 #endif
 
-const uint8_t ROM_ADDRESS = 0x64;
+uint8_t romAddressI2C = 0x64;
+uint8_t pendingROMAddress = 0;
+uint8_t romProductLow = 0x43;
+uint8_t romGetLength = 20;
 const uint8_t ROM_ACK = 0x79;
 const uint8_t ROM_BUSY = 0x76;
 const uint8_t ROM_GET = 0x00;
@@ -71,7 +74,7 @@ bool optionWriteSupported = BRIDGE_WIRE_CAPACITY >= OPTION_SIZE + 2;
 uint8_t lastROMReply = 0;
 uint8_t lastBusStatus = 0;
 const uint8_t optionWordOffsets[] = {0, 8, 16, 24, 32, 40, 48, 112};
-// C011-specific register masks from ST's stm32c011xx.h / RM0490. The ROM
+// C011/C031 register masks from ST's stm32c011xx.h / stm32c031xx.h. The ROM
 // normalizes reserved bits through these registers during option programming.
 // Compare ALL of OPTR (including the requested bits) and every implemented
 // protection field, but do not mistake reserved-bit normalization for a change.
@@ -123,7 +126,7 @@ void setup() {
 #endif
   Wire.setClock(100000);
   delay(250);
-  Serial.print(F("Adafruit STM32C011 I2C bootloader bridge READY\n\r"));
+  Serial.print(F("Adafruit STM32C011/C031 I2C bootloader bridge READY\n\r"));
 }
 
 void loop() {
@@ -255,7 +258,7 @@ void scanBus() {
 }
 
 bool romWrite(const uint8_t *data, uint8_t length) {
-  Wire.beginTransmission(ROM_ADDRESS);
+  Wire.beginTransmission(romAddressI2C);
   if (Wire.write(data, length) != length) {
     Wire.endTransmission();
     return false;
@@ -264,7 +267,7 @@ bool romWrite(const uint8_t *data, uint8_t length) {
 }
 
 bool romRead(uint8_t *data, uint8_t length) {
-  if (Wire.requestFrom(ROM_ADDRESS, length) != length)
+  if (Wire.requestFrom(romAddressI2C, length) != length)
     return false;
   for (uint8_t i = 0; i < length; i++)
     data[i] = Wire.read();
@@ -304,7 +307,11 @@ bool romAddress(uint32_t address) {
 }
 
 bool identifyROM(uint8_t address) {
-  if (address != ROM_ADDRESS) {
+  // O accepts either family's ROM address, or a running seesaw address.
+  uint8_t family = 0;
+  if (address == 0x64) family = 0x90;
+  else if (address == 0x63) family = 0x91;
+  else {
     // Validate the running seesaw before requesting its ROM-entry reset.
     Wire.beginTransmission(address);
     Wire.write((uint8_t)0x00);
@@ -312,7 +319,14 @@ bool identifyROM(uint8_t address) {
     if (Wire.endTransmission() != 0)
       return false;
     delay(2);
-    if (Wire.requestFrom(address, (uint8_t)1) != 1 || Wire.read() != 0x90)
+    if (Wire.requestFrom(address, (uint8_t)1) != 1)
+      return false;
+    family = Wire.read();
+    if (family != 0x90 && family != 0x91)
+      return false;
+    // Do not enter a different family while a saved write needs verification.
+    uint8_t destination = family == 0x91 ? 0x63 : 0x64;
+    if (optionsPendingVerification && pendingROMAddress != destination)
       return false;
     const uint8_t enterROM[] = {0x00, 0x7E, 0xB0, 0x07, 0x10, 0xAD};
     Wire.beginTransmission(address);
@@ -321,18 +335,31 @@ bool identifyROM(uint8_t address) {
       return false;
     delay(500);
   }
+  romAddressI2C = family == 0x91 ? 0x63 : 0x64;
+  romProductLow = family == 0x91 ? 0x53 : 0x43;
+  // Both observed C011/C031 ROMs return 18 commands (20-byte frame).
+  romGetLength = 20;
+  if (optionsPendingVerification && pendingROMAddress != romAddressI2C)
+    return false;
   uint8_t response[20];
   if (!romCommand(ROM_GET_ID) || !romRead(response, 3) || !romAck())
     return false;
-  if (response[0] != 1 || response[1] != 0x04 || response[2] != 0x43)
+  if (response[0] != 1 || response[1] != 0x04 || response[2] != romProductLow)
     return false;
-  if (!romCommand(ROM_GET) || !romRead(response, 20) || !romAck())
+  if (!romCommand(ROM_GET) || !romRead(response, romGetLength))
     return false;
-  if (response[0] != 18 || response[1] != 0x11)
+  Serial.print(F("ROM GET count="));
+  Serial.print(response[0]);
+  Serial.print(F(" protocol=0x"));
+  Serial.print(response[1], HEX);
+  Serial.print(F("\n\r"));
+  if (!romAck())
+    return false;
+  if (response[0] != romGetLength - 2 || response[1] != 0x11)
     return false;
   bool hasRead = false;
   bool hasWrite = false;
-  for (uint8_t i = 2; i < sizeof(response); i++) {
+  for (uint8_t i = 2; i < romGetLength; i++) {
     if (response[i] == ROM_READ_MEMORY)
       hasRead = true;
     if (response[i] == ROM_WRITE_NO_STRETCH)
@@ -378,7 +405,7 @@ bool writeOptionPacket(const uint8_t *options) {
   TWCR = _BV(TWINT) | _BV(TWEN) | _BV(TWSTA);
   bool success = waitTWI(TW_START);
   if (success) {
-    TWDR = ROM_ADDRESS * 2;
+    TWDR = romAddressI2C * 2;
     TWCR = _BV(TWINT) | _BV(TWEN);
     success = waitTWI(TW_MT_SLA_ACK);
   }
@@ -422,9 +449,9 @@ bool writeOptionPacket(const uint8_t *options) {
 #if defined(ESP8266)
   // ESP8266 Wire has a fixed 128-byte buffer, but its underlying software-I2C
   // writer accepts the complete frame on the same pins initialized by Wire.
-  lastBusStatus = twi_writeTo(ROM_ADDRESS, packet, sizeof(packet), true);
+  lastBusStatus = twi_writeTo(romAddressI2C, packet, sizeof(packet), true);
 #else
-  Wire.beginTransmission(ROM_ADDRESS);
+  Wire.beginTransmission(romAddressI2C);
   if (Wire.write(packet, sizeof(packet)) != sizeof(packet)) {
     lastBusStatus = 1; // Buffer overflow: do NOT send a truncated option frame.
     return false;
@@ -462,7 +489,7 @@ void optionCommand(const uint8_t *arguments, uint8_t count) {
     return;
   }
   if (!identifyROM(arguments[0])) {
-    Serial.print(F("ERR C011 ROM entry/identification failed\n\r"));
+    Serial.print(F("ERR C0 ROM entry/identification failed\n\r"));
     return;
   }
   uint8_t options[OPTION_SIZE];
@@ -509,6 +536,7 @@ void optionCommand(const uint8_t *arguments, uint8_t count) {
     return;
   }
   memcpy(expectedOptions, options, OPTION_SIZE);
+  pendingROMAddress = romAddressI2C;
   optionsPendingVerification = true;
   if (!writeOptionPacket(options)) {
     Serial.print(F("ERR option packet failed; bus status=0x"));
@@ -521,8 +549,8 @@ void optionCommand(const uint8_t *arguments, uint8_t count) {
   } else {
     Serial.print(F("ACK option write; readback still required\n\r"));
   }
-  Serial.print(F("Keep bridge powered. Reset/power-cycle C011 before another option write\n\r"));
-  Serial.print(F("Re-enter ROM, then query O 64 (or O 49 from running seesaw) to verify\n\r"));
+  Serial.print(F("Keep bridge powered. Reset/power-cycle STM32 before another option write\n\r"));
+  Serial.print(F("Re-enter ROM, then query O 64 (C011) / O 63 (C031), or O 49 from seesaw to verify\n\r"));
 }
 
 bool validOptionComplements(const uint8_t *options) {

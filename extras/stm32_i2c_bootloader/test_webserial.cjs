@@ -26,7 +26,12 @@ const context = vm.createContext({
   }}
 });
 vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], context);
-const {parseHex, validateImage, Bootloader, SerialBridge} = vm.runInContext('({parseHex, validateImage, Bootloader, SerialBridge})', context);
+const {parseHex, validateImage, Bootloader, SerialBridge, PROFILES} = vm.runInContext('({parseHex, validateImage, Bootloader, SerialBridge, PROFILES})', context);
+assert.equal(PROFILES.c011.getLength, 20);
+assert.equal(PROFILES.c031.getLength, 20);
+// Captured from C031 device 0x10016453; do not derive this from the profile.
+const observedGetFrame = [0x12, 0x11, 0x00, 0x01, 0x02, 0x11, 0x21, 0x31,
+  0x44, 0x63, 0x73, 0x82, 0x92, 0x32, 0x45, 0x64, 0x74, 0x83, 0x93, 0xA1];
 const base = 0x08000000;
 const image = new Uint8Array(57).fill(0x55);
 new DataView(image.buffer).setUint32(0, 0x20001800, true);
@@ -58,10 +63,10 @@ assert.throws(() => parseHex([header, record(0, 0, [...image.slice(0, 8)]), reco
 
 // Simulate the exact W/U transport boundary, including all AN4221 packets.
 class ROM {
-  constructor() { this.memory = new Uint8Array(32768).fill(255); this.memory.fill(0x5A, 30720); this.options = new Uint8Array(128).fill(0xAA); this.reads = []; this.goRequested = false; this.queue = []; this.state = 'command'; this.writes = 0; this.erases = []; this.failWrite = false; }
+  constructor(profile = PROFILES.c011) { this.profile = profile; this.memory = new Uint8Array(32768).fill(255); this.memory.fill(0x5A, 30720); this.options = new Uint8Array(128).fill(0xAA); this.reads = []; this.goRequested = false; this.queue = []; this.state = 'command'; this.writes = 0; this.erases = []; this.failWrite = false; }
   async close() { this.closed = true; }
   async command(operation, values) {
-    assert.equal(values[0], 0x64);
+    assert.equal(values[0], this.profile.rom);
     if (operation === 'U') {
       const bytes = this.queue.shift(); assert.ok(bytes, 'Unexpected ROM read'); assert.equal(bytes.length, values[1]);
       return 'DATA ' + bytes.map(v => v.toString(16).padStart(2, '0')).join(' ').toUpperCase();
@@ -70,8 +75,8 @@ class ROM {
     assert.ok(bytes.length <= 32); const ack = () => this.queue.push([0x79]);
     if (this.state === 'command') {
       assert.equal(bytes[1], bytes[0] ^ 255); this.code = bytes[0]; ack();
-      if (this.code === 2) { this.queue.push([1, 4, 0x43]); ack(); }
-      else if (this.code === 0) { this.queue.push([18, 0x11, 0x11, 0x21, 0x32, 0x45, ...Array(14).fill(0)]); ack(); }
+      if (this.code === 2) { this.queue.push([1, this.profile.id >> 8, this.profile.id & 255]); ack(); }
+      else if (this.code === 0) { this.queue.push([...observedGetFrame]); ack(); }
       else this.state = this.code === 0x45 ? 'page-count' : 'address';
     } else if (this.state === 'address') {
       assert.equal(bytes.reduce((a, b) => a ^ b, 0), 0);
@@ -87,6 +92,9 @@ class ROM {
     } else if (this.code === 0x11) {
       assert.equal(bytes[1], bytes[0] ^ 255); ack();
       this.reads.push({address: this.address, count: bytes[0] + 1, beforeErase: this.erases.length === 0});
+      if (this.address === 0x1FFF75A0) {
+        this.queue.push([this.flashKiB || 32, 0]); this.state = 'command'; return 'OK';
+      }
       const optionRead = this.address >= 0x1FFF7800;
       const memory = optionRead ? this.options : this.memory;
       const offset = this.address - (optionRead ? 0x1FFF7800 : base);
@@ -282,17 +290,17 @@ class ROM {
   // Discovery exercises the real ROM protocol simulator, not an address-only
   // success stub. Scanning never sends the boot key or changes flash/options.
   class DiscoveryBridge extends ROM {
-    constructor(addresses = []) { super(); this.addresses = addresses; this.commands = []; this.ids = new Map(); this.bootWorks = true; this.romValid = true; this.romActive = addresses.includes(0x64); }
+    constructor(addresses = [], profile = PROFILES.c011) { super(profile); this.addresses = addresses; this.commands = []; this.ids = new Map(); this.bootWorks = true; this.romValid = true; this.romActive = addresses.includes(this.profile.rom); }
     async command(operation, values) {
       this.commands.push([operation, ...values]);
       if (operation === 'S') return 'SCAN' + this.addresses.map(address => ' ' + address.toString(16).toUpperCase().padStart(2, '0')).join('');
       if (operation === 'R') {
-        assert.notEqual(values[0], 0x64, 'Never send seesaw register queries to ROM');
+        assert.ok(values[0] !== 0x63 && values[0] !== 0x64, 'Never send seesaw register queries to ROM');
         return this.ids.get(values[0]) || 'DATA 55';
       }
-      if (operation === 'W' && values[0] !== 0x64) {
+      if (operation === 'W' && values[0] !== this.profile.rom) {
         assert.deepEqual(Array.from(values.slice(1)), [0, 0x7e, 0xb0, 7, 0x10, 0xad]);
-        if (this.bootWorks) { this.addresses = this.addresses.filter(address => address !== values[0]); this.addresses.push(0x64); this.romActive = true; }
+        if (this.bootWorks) { this.addresses = this.addresses.filter(address => address !== values[0]); this.addresses.push(this.profile.rom); this.romActive = true; }
         return 'OK';
       }
       if (!this.romActive || !this.romValid) throw new Error('ERR I2C 2');
@@ -335,7 +343,7 @@ class ROM {
   const impostor = new DiscoveryBridge([0x64]); impostor.romValid = false; installDiscovery(impostor);
   await vm.runInContext('scanDevices()', context);
   assert.equal(vm.runInContext('romReady', context), false);
-  assert.match(elements.get('deviceStatus').textContent, /no supported C011/);
+  assert.match(elements.get('deviceStatus').textContent, /no supported target/);
 
   const multiple = new DiscoveryBridge([0x49, 0x4a]); multiple.ids.set(0x49, 'DATA 90'); multiple.ids.set(0x4a, 'DATA 90'); installDiscovery(multiple);
   await vm.runInContext('scanDevices()', context);
@@ -380,7 +388,7 @@ class ROM {
   assert.match(elements.get('optionStatus').textContent, /^Verified:/);
   // Exercise the dialog through the same event handlers used by its buttons.
   class WizardBridge extends DiscoveryBridge {
-    constructor(addresses) { super(addresses); this.optionReplies = [optionDump, summary, ack]; this.optionCommands = []; }
+    constructor(addresses, profile = PROFILES.c011) { super(addresses, profile); this.optionReplies = [optionDump, summary, ack]; this.optionCommands = []; }
     async command(operation, values) {
       if (operation === 'O') { this.optionCommands.push(Array.from(values)); return this.optionReplies; }
       return super.command(operation, values);
@@ -486,5 +494,56 @@ class ROM {
   assert.equal(vm.runInContext('wizardStage', context), 'error');
   assert.equal(vm.runInContext('optionPending', context), true);
   assert.deepEqual(wizardFailure.optionCommands, [[0x64, 0, 1, 1], [0x64]]);
+  // C031 has its own ROM address, device ID, SRAM bound and GET frame.
+  const c031Image = image.slice();
+  new DataView(c031Image.buffer).setUint32(0, 0x20003000, true);
+  assert.throws(() => validateImage(c031Image, PROFILES.c011), /stack/);
+  assert.deepEqual(validateImage(c031Image, PROFILES.c031), c031Image);
+  vm.runInContext('bridge = null; busy = false; optionPending = false; optionStopped = false; firmware = {image: testImage};', context);
+  elements.get('target').value = 'c031'; elements.get('target').onchange();
+  assert.equal(vm.runInContext('target.name', context), 'C031');
+  assert.equal(vm.runInContext('firmware', context), null, 'Changing target invalidates the selected image');
+  const c031 = new ROM(PROFILES.c031), c031Rom = new Bootloader(c031, PROFILES.c031);
+  await c031Rom.identify(); await c031Rom.erase(c031Image.length);
+  const c031Padded = await c031Rom.program(c031Image);
+  assert.deepEqual(await c031Rom.readMemory(base, c031Padded.length), c031Padded);
+  assert.ok(c031.memory.slice(30720).every(v => v === 0x5A));
+  await c031Rom.go(); assert.equal(c031.goRequested, true);
+  const wrongId = new ROM({...PROFILES.c031, id: 0x443});
+  await assert.rejects(() => new Bootloader(wrongId, PROFILES.c031).identify(), /Wrong STM32/);
+  assert.equal(wrongId.writes, 0); assert.equal(wrongId.erases.length, 0);
+  const smallFlash = new ROM(PROFILES.c031); smallFlash.flashKiB = 16;
+  await assert.rejects(() => new Bootloader(smallFlash, PROFILES.c031).identify(), /32 KiB/);
+  assert.equal(smallFlash.writes, 0); assert.equal(smallFlash.erases.length, 0);
+  const otherFamily = new DiscoveryBridge([0x49, 0x64], PROFILES.c031);
+  otherFamily.ids.set(0x49, 'DATA 90'); installDiscovery(otherFamily);
+  await vm.runInContext('scanDevices()', context);
+  assert.equal(vm.runInContext('romReady', context), false);
+  assert.ok(otherFamily.commands.every(command => command[1] !== 0x64), 'Do not issue register reads to the other ROM address');
+  const wizard31 = new WizardBridge([0x49], PROFILES.c031);
+  wizard31.ids.set(0x49, 'DATA 91'); installDiscovery(wizard31);
+  assert.equal(elements.get('target').disabled, true);
+  elements.get('target').value = 'c011'; elements.get('target').onchange();
+  assert.equal(vm.runInContext('target.name', context), 'C031', 'Target cannot change while connected');
+  elements.get('enableBoot0').onclick();
+  await elements.get('wizardNext').onclick(); await elements.get('wizardNext').onclick();
+  assert.equal(vm.runInContext('wizardStage', context), 'write');
+  await elements.get('wizardNext').onclick();
+  assert.deepEqual(wizard31.optionCommands, [[0x63, 0, 1, 1]]);
+  wizard31.addresses = [0x63]; wizard31.romActive = true;
+  wizard31.optionReplies = [optionDump, summary, verified];
+  await elements.get('wizardNext').onclick();
+  assert.equal(vm.runInContext('wizardStage', context), 'done');
+  assert.deepEqual(wizard31.optionCommands, [[0x63, 0, 1, 1], [0x63]]);
+  await elements.get('wizardNext').onclick();
+  const write31 = new ROM(PROFILES.c031);
+  context.testDevice = write31; context.testImage = c031Image;
+  elements.get('verifyAfterFlash').checked = true;
+  vm.runInContext('bridge = testDevice; romReady = true; firmware = {image: testImage};', context);
+  await vm.runInContext('runOperation("write")', context);
+  assert.equal(write31.goRequested, true);
+  assert.ok(write31.options.every(v => v === 0xAA));
+  assert.ok(write31.memory.slice(30720).every(v => v === 0x5A));
+  assert.match(elements.get('status').textContent, /^Write verified/);
   process.stdout.write('PASS: file/firmware; boot-option framing and safety; discovery and ROM entry; guided reset/write/verify; physical BOOT0 check; dialog close/resume; read-only failure recovery.\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });
