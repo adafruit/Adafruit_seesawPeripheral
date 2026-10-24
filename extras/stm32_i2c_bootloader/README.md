@@ -21,10 +21,15 @@ Use the wiring below. Open [the uploader](https://adafruit.github.io/Adafruit_se
 in desktop Chrome or Edge. Alternatively, download `webserial.html` and open
 that standalone file locally. Ordinary HTTP LAN hosting cannot use Web Serial.
 
-1. Power-cycle the factory-blank C011 and connect the Metro's USB serial port.
-2. Drop a C011 application HEX or BIN file onto the page. BIN starts at
+1. Upload the latest Metro bridge sketch, then connect its USB serial port on
+   the page. Connecting automatically scans the I2C bus.
+2. In **Find your C011 and enter ROM**, select the detected C011 seesaw and click
+   **Boot selected C011 into ROM**. If a factory-blank or manually booted C011 is
+   already in ROM at `0x64`, the page identifies it directly and reports ready.
+   With multiple C011 seesaws, choose which one to boot; only one may be in ROM.
+3. Drop a C011 application HEX or BIN file onto the page. BIN starts at
    `0x08000000`; HEX uses absolute flash addresses and checked record checksums.
-3. Leave **Factory blank / already in ROM** selected, then click **Write**.
+   Click **Write** once step 2 reports that ROM is ready.
    **Verify after flash** is checked by default. No backup-file dialog is shown.
 4. The page identifies ROM, reads EEPROM/options for comparison, programs only
    required application pages, compares every programmed byte when verification
@@ -48,25 +53,39 @@ application. Reconnect the Metro before each operation. Write never creates a
 backup automatically; use Read first if you want one. The Python updater below
 retains its separate backup workflow.
 
-For subsequent updates, choose **Running bootloader-enabled seesaw** and enter
-its current hexadecimal I2C address. The installed firmware must retain the
+For subsequent updates, scan and select the running seesaw, then use **Boot
+selected C011 into ROM**. The installed firmware must retain the
 seesaw boot-entry command, or another existing ROM-entry method is needed.
 Factory-blank auto-entry is not a persistent bootloader-entry mechanism after
 the chip is programmed. Write reports whether application readback was verified
 and whether Go was acknowledged, not a functional test of the application.
 The Python updater's seesaw restart checks below remain separate.
 
+The bridge's `S` command scans addresses `0x08`–`0x77` using address-only probes
+and returns `SCAN` followed by responding hexadecimal addresses. The page queries
+the seesaw hardware ID at each responding address except `0x64`; only ID `0x90`
+is selectable as C011 seesaw. At `0x64` it instead checks the C011 ROM product ID
+and supported command layout, never sending seesaw register bytes to ROM.
+Unknown devices are listed but disabled. Scanning does not send a boot-entry key,
+erase flash, or write options. Boot entry is a separate explicit action and
+rechecks the selected seesaw and occupancy of `0x64` before sending the key.
+If an older Metro sketch rejects `S`, the page asks you to upload the new sketch.
+As with any shared I2C bus, duplicate addresses cannot be distinguished; keep
+only one device in ROM. A seesaw configured at `0x64` must be moved to another
+address before this guided workflow can use it.
+
 ### Browser boot-option controls
 
-Use the latest Metro bridge sketch (with the `O` command). No firmware file is
-needed. The **Boot options** section uses the bootloader entry and seesaw address
-selected above. **Read boot options / Verify pending write** displays nBOOT_SEL,
-nBOOT1, nBOOT0, BOOT_LOCK, and RDP. A query leaves the C011 in ROM and selects
-**Factory blank / already in ROM** for subsequent queries.
+Use the latest Metro bridge sketch (with the `S` and `O` commands). No firmware
+file is needed. Complete device discovery/ROM entry in step 2, then **Read boot
+options / Verify pending write** displays nBOOT_SEL, nBOOT1, nBOOT0, BOOT_LOCK,
+and RDP. A query leaves the C011 in ROM.
 
-Before **every** option write, reset or power-cycle the C011, select its current
-bootloader entry, and check the reset acknowledgement. Resetting the Metro alone
-does not count. Choose **Enable BOOT0 recovery** for `0 1 1`, or **Use normal flash
+Before **every** option write, reset or power-cycle only the C011, then click
+**I reset the C011 — scan again** in step 2. If seesaw is found, select it and
+boot it into ROM. This reset acknowledgement unlocks one option write; an ordinary
+scan does not. Resetting the Metro alone does not count. Choose **Enable BOOT0
+recovery** for `0 1 1`, or **Use normal flash
 boot** for `1 1 1`. The bridge requires RDP level 0 and BOOT_LOCK=0 and preserves
 all other defined settings. Firmware Write and the Python updater still never
 write options.
@@ -74,15 +93,17 @@ write options.
 An acknowledged write is **not verified**. Keep the Metro powered and the page
 connected so the bridge retains its expected snapshot. Other programming controls
 are disabled while verification is pending. To verify BOOT0 recovery, disconnect
-ST-Link from PA14/SWCLK, tie B0 to **3.3 V**, reset/power-cycle only the C011, select
-**Factory blank / already in ROM**, and click **Read boot options / Verify pending
-write**. Require the **Verified** result. Remove the B0 jumper and reset afterward
-to run the application. For normal flash boot, reset the C011 and select
-**Running bootloader-enabled seesaw** to re-enter ROM, if that firmware is
-installed. The page cannot drive the C011 reset pin or B0 for you.
+ST-Link from PA14/SWCLK, tie B0 to **3.3 V**, reset/power-cycle only the C011, and
+use **I reset the C011 — scan again**. Once ROM is found, click **Read boot options
+/ Verify pending write**. Require the **Verified** result. Remove the B0 jumper
+and reset afterward to run the application. For normal flash boot, reset and scan,
+then boot the detected seesaw into ROM if that firmware is installed. The Metro
+stays connected throughout discovery/entry so its pending snapshot is preserved.
+The page cannot drive the C011 reset pin or B0 for you.
 
-Errors stop further writes in that connection; readback remains available. There
-is no automatic retry. A disconnect warning protects pending verification, but
+Errors stop further writes until rediscovery and successful option readback (and
+pending-write verification, if needed); no write is retried automatically.
+A disconnect warning protects pending verification, but
 resetting the Metro or reconnecting loses its saved comparison. A plain read
 afterward is not verification of the earlier write. See the Serial Monitor
 section below for recovery precautions and the exact preservation checks.
