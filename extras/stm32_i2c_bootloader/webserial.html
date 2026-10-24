@@ -56,7 +56,7 @@ const FLASH_BASE = 0x08000000, FLASH_SIZE = 32768, PAGE_SIZE = 2048;
 const APP_SIZE = FLASH_SIZE - PAGE_SIZE, OPTIONS = 0x1fff7800, OPTION_SIZE = 128;
 const PROFILES = {
   c011: {name: 'C011', rom: 0x64, id: 0x0443, hwid: 0x90, ramEnd: 0x20001800, getLength: 20},
-  c031: {name: 'C031', rom: 0x63, id: 0x0453, hwid: 0x91, ramEnd: 0x20003000, getLength: 19}
+  c031: {name: 'C031', rom: 0x63, id: 0x0453, hwid: 0x91, ramEnd: 0x20003000, getLength: 20}
 };
 let target = PROFILES.c011;
 const ACK = 0x79, BUSY = 0x76;

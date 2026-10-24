@@ -2,7 +2,7 @@
 
 Without --image, identify the factory ROM and read the application vectors.
 With --image, back up flash, update application pages, and verify every byte.
-C011 Rev Z is bench-tested; the C031 V1.1 profile needs hardware verification.
+C011 Rev Z and C031 device 0x10016453 return the same 20-byte GET frame.
 """
 
 import argparse
@@ -14,7 +14,7 @@ import serial
 
 PROFILES = {
     "c011": {"rom": 0x64, "id": 0x0443, "hwid": 0x90, "ram_end": 0x20001800, "get_length": 20},
-    "c031": {"rom": 0x63, "id": 0x0453, "hwid": 0x91, "ram_end": 0x20003000, "get_length": 19},
+    "c031": {"rom": 0x63, "id": 0x0453, "hwid": 0x91, "ram_end": 0x20003000, "get_length": 20},
 }
 FLASH_BASE = 0x08000000
 FLASH_SIZE = 32768
@@ -123,8 +123,8 @@ class Bootloader:
         check(product == bytes([1]) + self.profile["id"].to_bytes(2, "big"),
               f"Wrong STM32 product ID for selected target: {product.hex()}")
         self.command(GET)
-        # AN4221 V1.1 frame is 19 bytes; C011 Rev Z adds one command.
-        # Read the complete frame in one transaction.
+        # Both observed C011/C031 ROMs return 18 commands at protocol 0x11.
+        # Read the complete 20-byte frame in one transaction.
         data = self.read(self.profile["get_length"])
         report(f"GET count {data[0]}, protocol 0x{data[1]:02X}; "
                f"expected count {self.profile['get_length'] - 2}")

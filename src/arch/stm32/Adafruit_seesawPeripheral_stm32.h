@@ -518,6 +518,16 @@ uint8_t firstUARTStatus() {
 uint8_t firstUARTData() { return CONFIG_UART_SERCOM.peek(); }
 #endif
 
+#if defined(ARDUINO_GENERIC_C031G6UX)
+/** @brief Read D24/PC15 for the first GPIO byte without scanning lower pins. */
+uint8_t firstGPIOByte() {
+  if (AVAILABLE_GPIO & (1UL << 24)) {
+    return (GPIOC->IDR & LL_GPIO_PIN_15) ? 1 : 0;
+  }
+  return 0;
+}
+#endif
+
 /** @brief Select a live first-byte source before a repeated START. */
 void prepareFirstByte() {
   static const uint8_t zero = 0, hardwareID = SEESAW_HW_ID;
@@ -540,8 +550,21 @@ void prepareFirstByte() {
       seesawWire.setFirstByte((const volatile uint8_t *)&temperature + 3);
     }
 #endif
-    // All supported OPTIONS and GPIO bits are below bit 24.
+    // All supported OPTIONS bits are below bit 24.
   }
+#if defined(ARDUINO_GENERIC_C031G6UX)
+  else if (selectedBase == SEESAW_GPIO_BASE) {
+    // C031 exposes PC15 as D24, in the first level/interrupt reply byte.
+    if (selectedRegister == SEESAW_GPIO_BULK) {
+      seesawWire.setFirstByte(firstGPIOByte);
+    }
+#if CONFIG_INTERRUPT
+    else if (selectedRegister == SEESAW_GPIO_INTFLAG) {
+      seesawWire.setFirstByte((const volatile uint8_t *)&g_irqFlags + 3);
+    }
+#endif
+  }
+#endif
 #if CONFIG_ADC
   else if (selectedBase == SEESAW_ADC_BASE) {
     if (selectedRegister >= SEESAW_ADC_CHANNEL_OFFSET) {

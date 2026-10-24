@@ -337,8 +337,8 @@ bool identifyROM(uint8_t address) {
   }
   romAddressI2C = family == 0x91 ? 0x63 : 0x64;
   romProductLow = family == 0x91 ? 0x53 : 0x43;
-  // AN4221 V1.1 has 17 commands (19-byte frame). C011 Rev Z has 18.
-  romGetLength = family == 0x91 ? 19 : 20;
+  // Both observed C011/C031 ROMs return 18 commands (20-byte frame).
+  romGetLength = 20;
   if (optionsPendingVerification && pendingROMAddress != romAddressI2C)
     return false;
   uint8_t response[20];

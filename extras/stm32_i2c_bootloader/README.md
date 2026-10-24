@@ -6,18 +6,19 @@ Arduino-Pico RP2040/RP2350, ESP32, or ESP8266);
 Python or the standalone Web Serial page handles ST's factory-ROM protocol.
 No BOOT0 wire is needed.
 
-Select the matching target before connecting. C011 Rev Z has been bench-tested.
-The C031 profile is prepared for bring-up, **not yet hardware-verified**:
+Select the matching target before connecting. C011 Rev Z and C031 Rev Z
+(device 0x10016453) have passed ROM application programming/readback/Go on hardware.
+C031 option writes and physical BOOT0 recovery remain unverified:
 
 | Target | Seesaw ID | ROM address / device ID | SRAM | GET data frame |
 | --- | --- | --- | --- | --- |
 | C011F6 | 0x90 | 0x64 / 0x0443 | 6 KiB | 20 bytes, 18 commands (observed Rev Z) |
-| C031G6 | 0x91 | 0x63 / 0x0453 | 12 KiB | 19 bytes, 17 commands (AN4221 V1.1) |
+| C031G6 | 0x91 | 0x63 / 0x0453 | 12 KiB | 20 bytes, 18 commands (observed device 0x10016453) |
 
 Both use 32 KiB flash, 2 KiB pages, a 30 KiB application limit and the
 128-byte option area at 0x1FFF7800. Device ID and command-layout checks fail
 closed before erase/write if the connected ROM differs. C031's exact GET
-frame and option-write behavior must be confirmed on the first board.
+frame was confirmed on device 0x10016453; option-write behavior still needs verification.
 [AN2606 section 6](https://www.st.com/resource/en/application_note/cd00167594-stm32-microcontroller-system-memory-boot-mode-stmicroelectronics.pdf)
 lists C031 ROM V5.2 (distinct from its I2C protocol version), address 0x63,
 and external pull-ups on PB6/PB7.
@@ -78,7 +79,7 @@ backup automatically; use Read first if you want one. The Python updater below
 retains its separate backup workflow.
 
 For subsequent updates, scan and select the running seesaw, then use **Boot
-selected C011 into ROM**. The installed firmware must retain the
+selected STM32 into ROM**. The installed firmware must retain the
 seesaw boot-entry command, or another existing ROM-entry method is needed.
 Factory-blank auto-entry is not a persistent bootloader-entry mechanism after
 the chip is programmed. Write reports whether application readback was verified

@@ -88,6 +88,16 @@ void loop() {
     return;
   }
 
+  // PC15 is GPIO bit 24, in the first reply byte. Check both HIGH and LOW
+  // readback; visual confirmation is still needed to prove the LED lights.
+  if (ss.digitalRead(ledPin) != ledState || Wire.getWireTimeoutFlag()) {
+    Serial.print(F("LED GPIO readback mismatch; stopping this blink.\n\r"));
+    ss.digitalWrite(ledPin, LOW);
+    reportOffline();
+    delay(500);
+    return;
+  }
+
   if (!online) {
     online = true;
     connectionCount++;

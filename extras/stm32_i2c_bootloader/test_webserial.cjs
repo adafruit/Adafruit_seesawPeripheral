@@ -27,6 +27,11 @@ const context = vm.createContext({
 });
 vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], context);
 const {parseHex, validateImage, Bootloader, SerialBridge, PROFILES} = vm.runInContext('({parseHex, validateImage, Bootloader, SerialBridge, PROFILES})', context);
+assert.equal(PROFILES.c011.getLength, 20);
+assert.equal(PROFILES.c031.getLength, 20);
+// Captured from C031 device 0x10016453; do not derive this from the profile.
+const observedGetFrame = [0x12, 0x11, 0x00, 0x01, 0x02, 0x11, 0x21, 0x31,
+  0x44, 0x63, 0x73, 0x82, 0x92, 0x32, 0x45, 0x64, 0x74, 0x83, 0x93, 0xA1];
 const base = 0x08000000;
 const image = new Uint8Array(57).fill(0x55);
 new DataView(image.buffer).setUint32(0, 0x20001800, true);
@@ -71,7 +76,7 @@ class ROM {
     if (this.state === 'command') {
       assert.equal(bytes[1], bytes[0] ^ 255); this.code = bytes[0]; ack();
       if (this.code === 2) { this.queue.push([1, this.profile.id >> 8, this.profile.id & 255]); ack(); }
-      else if (this.code === 0) { this.queue.push([this.profile.getLength - 2, 0x11, 0x11, 0x21, 0x32, 0x45, ...Array(this.profile.getLength - 6).fill(0)]); ack(); }
+      else if (this.code === 0) { this.queue.push([...observedGetFrame]); ack(); }
       else this.state = this.code === 0x45 ? 'page-count' : 'address';
     } else if (this.state === 'address') {
       assert.equal(bytes.reduce((a, b) => a ^ b, 0), 0);

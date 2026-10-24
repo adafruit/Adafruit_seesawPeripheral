@@ -71,7 +71,58 @@ Test one pin from each group at a time.
     seesaw software reset. The guided BOOT0 option write/readback is a separate
     test: disconnect SWCLK, use B0 = 3.3 V during reset, and require VERIFIED.
 
-Record the MCU/ROM revision and actual measurements. The C031 ROM profile
-currently expects AN4221 V1.1's 19-byte GET data frame; a different response
-stops before any erase/write. C031 flashing, option writes, BOOT0 entry, GPIO
-voltages/waveforms, and all peripheral functions still need physical verification.
+## Hardware results — 2026-10-24
+
+Tested STM32C031G6U6, 32 KiB flash, DBGMCU ID 0x10016453 (Rev Z), using
+STM32duino 3.0.0, a classic Nano on the level-shifted QT bus, and Jumperless.
+The C031 ROM at 0x63 reports ID 0x0453 and protocol 0x11. Its observed GET
+data is `12110001021121314463738292324564748393a1`: 20 bytes, not the
+provisional 19-byte frame. The uploader now requires that observed framing.
+
+- All 20 exposed GPIO inputs/outputs and internal pulls passed electrical checks.
+- All 13 ADC inputs passed five voltage points from 0.2 to 3.0 V; the largest
+  observed error against the bench reference was under 0.015 V. This is a bench
+  comparison, not a calibrated accuracy specification.
+- All 19 header PWM pins passed 200 Hz at 25%/75% and 500 Hz at 50%, measured
+  with the existing coarse edge sampler (8% frequency, 10 percentage-point duty limits).
+- 3,600 register reads passed at 100/400 kHz with delayed, immediate, and
+  repeated-start reads; independent 10 MS/s captures decoded correctly.
+  The LED test exposed a first-reply-byte bug that hid GPIO bit 24. After the
+  fix, 4,800 status/GPIO reads passed those same modes while toggling D24;
+  the captures confirmed the nonzero first byte on the wire.
+  D24 interrupt flags also passed all six bus/read modes, with the interrupt
+  pin asserting and releasing correctly on flag reads.
+- GPIO interrupts and four encoders passed independent and simultaneous
+  direction/count/interrupt tests. The older bench needed its interrupt-enable
+  payload byte restored and stale deltas drained before each interrupt test.
+- EEPROM software-reset and hardware-NRST persistence, address change/restore,
+  and full reserved-page restoration passed. PWM also passed with EEPROM and
+  four encoders enabled.
+- SPI passed all four modes and both bit orders at two requested clock rates,
+  independent byte decoding, a 4,736-byte held-CS transfer, and error recovery.
+  The Arduino SPI host passed 0/1/29/30/58/96-byte chunk-boundary tests.
+- UART binary TX/RX and receive interrupts passed at 9,600 and 115,200 baud.
+  The UART example's two address straps passed all four combinations.
+- Spectrum sampling placed 500/1,000/2,000 Hz test tones in the expected bins
+  at two sampling rates, including upper-half bins and rate clamping.
+- The default PID 6540 image passed Arduino host GPIO, 10-bit ADC normalization,
+  and 8-/16-bit PWM checks. Its UID matched SWD readout; temperature was about
+  35 degrees C. The 50 Hz servo test measured 1/1.5/2 ms pulses within 0.15 ms.
+  LED pin readback and NeoPixel command handling passed, without optical proof.
+- ROM application erase/write/readback/Go and seesaw software reset passed,
+  including entry from running seesaw and preservation of a nonblank EEPROM
+  marker. After restoring the marker, the full EEPROM and option areas matched
+  their initial backups. The bridge's C031 option query also passed.
+
+Peripheral tests used separate feature-specific firmware images. Only the
+default and GPIO hand-test images are included in the download; both fit below
+the EEPROM boundary. Generic examples compiled with the core's full 32 KiB
+limit are compile checks, not EEPROM-safe updater images. Some exceed 30 KiB
+and must be reduced and size-checked before programming.
+
+Still requires physical verification: cold power cycling without back-powering,
+NeoPixel waveform/color, onboard LED light output, and physical BOOT0 entry plus
+option-write/readback. Disconnect ST-Link SWCLK before strapping B0 to 3.3 V.
+No boot options or protection settings were changed during these tests.
+Browser protocol tests passed in simulation; a live browser Web Serial session
+was not exercised on this board.
