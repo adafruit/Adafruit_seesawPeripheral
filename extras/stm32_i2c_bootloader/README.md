@@ -85,25 +85,36 @@ file is needed. Complete device discovery/ROM entry in step 2, then **Read boot
 options / Verify pending write** displays nBOOT_SEL, nBOOT1, nBOOT0, BOOT_LOCK,
 and RDP. A query leaves the C011 in ROM.
 
-Before **every** option write, reset or power-cycle only the C011, then click
-**I reset the C011 — scan again** in step 2. If seesaw is found, select it and
-boot it into ROM. This reset acknowledgement unlocks one option write; an ordinary
-scan does not. Resetting the bridge alone does not count. Choose **Enable BOOT0
-recovery** for `0 1 1`, or **Use normal flash
-boot** for `1 1 1`. The bridge requires RDP level 0 and BOOT_LOCK=0 and preserves
-all other defined settings. Firmware Write and the Python updater still never
-write options.
+Choose **Enable BOOT0 recovery** for `0 1 1`, or **Use normal flash boot** for
+`1 1 1`. Both open a guided dialog; you do not need to return to the discovery
+section. The guide keeps the reset instructions, device selection, option write,
+and readback in one place:
+
+1. Briefly touch **STM32 RST to GND**, then release it. Click **I've reset it —
+   continue**. The guide scans and, if needed, lets you select a C011 and boot it
+   into ROM. Nothing has been written yet.
+2. Click **Enable BOOT0** (or **Set normal flash boot**) to make the change.
+3. Follow the dialog's wiring/reset instructions and continue to verify.
+4. After the check passes, remove any B0 jumper and reset the STM32 to return to
+   the application. Click **Done**.
+
+Before **every** option write, the guide requires this target-reset
+acknowledgement. An ordinary **Scan**, or resetting only the bridge, does not
+count. The bridge requires RDP level 0 and BOOT_LOCK=0 and preserves all other
+defined settings. Firmware Write and the Python updater still never write options.
 
 An acknowledged write is **not verified**. Keep the bridge powered and the page
 connected so the bridge retains its expected snapshot. Other programming controls
 are disabled while verification is pending. To verify BOOT0 recovery, disconnect
-ST-Link from PA14/SWCLK, tie B0 to **3.3 V**, reset/power-cycle only the C011, and
-use **I reset the C011 — scan again**. Once ROM is found, click **Read boot options
-/ Verify pending write**. Require the **Verified** result. Remove the B0 jumper
-and reset afterward to run the application. For normal flash boot, reset and scan,
-then boot the detected seesaw into ROM if that firmware is installed. The bridge
-stays connected throughout discovery/entry so its pending snapshot is preserved.
-The page cannot drive the C011 reset pin or B0 for you.
+ST-Link from PA14/SWCLK, tie B0 to **3.3 V** (never 5 V), then briefly touch
+**STM32 RST to GND** and release it. The dialog shows these instructions at the
+right moment. Continuing scans for ROM and reads the options automatically;
+require the **Verified** result. This BOOT0 check does not substitute software
+boot entry if the physical strap fails. For normal flash boot, the dialog can
+boot the detected seesaw into ROM before readback if that firmware is installed.
+The bridge stays connected throughout so its pending snapshot is preserved.
+The page cannot drive the C011 reset pin or B0 for you. Closing a pending guide
+warns without disconnecting; **Continue boot-option guide** reopens it.
 
 Errors stop further writes until rediscovery and successful option readback (and
 pending-write verification, if needed); no write is retried automatically.

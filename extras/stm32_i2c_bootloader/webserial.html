@@ -5,6 +5,7 @@
 <title>Adafruit C011 firmware uploader</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#11171c;color:#edf3f5}*{box-sizing:border-box}body{max-width:850px;margin:48px auto;padding:0 22px}h1{font-size:2.2rem;margin-bottom:10px}h2{font-size:1.2rem}p,li{line-height:1.6;color:#bacbd4}a{color:#68dccc}.badge{color:#68dccc;letter-spacing:.12em;font-size:.8rem;font-weight:700}.card{background:#1b252d;border:1px solid #384954;border-radius:14px;padding:22px;margin:20px 0}button,.download{font:inherit;border:0;border-radius:8px;padding:12px 18px;background:#68dccc;color:#112626;font-weight:650;cursor:pointer;display:inline-block;text-decoration:none}button:disabled{opacity:.4;cursor:not-allowed}button.secondary{background:#344651;color:white}select,input{font:inherit;padding:8px;border:1px solid #687b88;border-radius:6px;background:#11171c;color:white}label{display:block;margin:14px 0}#drop{border:2px dashed #64828e;padding:30px 18px;text-align:center;border-radius:12px}#drop.over{border-color:#68dccc;background:#203b3e}#file{max-width:100%}#filename{overflow-wrap:anywhere}#log{white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;font:13px/1.6 ui-monospace,monospace}progress{width:100%;accent-color:#68dccc;height:14px}.warning{color:#ffcc89}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}small{color:#bacbd4}.hidden{display:none!important}
+dialog{width:min(560px,calc(100% - 32px));max-height:90vh;overflow:auto;background:#1b252d;color:#edf3f5;border:1px solid #64828e;border-radius:16px;padding:28px}dialog::backdrop{background:#080d12cc}dialog h2{font-size:1.5rem;margin-top:10px}#wizardText{white-space:pre-line}#wizardStatus{overflow-wrap:anywhere}dialog .row{margin-top:22px}
 </style>
 <header><div class="badge">ADAFRUIT · SEESAW PERIPHERAL</div><h1>C011 firmware uploader</h1><p>USB → Arduino bridge → I²C → STM32C011F6. Write firmware, read a backup, or verify a file against flash. Files stay on your computer.</p></header>
 <section class="card"><h2>1. Prepare your USB bridge and board</h2><ol>
@@ -15,11 +16,10 @@
 <p id="compat" class="warning"></p><button id="connect">Connect bridge</button> <span id="connection">Not connected</span></section>
 <section class="card"><h2>2. Find your C011 and enter ROM</h2>
 <p>Connecting scans the I²C bus. The page checks responding devices for the C011 seesaw hardware ID, and checks 0x64 for the C011 ROM protocol. Unknown devices cannot be programmed.</p>
-<div class="row"><button id="scan" class="secondary" disabled>Scan I²C bus</button><button id="resetScan" class="secondary" disabled>I reset the C011 — scan again</button></div>
+<button id="scan" class="secondary" disabled>Scan</button>
 <label>Device <select id="device" disabled><option value="">Connect bridge to find devices</option></select></label>
 <button id="bootRom" disabled>Boot selected C011 into ROM</button>
 <p id="deviceStatus" role="status" aria-live="polite">First connect your bridge. Use the latest bridge sketch with scan support.</p>
-<p class="warning">Before each boot-option write, reset or power-cycle <strong>only the C011</strong>, then click <strong>I reset the C011 — scan again</strong>. If it is found running seesaw, select it and click <strong>Boot selected C011 into ROM</strong>. Keep the bridge connected during pending verification.</p>
 </section>
 <section class="card"><h2>3. Firmware (optional)</h2><div id="drop"><p>Drop one STM32 application <strong>.hex</strong> or <strong>.bin</strong> here</p><input id="file" type="file" accept=".hex,.bin" aria-label="Choose firmware"></div><p id="filename">No file selected.</p>
 <small>BIN starts at 0x08000000. HEX must use absolute STM32 flash addresses. AVR/bridge HEX files, full-flash dumps, and option-byte records are rejected.</small>
@@ -29,15 +29,24 @@
 <p><small>Write programs the selected file. Read downloads all 32 KiB, including EEPROM; no input file is needed. Verify compares the selected file without programming.</small></p>
 <p id="status" role="status" aria-live="polite">Ready when you are.</p><progress id="progress" value="0" max="1" aria-label="Upload progress"></progress></section>
 <section class="card"><h2>4. Boot options (optional)</h2>
-<p>First complete step 2 so the selected C011 is in ROM. No firmware file is needed.</p>
+<p>Enable BOOT0 recovery opens a step-by-step guide, including reset, device selection, and verification. No firmware file or trips back to step 2 are needed.</p>
 <p id="bootOptions" role="status" aria-live="polite">Boot options have not been read.</p>
 <button id="readOptions" class="secondary" disabled>Read boot options / Verify pending write</button>
-<p class="warning">Option writes unlock after the reset-and-scan step above. Keep power stable; an interrupted option write may require ST-Link recovery. Protection and other defined settings are preserved.</p>
+<p class="warning">Keep power stable; an interrupted option write may require ST-Link recovery. Protection and other defined settings are preserved.</p>
 <div class="row"><button id="enableBoot0" disabled>Enable BOOT0 recovery</button><button id="flashBoot" class="secondary" disabled>Use normal flash boot</button></div>
+<button id="resumeOptions" class="secondary hidden">Continue boot-option guide</button>
 <p><small>Enable BOOT0: nBOOT_SEL=0, nBOOT1=1, nBOOT0=1 (B0 low = application, high = ROM). Normal flash: all three bits = 1 (B0 ignored). RDP must be AA and BOOT_LOCK must be 0; neither is changed.</small></p>
 <p id="optionStatus">After a write, keep this tab connected and the bridge powered until readback verification passes. Disconnect ST-Link from PA14/SWCLK before connecting B0 to 3.3 V. Never use 5 V on B0.</p>
 </section>
 <section class="card"><h2>Activity</h2><pre id="log" aria-label="Activity log"></pre></section>
+<dialog id="bootWizard" aria-labelledby="wizardTitle" aria-describedby="wizardText">
+<div id="wizardStep" class="badge"></div><h2 id="wizardTitle"></h2>
+<p id="wizardText"></p>
+<label id="wizardDeviceLabel" class="hidden">Device <select id="wizardDevice"></select></label>
+<p id="wizardStatus" role="status" aria-live="polite"></p>
+<p><small>Keep the USB bridge plugged in and this tab connected. Reset only the STM32, not the bridge.</small></p>
+<div class="row"><button id="wizardNext" autofocus>Continue</button><button id="wizardScan" class="secondary hidden">Scan</button><button id="wizardClose" class="secondary">Close</button></div>
+</dialog>
 <script>
 'use strict';
 // ST AN4221 packet encodings; kept in step with i2c_bootloader.py.
@@ -228,6 +237,7 @@ class Bootloader {
 let bridge = null, firmware = null, busy = false, readoutURL = null;
 let optionPending = false, optionStopped = false;
 let devices = [], romReady = false, targetResetConfirmed = false;
+let wizardMode = 'boot0', wizardStage = 'reset', wizardMessage = '', wizardReading = false;
 const supported = window.isSecureContext && 'serial' in navigator;
 function log(message) { $('log').textContent += message + '\n'; $('log').scrollTop = $('log').scrollHeight; }
 function status(message, fraction = 0) { $('status').textContent = message; $('progress').value = fraction; }
@@ -235,13 +245,16 @@ function controls() {
   $('write').disabled = $('verify').disabled = busy || !romReady || optionPending || optionStopped || !bridge || !firmware;
   $('read').disabled = busy || !romReady || optionPending || optionStopped || !bridge;
   $('readOptions').disabled = busy || !romReady || !bridge;
-  $('enableBoot0').disabled = $('flashBoot').disabled = busy || !romReady || !bridge || optionPending || optionStopped || !targetResetConfirmed;
-  $('scan').disabled = $('resetScan').disabled = busy || !bridge;
+  $('enableBoot0').disabled = $('flashBoot').disabled = busy || !bridge || optionPending || optionStopped;
+  $('scan').disabled = busy || !bridge;
+  $('resumeOptions').classList.toggle('hidden', !optionPending && !optionStopped);
+  $('resumeOptions').disabled = busy || !bridge;
   $('device').disabled = busy || !bridge || !devices.length;
   const selected = devices.find(device => String(device.address) === $('device').value);
   $('bootRom').disabled = busy || !bridge || !selected || selected.kind !== 'seesaw' || devices.some(device => device.address === ROM_ADDRESS);
   for (const id of ['connect', 'file', 'verifyAfterFlash']) $(id).disabled = busy;
   $('connect').disabled = busy || !supported;
+  if ($('bootWizard').open) renderWizard();
 }
 function selectDevice() {
   const selected = devices.find(device => String(device.address) === $('device').value);
@@ -355,7 +368,7 @@ async function connect() {
     bridge = candidate; $('connection').textContent = 'bridge serial port open'; $('connect').textContent = 'Disconnect';
     $('optionStatus').textContent = optionPending
       ? 'Previous option write was not verified. Reconnecting may reset the bridge and lose its snapshot. Read options before proceeding; require VERIFIED for the earlier write.'
-      : 'Read the current boot options, or reset the C011 before choosing an option write.';
+      : 'Read the current boot options, or open a boot-option guide.';
     optionPending = false; optionStopped = false; targetResetConfirmed = false;
     $('bootOptions').textContent = 'Boot options have not been read in this connection.';
     log('Serial connected at 115200 baud. No target writes yet.');
@@ -454,11 +467,9 @@ async function runBootOptions(mode = 'read') {
     const unchanged = replies.includes('OK boot options already match; no write');
     if (writing && !unchanged) {
       check(replies.includes('ACK option write; readback still required'), 'Option write was not acknowledged. Do not retry.');
-      $('optionStatus').textContent = mode === 'boot0'
-        ? 'Write acknowledged, NOT verified. Keep bridge connected. Disconnect ST-Link from PA14/SWCLK, tie B0 to 3.3 V, and reset/power-cycle only the C011. In step 2 click I reset the C011 — scan again, then Read boot options to verify. Remove the B0 jumper and reset afterward to run the application.'
-        : 'Write acknowledged, NOT verified. Keep bridge connected. Reset/power-cycle only the C011, then use the reset-and-scan button in step 2. If seesaw is found, select it and Boot into ROM. Then Read boot options to verify.';
+      $('optionStatus').textContent = 'Write acknowledged, NOT verified. Keep bridge connected and continue the boot-option guide to reset the STM32 and verify.';
       devices = []; romReady = false; showDevices();
-      $('deviceStatus').textContent = 'Option write awaiting verification. Follow the reset instructions in step 4, then use the reset-and-scan button here.';
+      $('deviceStatus').textContent = 'Option write awaiting verification. Continue the boot-option guide.';
     } else {
       check(!optionPending || unchanged || verified, 'Pending write was not verified; the bridge may have reset and lost its snapshot.');
       optionPending = false;
@@ -466,25 +477,138 @@ async function runBootOptions(mode = 'read') {
       $('optionStatus').textContent = verified
         ? 'Verified: boot options and all other defined settings match; complements valid. Reset the C011 before another option write.'
         : unchanged ? 'Boot options already match; no write was needed.'
-        : 'Options read; no option write. To change options, reset only the C011 and use the reset-and-scan button in step 2 first.';
+        : 'Options read; no option write. Choose a boot-option guide to change these settings.';
     }
+    return {pending: optionPending, verified, unchanged};
   } catch (error) {
     if (sent) { optionStopped = true; romReady = false; devices = []; showDevices(); }
-    $('optionStatus').textContent = error.message + ' Stopped; no automatic retry. Keep bridge connected. Reset only the C011 and scan in step 2 to find its current state before reading back a pending write.';
+    $('optionStatus').textContent = error.message + ' Stopped; no automatic retry. Keep bridge connected and continue the boot-option guide for readback.';
     log($('optionStatus').textContent);
   } finally { busy = false; controls(); }
 }
+function renderWizard() {
+  const selecting = wizardStage === 'select';
+  const selected = devices.find(device => String(device.address) === $('device').value);
+  let step = 1, title = 'Reset the STM32', text = 'Briefly touch the STM32 RST pin to GND, then remove the connection. Do not leave RST grounded.\n\nThen continue to find the chip. Nothing will be written yet.', action = "I've reset it — continue";
+  if (selecting) {
+    step = wizardReading ? 3 : 1; title = 'Find your STM32';
+    text = 'Select the C011 below. Boot into ROM puts it in programming mode; it does not write firmware or boot options.';
+    action = romReady ? 'Continue' : 'Boot into ROM';
+  } else if (wizardStage === 'write') {
+    step = 2; title = wizardMode === 'boot0' ? 'Enable BOOT0 recovery' : 'Use normal flash boot';
+    text = wizardMode === 'boot0'
+      ? 'The C011 is ready in ROM. Enable BOOT0 so B0 low starts the application and B0 high enters ROM.\n\nThe next button changes only the three boot-selection bits. Keep power stable.'
+      : 'The C011 is ready in ROM. Select normal flash boot so the application starts regardless of B0.\n\nThe next button changes only the three boot-selection bits. Keep power stable.';
+    action = wizardMode === 'boot0' ? 'Enable BOOT0' : 'Set normal flash boot';
+  } else if (wizardStage === 'verifyReset') {
+    step = 3; title = wizardMode === 'boot0' ? 'Connect B0, then reset' : 'Reset to verify';
+    text = wizardMode === 'boot0'
+      ? '1. Disconnect ST-Link from PA14/SWCLK (shared with B0).\n2. Connect B0 to 3.3 V — never 5 V. Leave that jumper connected.\n3. Briefly touch STM32 RST to GND, then release it.\n\nContinue to find ROM and read back the saved settings. The write is not verified yet.'
+      : 'Briefly touch STM32 RST to GND, then release it.\n\nContinue to find the chip and verify the saved settings. If seesaw starts, the guide will help you enter ROM again.';
+  } else if (wizardStage === 'recoverReset') {
+    step = 3; title = 'Reset for readback';
+    text += '\n\nThis is a read-only recovery check; it will not repeat the option write. If needed, use your existing BOOT0 wiring to enter ROM.';
+  } else if (wizardStage === 'error') {
+    step = 3; title = 'Stopped — check the result';
+    text = 'No automatic write retry was made. Keep the bridge connected so its saved comparison is retained. You can reset the STM32 and check the options without writing again.';
+    action = 'Reset and check options';
+  } else if (wizardStage === 'done') {
+    step = 4; title = 'Boot-option check complete';
+    text = 'Remove any B0-to-3.3 V jumper, then briefly touch STM32 RST to GND and release it to return to the application.\n\nClick Done when you have finished. Application startup is not checked by this guide.';
+    action = 'Done';
+  }
+  $('wizardStep').textContent = `STEP ${step} OF 4`;
+  $('wizardTitle').textContent = title; $('wizardText').textContent = text;
+  $('wizardStatus').textContent = busy ? 'Working… Keep the bridge connected.' : wizardMessage;
+  $('wizardNext').textContent = action;
+  $('wizardNext').disabled = busy || (selecting && (!selected || selected.kind === 'unknown' || (selected.kind === 'seesaw' && devices.some(device => device.address === ROM_ADDRESS))));
+  $('wizardDeviceLabel').classList.toggle('hidden', !selecting);
+  $('wizardScan').classList.toggle('hidden', !selecting);
+  $('wizardDevice').innerHTML = $('device').innerHTML;
+  $('wizardDevice').value = $('device').value;
+  $('wizardDevice').disabled = $('wizardScan').disabled = $('wizardClose').disabled = busy;
+}
+function openWizard(mode) {
+  if (busy || !bridge) return;
+  if (mode) {
+    if (optionPending || optionStopped) return;
+    wizardMode = mode; wizardStage = 'reset'; wizardReading = false; wizardMessage = '';
+    targetResetConfirmed = false;
+  } else if (optionStopped) wizardStage = 'error';
+  $('bootWizard').showModal(); renderWizard();
+}
+function closeWizard() {
+  if (busy) return;
+  if (optionPending && !window.confirm('Verification is still pending. Close the guide for now? Keep the bridge connected and use Continue boot-option guide to resume.')) return;
+  // The guide asks for physical resets. Do not leave a stale ROM selection
+  // enabled on the main page when the user closes it.
+  devices = []; romReady = false; targetResetConfirmed = false; showDevices();
+  $('bootWizard').close(); controls();
+}
+async function wizardReadOptions() {
+  const result = await runBootOptions();
+  wizardMessage = $('optionStatus').textContent;
+  wizardStage = result && !result.pending ? 'done' : 'error';
+}
+async function wizardFindDevice() {
+  if (busy || !bridge) return;
+  await scanDevices(true);
+  wizardMessage = $('deviceStatus').textContent;
+  // BOOT0 verification must actually find ROM after the physical reset, not
+  // disguise a failed strap test by booting the application into ROM in software.
+  if (wizardStage === 'verifyReset' && wizardMode === 'boot0') {
+    if (devices.some(device => device.kind === 'rom')) {
+      $('device').value = String(ROM_ADDRESS); selectDevice();
+    }
+    if (romReady) await wizardReadOptions();
+    else wizardMessage += ' Check the B0 jumper and reset the STM32 again, then continue.';
+  } else if (romReady) {
+    if (wizardReading) await wizardReadOptions();
+    else { wizardStage = 'write'; wizardMessage = ''; }
+  } else wizardStage = 'select';
+  renderWizard();
+}
+async function wizardNext() {
+  if (busy || !bridge) return;
+  if (['reset', 'verifyReset', 'recoverReset'].includes(wizardStage)) {
+    wizardReading = wizardStage !== 'reset';
+    await wizardFindDevice();
+  } else if (wizardStage === 'select') {
+    if (!romReady) await bootIntoROM();
+    wizardMessage = $('deviceStatus').textContent;
+    if (romReady) {
+      if (wizardReading) await wizardReadOptions();
+      else { wizardStage = 'write'; wizardMessage = ''; }
+    }
+  } else if (wizardStage === 'write') {
+    const result = await runBootOptions(wizardMode);
+    wizardMessage = $('optionStatus').textContent;
+    wizardStage = !result ? 'error' : result.pending ? 'verifyReset' : 'done';
+  } else if (wizardStage === 'error') {
+    wizardStage = 'recoverReset'; wizardReading = true;
+  } else if (wizardStage === 'done') {
+    closeWizard();
+    $('deviceStatus').textContent = 'Click Scan when you need to use the STM32 again.';
+    return;
+  }
+  renderWizard();
+}
 $('connect').onclick = connect;
 $('scan').onclick = () => scanDevices();
-$('resetScan').onclick = () => scanDevices(true);
 $('device').onchange = selectDevice;
 $('bootRom').onclick = bootIntoROM;
 $('write').onclick = () => runOperation('write');
 $('read').onclick = () => runOperation('read');
 $('verify').onclick = () => runOperation('verify');
 $('readOptions').onclick = () => runBootOptions();
-$('enableBoot0').onclick = () => runBootOptions('boot0');
-$('flashBoot').onclick = () => runBootOptions('flash');
+$('enableBoot0').onclick = () => openWizard('boot0');
+$('flashBoot').onclick = () => openWizard('flash');
+$('resumeOptions').onclick = () => openWizard();
+$('wizardNext').onclick = wizardNext;
+$('wizardScan').onclick = wizardFindDevice;
+$('wizardDevice').onchange = () => { $('device').value = $('wizardDevice').value; selectDevice(); wizardMessage = $('deviceStatus').textContent; renderWizard(); };
+$('wizardClose').onclick = closeWizard;
+$('bootWizard').addEventListener('cancel', event => { event.preventDefault(); closeWizard(); });
 $('file').onchange = event => chooseFile(event.target.files[0]);
 for (const name of ['dragover', 'dragleave', 'drop']) $('drop').addEventListener(name, event => {
   event.preventDefault(); $('drop').classList.toggle('over', name === 'dragover' && !busy);
