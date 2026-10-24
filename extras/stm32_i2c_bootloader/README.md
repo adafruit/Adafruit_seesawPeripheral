@@ -1,7 +1,8 @@
 # STM32C011 I2C bootloading demo
 
 This demo updates a **STM32C011F6 seesaw** over its existing I2C connection.
-A classic Arduino Nano, Uno, or Adafruit Metro Mini bridges USB serial to I2C;
+An Arduino-compatible host bridges USB serial to I2C (classic AVR,
+Arduino-Pico RP2040/RP2350, ESP32, or ESP8266);
 Python or the standalone Web Serial page handles ST's factory-ROM protocol.
 No BOOT0 wire is needed.
 
@@ -11,17 +12,20 @@ flash sizes, and command behavior differ. The Python updater requires seesaw
 firmware with `CONFIG_BOOTLOADER` enabled and the `B0 07 10 AD` entry key.
 The browser uploader also supports factory-blank chips already in ROM.
 
-## Metro 328 + Web Serial (HEX or BIN)
+## Arduino bridge + Web Serial (HEX or BIN)
 
 Open **File > Examples > Adafruit seesaw Peripheral > serial_i2c_bridge** in
 the Arduino IDE, or open `examples/serial_i2c_bridge/serial_i2c_bridge.ino` in
-this repository. Upload it to the Metro 328 using the Arduino Uno board
-selection (`arduino:avr:uno`), then close Serial Monitor.
+this repository. Select the host board in Arduino and upload the sketch; use
+Arduino Uno (`arduino:avr:uno`) for Metro 328/Metro Mini. For native-USB ESP32
+boards, enable **USB CDC On Boot** when using that USB connector, then close
+Serial Monitor. No `while (!Serial)` gate is needed: the bridge processes
+commands whenever its USB serial connection is opened.
 Use the wiring below. Open [the uploader](https://adafruit.github.io/Adafruit_seesawPeripheral/bootloader/)
 in desktop Chrome or Edge. Alternatively, download `webserial.html` and open
 that standalone file locally. Ordinary HTTP LAN hosting cannot use Web Serial.
 
-1. Upload the latest Metro bridge sketch, then connect its USB serial port on
+1. Upload the latest bridge sketch, then connect its USB serial port on
    the page. Connecting automatically scans the I2C bus.
 2. In **Find your C011 and enter ROM**, select the detected C011 seesaw and click
    **Boot selected C011 into ROM**. If a factory-blank or manually booted C011 is
@@ -49,7 +53,7 @@ use **Save readout**. This full-flash backup is not an application input for Wri
 **Verify** compares the selected firmware and its doubleword padding with flash
 without erasing or programming it, regardless of the Verify after flash checkbox.
 Read and Verify do not send Go; power-cycle afterward to return to an existing
-application. Reconnect the Metro before each operation. Write never creates a
+application. Reconnect the bridge before each operation. Write never creates a
 backup automatically; use Read first if you want one. The Python updater below
 retains its separate backup workflow.
 
@@ -69,42 +73,54 @@ and supported command layout, never sending seesaw register bytes to ROM.
 Unknown devices are listed but disabled. Scanning does not send a boot-entry key,
 erase flash, or write options. Boot entry is a separate explicit action and
 rechecks the selected seesaw and occupancy of `0x64` before sending the key.
-If an older Metro sketch rejects `S`, the page asks you to upload the new sketch.
+If an older bridge sketch rejects `S`, the page asks you to upload the new sketch.
 As with any shared I2C bus, duplicate addresses cannot be distinguished; keep
 only one device in ROM. A seesaw configured at `0x64` must be moved to another
 address before this guided workflow can use it.
 
 ### Browser boot-option controls
 
-Use the latest Metro bridge sketch (with the `S` and `O` commands). No firmware
+Use the latest bridge sketch (with the `S` and `O` commands). No firmware
 file is needed. Complete device discovery/ROM entry in step 2, then **Read boot
 options / Verify pending write** displays nBOOT_SEL, nBOOT1, nBOOT0, BOOT_LOCK,
 and RDP. A query leaves the C011 in ROM.
 
-Before **every** option write, reset or power-cycle only the C011, then click
-**I reset the C011 — scan again** in step 2. If seesaw is found, select it and
-boot it into ROM. This reset acknowledgement unlocks one option write; an ordinary
-scan does not. Resetting the Metro alone does not count. Choose **Enable BOOT0
-recovery** for `0 1 1`, or **Use normal flash
-boot** for `1 1 1`. The bridge requires RDP level 0 and BOOT_LOCK=0 and preserves
-all other defined settings. Firmware Write and the Python updater still never
-write options.
+Choose **Enable BOOT0 recovery** for `0 1 1`, or **Use normal flash boot** for
+`1 1 1`. Both open a guided dialog; you do not need to return to the discovery
+section. The guide keeps the reset instructions, device selection, option write,
+and readback in one place:
 
-An acknowledged write is **not verified**. Keep the Metro powered and the page
+1. Briefly touch **STM32 RST to GND**, then release it. Click **I've reset it —
+   continue**. The guide scans and, if needed, lets you select a C011 and boot it
+   into ROM. Nothing has been written yet.
+2. Click **Enable BOOT0** (or **Set normal flash boot**) to make the change.
+3. Follow the dialog's wiring/reset instructions and continue to verify.
+4. After the check passes, remove any B0 jumper and reset the STM32 to return to
+   the application. Click **Done**.
+
+Before **every** option write, the guide requires this target-reset
+acknowledgement. An ordinary **Scan**, or resetting only the bridge, does not
+count. The bridge requires RDP level 0 and BOOT_LOCK=0 and preserves all other
+defined settings. Firmware Write and the Python updater still never write options.
+
+An acknowledged write is **not verified**. Keep the bridge powered and the page
 connected so the bridge retains its expected snapshot. Other programming controls
 are disabled while verification is pending. To verify BOOT0 recovery, disconnect
-ST-Link from PA14/SWCLK, tie B0 to **3.3 V**, reset/power-cycle only the C011, and
-use **I reset the C011 — scan again**. Once ROM is found, click **Read boot options
-/ Verify pending write**. Require the **Verified** result. Remove the B0 jumper
-and reset afterward to run the application. For normal flash boot, reset and scan,
-then boot the detected seesaw into ROM if that firmware is installed. The Metro
-stays connected throughout discovery/entry so its pending snapshot is preserved.
-The page cannot drive the C011 reset pin or B0 for you.
+ST-Link from PA14/SWCLK, tie B0 to **3.3 V** (never 5 V), then briefly touch
+**STM32 RST to GND** and release it. The dialog shows these instructions at the
+right moment. Continuing scans for ROM and reads the options automatically;
+require the **Verified** result. This BOOT0 check does not substitute software
+boot entry if the physical strap fails. For normal flash boot, the dialog can
+boot the detected seesaw into ROM before readback if that firmware is installed.
+The bridge stays connected throughout so its pending snapshot is preserved.
+The page cannot drive the C011 reset pin or B0 for you. Closing a pending guide
+warns without disconnecting; **Continue boot-option guide** reopens it.
 
 Errors stop further writes until rediscovery and successful option readback (and
 pending-write verification, if needed); no write is retried automatically.
-A disconnect warning protects pending verification, but
-resetting the Metro or reconnecting loses its saved comparison. A plain read
+A disconnect warning protects pending verification, but resetting the bridge
+loses its saved comparison. Reconnecting may reset the host (classic AVR does;
+native USB does not always). A plain read
 afterward is not verification of the earlier write. See the Serial Monitor
 section below for recovery precautions and the exact preservation checks.
 
@@ -114,14 +130,21 @@ to `main`; repository Pages settings must use **GitHub Actions** as the source.
 ## Connections and prerequisites
 
 - Connect host SDA, SCL, and GND to the breakout's **level-shifted QT connector**.
-  Classic Nano/Uno/Metro Mini use A4 for SDA and A5 for SCL.
+  Classic Nano/Uno/Metro Mini use A4 for SDA and A5 for SCL. Other boards use
+  their default `Wire` pins. RP/ESP hosts can override them by defining both
+  `BRIDGE_SDA_PIN` and `BRIDGE_SCL_PIN` near the top of the sketch. Choose a valid
+  pair for that board's I2C controller; these definitions do not apply to AVR.
 - A 5 V host must not be connected directly to the MCU-side 3.3 V bus without
   a suitable bidirectional level shifter. Use the breakout's normal VIN power
   arrangement; never connect 5 V to its 3.3 V output.
+- With RP2040/RP2350 or ESP hosts, use **3.3 V I2C pull-ups**. A QT connector
+  powered at 5 V can also pull its bus up to 5 V: use the 3.3 V side or a suitable
+  level shifter instead. Never connect 5 V pull-ups to a 3.3 V host.
 - Keep power stable, close other programs using the host's serial port, and
   keep an ST-Link/SWD recovery connection available.
 - Connect only one update target; its factory-ROM I2C address is fixed at `0x64`.
-- Install Python 3, Arduino CLI, the Arduino AVR core, and STM32duino 3.0.0.
+- For the CLI workflow, install Python 3, Arduino CLI, the host's board core,
+  and STM32duino 3.0.0 for compiling C011 applications.
   Install this library and its dependencies as described in the main README.
 
 Run the following commands from the repository root. Replace `COM65` with
@@ -137,9 +160,34 @@ Use `arduino:avr:uno` for an Uno or Metro Mini. Uploading replaces the bridge
 board's application sketch; save any sketch you need to restore first.
 The bridge uses only Wire and Serial, not the seesaw host library.
 The legacy Adafruit Metro board package also works, but its Wire library lacks
-the I2C timeout API. If its bus stalls, reset the Metro before reconnecting.
-Its `.uno.test.only` marker selects the AVR host rather than the peripheral
-targets. CI compiles this bridge separately as `arduino:avr:uno` for Metro 328.
+the I2C timeout API. If its bus stalls, reset the bridge before reconnecting.
+Its `.none.test.only` marker excludes it from the peripheral-target matrix.
+CI compiles this bridge separately as `arduino:avr:uno` for Metro 328.
+
+### Host portability
+
+The sketch selects its I2C path with preprocessor definitions:
+
+- Classic AVR with `TWCR`/`TWDR`: direct TWI for the 130-byte option packet,
+  retaining standard Wire for other commands.
+- Arduino-Pico RP2040/RP2350 and ESP32: `WIRE_HAS_BUFFER_SIZE` enables
+  `Wire.setBufferSize(130)` before `Wire.begin()`. The entire option packet is
+  buffered and sent with one `endTransmission()`. Buffer allocation and ESP32
+  bus initialization are checked.
+- ESP8266: its core's `twi_writeTo()` sends the complete frame through the same
+  software-I2C bus initialized by Wire, bypassing Wire's fixed 128-byte buffer.
+- Other Wire cores: scan, firmware, and option reads use the standard API.
+  Option writes are refused before ROM entry unless the core advertises at least
+  130 transmit bytes. `BRIDGE_WIRE_CAPACITY` may declare a verified buffer size
+  when the core does not publish one; it **does not resize the core's buffer**.
+  Never set it larger than the actual compiled capacity. A short buffered write
+  is never transmitted as a partial option packet.
+
+Timeouts use each supported core's API and units. Generic cores without a known
+timeout API, including the legacy Metro package, may require a bridge reset if
+the bus stalls. The serial protocol and 32-byte ordinary-packet limit stay the
+same on every host. Boot/protection bits are decoded explicitly from serialized
+bytes, without depending on the host compiler's bit-field layout or endianness.
 
 ## Serial Monitor: query and set boot options
 
@@ -174,18 +222,18 @@ Option programming requires **stable power and a clean reset line**. Keep SWD
 recovery available. It is separate from application programming and can leave
 the chip needing SWD recovery if interrupted. The bridge reads the existing
 options, changes the three requested bits and their complements, and sends the
-entire 128-byte snapshot in one ROM no-stretch write. The ATmega328P's TWI
-hardware sends this one long packet because the standard Wire buffer is only
-32 bytes; normal W/U/R commands are unchanged. There is no automatic write retry.
+entire 128-byte snapshot in one ROM no-stretch write. The host-specific paths
+above send the complete 130-byte frame in one transaction; normal W/U/R commands
+are unchanged. There is no automatic write retry.
 
 **Reset or power-cycle the C011 before every option write**, even if it is still
 responding in ROM. Use one option write per ROM session. Readback queries can
 use the current session, but do not issue a second write without resetting the
-target first. Resetting only the Metro is not a target reset. The bridge cannot
+target first. Resetting only the bridge is not a target reset. The bridge cannot
 control the C011 reset pin through the I2C wiring.
 
 An ACK means the ROM accepted the write, **not** that readback passed. Keep the
-Metro powered and the Serial Monitor open so it retains the expected snapshot.
+bridge powered and the Serial Monitor open so it retains the expected snapshot.
 To verify enabling BOOT0:
 
 1. Disconnect ST-Link from PA14/SWCLK before strapping that shared pin.
@@ -195,7 +243,7 @@ To verify enabling BOOT0:
 4. Remove B0's jumper and reset the C011 to return to the application.
 
 For a setting that boots the application, re-enter ROM with `O 49` instead, if
-the installed application supports boot entry. Resetting the Metro loses its
+the installed application supports boot entry. Resetting the bridge loses its
 pending comparison; subsequent queries still show the actual bytes but cannot
 claim verification against that earlier snapshot. A mismatch blocks further
 option writes for that session. Verification checks all of OPTR, every defined

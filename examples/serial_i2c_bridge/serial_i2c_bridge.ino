@@ -1,5 +1,6 @@
 // Adafruit STM32C011 bootloader USB-to-I2C bridge.
-// Run this on a classic Nano, Uno, Metro 328, or Metro Mini, NOT on the STM32.
+// Run this on the USB host bridge, NOT on the STM32 being programmed.
+// Supports classic AVR, Arduino-Pico RP2040/RP2350, ESP32, and ESP8266 hosts.
 // Use the breakout's level-shifted QT bus with a 5 V host.
 // Wiring: extras/stm32_i2c_bootloader/README.md in this library.
 // Web uploader: https://adafruit.github.io/Adafruit_seesawPeripheral/bootloader/
@@ -11,10 +12,38 @@
 // O address nBOOT_SEL nBOOT1 nBOOT0 sets only those three bits (each 00 or 01).
 // Reset/power-cycle the C011 before EACH option write: one write per ROM session.
 #include <Wire.h>
-#include <util/twi.h>
 
-#if !defined(__AVR_ATmega328P__)
-#error This bridge requires an ATmega328P Nano, Uno, or Metro 328.
+// Optional pin overrides for RP2040/RP2350 and ESP32/ESP8266. Otherwise use
+// the selected board's default Wire SDA/SCL pins (A4/A5 on Uno/Metro 328).
+// #define BRIDGE_SDA_PIN 4
+// #define BRIDGE_SCL_PIN 5
+#if defined(BRIDGE_SDA_PIN) != defined(BRIDGE_SCL_PIN)
+#error Define both BRIDGE_SDA_PIN and BRIDGE_SCL_PIN, or neither.
+#endif
+
+#if defined(ARDUINO_ARCH_AVR) && defined(TWCR) && defined(TWDR)
+#define BRIDGE_AVR_TWI 1
+#include <util/twi.h>
+#else
+#define BRIDGE_AVR_TWI 0
+#endif
+#if defined(ESP8266)
+#include <twi.h>
+#endif
+
+// Other cores still support scans, firmware updates, and option reads. Option
+// writes need a known 130-byte transmit capacity. This override DECLARES the
+// core's actual capacity; it does not resize a separately compiled Wire library.
+#ifndef BRIDGE_WIRE_CAPACITY
+#if defined(I2C_BUFFER_LENGTH)
+#define BRIDGE_WIRE_CAPACITY I2C_BUFFER_LENGTH
+#elif defined(WIRE_BUFFER_SIZE)
+#define BRIDGE_WIRE_CAPACITY WIRE_BUFFER_SIZE
+#elif defined(BUFFER_LENGTH)
+#define BRIDGE_WIRE_CAPACITY BUFFER_LENGTH
+#else
+#define BRIDGE_WIRE_CAPACITY 32
+#endif
 #endif
 
 const uint8_t ROM_ADDRESS = 0x64;
@@ -27,31 +56,20 @@ const uint8_t ROM_WRITE_NO_STRETCH = 0x32;
 const uint32_t OPTION_ADDRESS = 0x1FFF7800;
 const uint8_t OPTION_SIZE = 128;
 
-// RM0490 table 18: byte 3 of FLASH_OPTR, in AVR GCC bit-field order.
-union BootOptions {
-  uint8_t raw;
-  struct {
-    uint8_t nBootSel : 1;
-    uint8_t nBoot1 : 1;
-    uint8_t nBoot0 : 1;
-    uint8_t unchanged : 5;
-  } fields;
-};
-static_assert(sizeof(BootOptions) == 1, "Boot option byte layout");
+// RM0490 table 18: masks in byte 3 of the serialized FLASH_OPTR word.
+// Explicit hardware masks avoid compiler-specific C++ bit-field ordering.
+const uint8_t NBOOT_SEL_MASK = 0x01;
+const uint8_t NBOOT1_MASK = 0x02;
+const uint8_t NBOOT0_MASK = 0x04;
 // RM0490: SECR bit 16 is in byte 2 of the word at option offset 0x70.
-union SecurityOptions {
-  uint8_t raw;
-  struct {
-    uint8_t bootLock : 1;
-    uint8_t unchanged : 7;
-  } fields;
-};
-static_assert(sizeof(SecurityOptions) == 1, "Security option byte layout");
+const uint8_t BOOT_LOCK_MASK = 0x01;
 
 uint8_t expectedOptions[OPTION_SIZE];
 bool optionsPendingVerification = false;
+bool busReady = true;
+bool optionWriteSupported = BRIDGE_WIRE_CAPACITY >= OPTION_SIZE + 2;
 uint8_t lastROMReply = 0;
-uint8_t lastTWIStatus = 0;
+uint8_t lastBusStatus = 0;
 const uint8_t optionWordOffsets[] = {0, 8, 16, 24, 32, 40, 48, 112};
 // C011-specific register masks from ST's stm32c011xx.h / RM0490. The ROM
 // normalizes reserved bits through these registers during option programming.
@@ -67,12 +85,43 @@ bool discardLine = false;
 
 void setup() {
   Serial.begin(115200);
+#if BRIDGE_AVR_TWI || defined(ESP8266)
+  optionWriteSupported = true; // These cores use their direct long-write path.
+#elif defined(WIRE_HAS_BUFFER_SIZE)
+  optionWriteSupported = Wire.setBufferSize(OPTION_SIZE + 2) >= OPTION_SIZE + 2;
+#endif
+
+#if defined(ARDUINO_ARCH_RP2040) || defined(ARDUINO_ARCH_RP2350)
+#ifdef BRIDGE_SDA_PIN
+  busReady = Wire.setSDA(BRIDGE_SDA_PIN) && Wire.setSCL(BRIDGE_SCL_PIN);
+#endif
   Wire.begin();
-  Wire.setClock(100000);
-#ifndef ARDUINO_AVR_METRO
+  Wire.setTimeout(25, true); // Arduino-Pico uses milliseconds.
+#elif defined(ESP32)
+#ifdef BRIDGE_SDA_PIN
+  busReady = Wire.begin(BRIDGE_SDA_PIN, BRIDGE_SCL_PIN);
+#else
+  busReady = Wire.begin();
+#endif
+  Wire.setTimeOut(25); // ESP32 uses milliseconds and a capital O.
+#elif defined(ESP8266)
+#ifdef BRIDGE_SDA_PIN
+  Wire.begin(BRIDGE_SDA_PIN, BRIDGE_SCL_PIN);
+#else
+  Wire.begin();
+#endif
+  Wire.setClockStretchLimit(25000); // ESP8266 uses microseconds.
+#else
+#ifdef BRIDGE_SDA_PIN
+#error "Select SDA/SCL using the core Wire API; pin overrides support RP/ESP."
+#endif
+  Wire.begin();
+#if defined(__AVR_ATmega328P__) && !defined(ARDUINO_AVR_METRO)
   // The legacy Adafruit Metro Wire library does not provide this timeout API.
   Wire.setWireTimeout(25000, true);
 #endif
+#endif
+  Wire.setClock(100000);
   delay(250);
   Serial.print(F("Adafruit STM32C011 I2C bootloader bridge READY\n\r"));
 }
@@ -108,6 +157,10 @@ void executeCommand() {
     return;
   }
   char operation = token[0];
+  if (!busReady) {
+    Serial.print(F("ERR bridge I2C initialization failed; check SDA/SCL pins\n\r"));
+    return;
+  }
   uint8_t bytes[33];
   uint8_t count = 0;
   while ((token = strtok(NULL, " "))) {
@@ -300,25 +353,28 @@ bool readOptions(uint8_t *options) {
   return true;
 }
 
+#if BRIDGE_AVR_TWI
 bool waitTWI(uint8_t expectedStatus) {
   // Poll the AVR TWI hardware only for the long option packet. Wire's ISR is
   // disabled for this transaction; the normal timer/serial interrupts remain on.
   uint32_t started = micros();
   while (!(TWCR & _BV(TWINT))) {
     if (micros() - started > 25000) {
-      lastTWIStatus = TW_STATUS;
+      lastBusStatus = TW_STATUS;
       return false;
     }
   }
-  lastTWIStatus = TW_STATUS;
-  return lastTWIStatus == expectedStatus;
+  lastBusStatus = TW_STATUS;
+  return lastBusStatus == expectedStatus;
 }
+#endif
 
 bool writeOptionPacket(const uint8_t *options) {
   // AN4221 erases the option area for a write. Send all 128 preserved bytes in
-  // ONE transaction, not independent 24-byte application-flash writes. This
-  // 130-byte frame exceeds Wire's fixed 32-byte buffer, so use the AVR hardware
-  // directly without changing the installed core or its buffers.
+  // ONE transaction, not independent 24-byte application-flash writes.
+  // Never split this 130-byte frame or transmit a partially buffered packet.
+#if BRIDGE_AVR_TWI
+  // Classic AVR Wire buffers only 32 bytes; bypass it for this transaction.
   TWCR = _BV(TWINT) | _BV(TWEN) | _BV(TWSTA);
   bool success = waitTWI(TW_START);
   if (success) {
@@ -354,6 +410,29 @@ bool writeOptionPacket(const uint8_t *options) {
   Wire.begin();
   Wire.setClock(100000);
   return success;
+#else
+  uint8_t packet[OPTION_SIZE + 2];
+  packet[0] = OPTION_SIZE - 1;
+  uint8_t checksum = packet[0];
+  for (uint8_t i = 0; i < OPTION_SIZE; i++) {
+    packet[i + 1] = options[i];
+    checksum ^= options[i]; // AN4221 packet checksum.
+  }
+  packet[OPTION_SIZE + 1] = checksum;
+#if defined(ESP8266)
+  // ESP8266 Wire has a fixed 128-byte buffer, but its underlying software-I2C
+  // writer accepts the complete frame on the same pins initialized by Wire.
+  lastBusStatus = twi_writeTo(ROM_ADDRESS, packet, sizeof(packet), true);
+#else
+  Wire.beginTransmission(ROM_ADDRESS);
+  if (Wire.write(packet, sizeof(packet)) != sizeof(packet)) {
+    lastBusStatus = 1; // Buffer overflow: do NOT send a truncated option frame.
+    return false;
+  }
+  lastBusStatus = Wire.endTransmission();
+#endif
+  return lastBusStatus == 0;
+#endif
 }
 
 void printOptions(const uint8_t *options) {
@@ -364,24 +443,24 @@ void printOptions(const uint8_t *options) {
       Serial.print('0');
     Serial.print(options[i], HEX);
   }
-  BootOptions boot;
-  boot.raw = options[3];
   Serial.print(F("\n\rnBOOT_SEL="));
-  Serial.print(boot.fields.nBootSel);
+  Serial.print((options[3] & NBOOT_SEL_MASK) != 0);
   Serial.print(F(" nBOOT1="));
-  Serial.print(boot.fields.nBoot1);
+  Serial.print((options[3] & NBOOT1_MASK) != 0);
   Serial.print(F(" nBOOT0="));
-  Serial.print(boot.fields.nBoot0);
+  Serial.print((options[3] & NBOOT0_MASK) != 0);
   Serial.print(F(" BOOT_LOCK="));
-  SecurityOptions security;
-  security.raw = options[0x72];
-  Serial.print(security.fields.bootLock);
+  Serial.print((options[0x72] & BOOT_LOCK_MASK) != 0);
   Serial.print(F(" RDP=0x"));
   Serial.print(options[0], HEX);
   Serial.print(F("\n\r"));
 }
 
 void optionCommand(const uint8_t *arguments, uint8_t count) {
+  if (count == 4 && !optionWriteSupported) {
+    Serial.print(F("ERR bridge needs a 130-byte I2C transmit buffer; no option write\n\r"));
+    return;
+  }
   if (!identifyROM(arguments[0])) {
     Serial.print(F("ERR C011 ROM entry/identification failed\n\r"));
     return;
@@ -407,23 +486,24 @@ void optionCommand(const uint8_t *arguments, uint8_t count) {
   if (count == 1)
     return;
 
-  SecurityOptions security;
-  security.raw = options[0x72];
-  if (options[0] != 0xAA || security.fields.bootLock) {
+  if (options[0] != 0xAA || (options[0x72] & BOOT_LOCK_MASK) != 0) {
     Serial.print(F("ERR requires RDP level 0 and BOOT_LOCK=0; refusing write\n\r"));
     return;
   }
-  BootOptions boot;
-  boot.raw = options[3];
-  boot.fields.nBootSel = arguments[1];
-  boot.fields.nBoot1 = arguments[2];
-  boot.fields.nBoot0 = arguments[3];
-  if (boot.raw == options[3]) {
+  // Change only the three serialized hardware fields, preserving every other bit.
+  uint8_t boot = options[3] & ~(NBOOT_SEL_MASK | NBOOT1_MASK | NBOOT0_MASK);
+  if (arguments[1])
+    boot |= NBOOT_SEL_MASK;
+  if (arguments[2])
+    boot |= NBOOT1_MASK;
+  if (arguments[3])
+    boot |= NBOOT0_MASK;
+  if (boot == options[3]) {
     Serial.print(F("OK boot options already match; no write\n\r"));
     return;
   }
-  options[3] = boot.raw;
-  options[7] = boot.raw ^ 0xFF; // Required complement of the modified byte.
+  options[3] = boot;
+  options[7] = boot ^ 0xFF; // Required complement of the modified byte.
   if (!romCommand(ROM_WRITE_NO_STRETCH) || !romAddress(OPTION_ADDRESS)) {
     Serial.print(F("ERR option write setup failed; no data sent\n\r"));
     return;
@@ -431,8 +511,8 @@ void optionCommand(const uint8_t *arguments, uint8_t count) {
   memcpy(expectedOptions, options, OPTION_SIZE);
   optionsPendingVerification = true;
   if (!writeOptionPacket(options)) {
-    Serial.print(F("ERR option packet failed; TWI status=0x"));
-    Serial.print(lastTWIStatus, HEX);
+    Serial.print(F("ERR option packet failed; bus status=0x"));
+    Serial.print(lastBusStatus, HEX);
     Serial.print(F("; write unconfirmed, do not retry\n\r"));
   } else if (!romAck()) {
     Serial.print(F("ERR option write unconfirmed; ROM reply=0x"));
@@ -441,7 +521,7 @@ void optionCommand(const uint8_t *arguments, uint8_t count) {
   } else {
     Serial.print(F("ACK option write; readback still required\n\r"));
   }
-  Serial.print(F("Keep Metro powered. Reset/power-cycle C011 before another option write\n\r"));
+  Serial.print(F("Keep bridge powered. Reset/power-cycle C011 before another option write\n\r"));
   Serial.print(F("Re-enter ROM, then query O 64 (or O 49 from running seesaw) to verify\n\r"));
 }
 
@@ -459,9 +539,13 @@ bool validOptionComplements(const uint8_t *options) {
 
 bool optionsMatch(const uint8_t *actual, const uint8_t *expected) {
   for (uint8_t word = 0; word < sizeof(optionWordOffsets); word++) {
-    uint32_t actualWord, expectedWord;
-    memcpy(&actualWord, actual + optionWordOffsets[word], 4);
-    memcpy(&expectedWord, expected + optionWordOffsets[word], 4);
+    uint32_t actualWord = 0, expectedWord = 0;
+    // The ROM sends little-endian words regardless of the bridge CPU's layout.
+    for (uint8_t byte = 0; byte < 4; byte++) {
+      uint8_t offset = optionWordOffsets[word] + byte;
+      actualWord |= (uint32_t)actual[offset] << (8 * byte);
+      expectedWord |= (uint32_t)expected[offset] << (8 * byte);
+    }
     // Hardware-defined masks are needed here: ROM rewrites reserved bits even
     // when given their original values. Never mask any defined protection bit.
     if ((actualWord & optionWordMasks[word]) !=

@@ -11,6 +11,8 @@ assert.ok(html.includes('id="verifyAfterFlash" checked'));
 assert.ok(!html.includes('id="backup"'));
 assert.ok(!html.includes('<footer>'));
 assert.ok(!html.includes('id="entry"') && !html.includes('id="address"'));
+assert.ok(!html.includes('id="resetScan"'));
+assert.match(html, /id="scan"[^>]*>Scan<\/button>/);
 const elements = new Map();
 const windowEvents = new Map();
 let downloadedBlob;
@@ -19,7 +21,7 @@ const context = vm.createContext({
   URL: {createObjectURL(blob) { downloadedBlob = blob; return 'blob:readout'; }, revokeObjectURL() {}},
   navigator: {serial: {}}, window: {isSecureContext: true, addEventListener(name, handler) { windowEvents.set(name, handler); }},
   document: {getElementById(id) {
-    if (!elements.has(id)) elements.set(id, {textContent: '', value: '', classList: {add() {}, remove() {}, toggle() {}}, addEventListener() {}, click() { this.clicked = true; }});
+    if (!elements.has(id)) elements.set(id, {textContent: '', value: '', open: false, events: {}, classList: {add() {}, remove() {}, toggle() {}}, addEventListener(name, handler) { this.events[name] = handler; }, click() { this.clicked = true; }, showModal() { this.open = true; }, close() { this.open = false; }});
     return elements.get(id);
   }}
 });
@@ -202,14 +204,14 @@ class ROM {
   const query = installOptions([optionDump, summary]);
   vm.runInContext('controls()', context);
   assert.equal(elements.get('readOptions').disabled, false);
-  assert.equal(elements.get('enableBoot0').disabled, true);
+  assert.equal(elements.get('enableBoot0').disabled, false, 'The guide can open before reset; it cannot write yet');
   await vm.runInContext('runBootOptions()', context);
   assert.deepEqual(query.commands.map(command => Array.from(command)), [['O', 0x64]]);
   assert.equal(query.closed, undefined);
   assert.equal(elements.get('bootOptions').textContent, summary);
   assert.match(elements.get('optionStatus').textContent, /no option write/);
 
-  const enable = installOptions([optionDump, summary, ack, 'Keep Metro powered. Reset/power-cycle C011 before another option write', 'Re-enter ROM, then query O 64 (or O 49 from running seesaw) to verify']);
+  const enable = installOptions([optionDump, summary, ack, 'Keep bridge powered. Reset/power-cycle C011 before another option write', 'Re-enter ROM, then query O 64 (or O 49 from running seesaw) to verify']);
   await vm.runInContext('runBootOptions("boot0")', context);
   assert.equal(enable.commands.length, 0, 'Reset acknowledgement is required');
   vm.runInContext('targetResetConfirmed = true;', context);
@@ -243,6 +245,8 @@ class ROM {
   for (const replies of [
     ['ERR command'], [optionDump, summary, 'ERR requires RDP level 0 and BOOT_LOCK=0; refusing write'],
     ['ERR C011 ROM entry/identification failed'],
+    ['ERR bridge needs a 130-byte I2C transmit buffer; no option write'],
+    ['ERR bridge I2C initialization failed; check SDA/SCL pins'],
     [optionDump, summary, 'ERR option write unconfirmed; do not retry'],
     [optionDump, summary, 'ERR pending option write does not match; no further writes'],
     [optionDump], [optionDump, summary]
@@ -254,7 +258,7 @@ class ROM {
     assert.equal(vm.runInContext('optionStopped', context), true);
     assert.equal(elements.get('enableBoot0').disabled, true);
     assert.match(elements.get('optionStatus').textContent, /Stopped; no automatic retry/);
-    if (replies.includes('ERR C011 ROM entry/identification failed')) {
+    if (replies.includes('ERR C011 ROM entry/identification failed') || replies.includes('ERR bridge needs a 130-byte I2C transmit buffer; no option write')) {
       assert.equal(vm.runInContext('optionPending', context), false, 'No write occurred, so there is no pending snapshot');
       failure.replies = [optionDump, summary];
       vm.runInContext('romReady = true;', context);
@@ -326,7 +330,8 @@ class ROM {
   assert.equal(vm.runInContext('romReady', context), true);
   assert.equal(elements.get('bootRom').disabled, true);
   assert.equal(elements.get('readOptions').disabled, false);
-  assert.equal(elements.get('enableBoot0').disabled, true, 'Ordinary scan is not reset confirmation');
+  assert.equal(elements.get('enableBoot0').disabled, false, 'Ordinary scan permits opening the guide');
+  assert.equal(vm.runInContext('targetResetConfirmed', context), false, 'Ordinary scan is not reset confirmation');
   const impostor = new DiscoveryBridge([0x64]); impostor.romValid = false; installDiscovery(impostor);
   await vm.runInContext('scanDevices()', context);
   assert.equal(vm.runInContext('romReady', context), false);
@@ -373,5 +378,113 @@ class ROM {
   assert.equal(pendingDevice.closed, undefined);
   assert.equal(vm.runInContext('optionPending', context), false);
   assert.match(elements.get('optionStatus').textContent, /^Verified:/);
-  process.stdout.write('PASS: file/firmware tests; boot-option framing and safety; scan/identify/select; application-to-ROM; ROM-only/unknown/empty buses; address conflicts; old sketch; pending verification after rediscovery.\n');
+  // Exercise the dialog through the same event handlers used by its buttons.
+  class WizardBridge extends DiscoveryBridge {
+    constructor(addresses) { super(addresses); this.optionReplies = [optionDump, summary, ack]; this.optionCommands = []; }
+    async command(operation, values) {
+      if (operation === 'O') { this.optionCommands.push(Array.from(values)); return this.optionReplies; }
+      return super.command(operation, values);
+    }
+  }
+  const wizard = new WizardBridge([0x49]); wizard.ids.set(0x49, 'DATA 90'); installDiscovery(wizard);
+  elements.get('enableBoot0').onclick();
+  assert.equal(elements.get('bootWizard').open, true);
+  assert.match(elements.get('wizardText').textContent, /RST pin to GND/);
+  assert.equal(wizard.commands.length, 0, 'Opening the guide does not talk to hardware');
+  assert.equal(vm.runInContext('targetResetConfirmed', context), false);
+  await elements.get('wizardNext').onclick();
+  assert.equal(vm.runInContext('wizardStage', context), 'select');
+  assert.equal(elements.get('wizardDevice').value, String(0x49));
+  await elements.get('wizardNext').onclick();
+  assert.equal(vm.runInContext('wizardStage', context), 'write');
+  assert.equal(wizard.optionCommands.length, 0);
+  await elements.get('wizardNext').onclick();
+  assert.deepEqual(wizard.optionCommands, [[0x64, 0, 1, 1]]);
+  assert.equal(vm.runInContext('wizardStage', context), 'verifyReset');
+  assert.match(elements.get('wizardText').textContent, /3.3 V — never 5 V/);
+  assert.match(elements.get('wizardText').textContent, /RST to GND/);
+  // Escape is blocked while busy, and pending close requires confirmation.
+  let cancelledEscape = false;
+  vm.runInContext('busy = true;', context);
+  elements.get('bootWizard').events.cancel({preventDefault() { cancelledEscape = true; }});
+  assert.equal(cancelledEscape, true); assert.equal(elements.get('bootWizard').open, true);
+  vm.runInContext('busy = false;', context);
+  context.window.confirm = () => false;
+  elements.get('wizardClose').onclick(); assert.equal(elements.get('bootWizard').open, true);
+  context.window.confirm = () => true;
+  elements.get('wizardClose').onclick(); assert.equal(elements.get('bootWizard').open, false);
+  assert.equal(wizard.closed, undefined);
+  elements.get('resumeOptions').onclick();
+  assert.equal(vm.runInContext('wizardStage', context), 'verifyReset');
+  // A bad BOOT0 strap must not be hidden by an automatic software boot key.
+  wizard.addresses = [0x49]; wizard.romActive = false;
+  const bootKeys = wizard.commands.filter(command => command[0] === 'W' && command[1] === 0x49).length;
+  await elements.get('wizardNext').onclick();
+  assert.equal(vm.runInContext('wizardStage', context), 'verifyReset');
+  assert.equal(wizard.optionCommands.length, 1);
+  assert.equal(wizard.commands.filter(command => command[0] === 'W' && command[1] === 0x49).length, bootKeys);
+  // Good physical reset into ROM; other application devices may remain on bus.
+  wizard.addresses = [0x49, 0x64]; wizard.romActive = true;
+  wizard.optionReplies = [optionDump, summary, verified];
+  await elements.get('wizardNext').onclick();
+  assert.equal(vm.runInContext('wizardStage', context), 'done');
+  assert.match(elements.get('wizardStatus').textContent, /^Verified:/);
+  assert.deepEqual(wizard.optionCommands, [[0x64, 0, 1, 1], [0x64]]);
+  await elements.get('wizardNext').onclick();
+  assert.equal(elements.get('bootWizard').open, false);
+  assert.equal(vm.runInContext('romReady', context), false);
+  assert.equal(wizard.closed, undefined);
+
+  // Normal flash boot keeps software ROM entry inside the same dialog.
+  const normal = new WizardBridge([0x64]); installDiscovery(normal);
+  elements.get('flashBoot').onclick();
+  await elements.get('wizardNext').onclick();
+  assert.equal(vm.runInContext('wizardStage', context), 'write');
+  await elements.get('wizardNext').onclick();
+  assert.deepEqual(normal.optionCommands, [[0x64, 1, 1, 1]]);
+  normal.addresses = [0x49]; normal.ids.set(0x49, 'DATA 90'); normal.romActive = false;
+  await elements.get('wizardNext').onclick();
+  assert.equal(vm.runInContext('wizardStage', context), 'select');
+  normal.optionReplies = [optionDump, summary, verified];
+  await elements.get('wizardNext').onclick();
+  assert.equal(vm.runInContext('wizardStage', context), 'done');
+  assert.deepEqual(normal.optionCommands, [[0x64, 1, 1, 1], [0x64]]);
+  await elements.get('wizardNext').onclick();
+
+  // Empty discovery stays in the dialog; multiple devices require a choice.
+  const wizardSelection = new WizardBridge([]); installDiscovery(wizardSelection);
+  elements.get('enableBoot0').onclick();
+  await elements.get('wizardNext').onclick();
+  assert.equal(elements.get('wizardNext').disabled, true);
+  assert.match(elements.get('wizardStatus').textContent, /No I²C devices/);
+  wizardSelection.addresses = [0x49, 0x4a];
+  wizardSelection.ids.set(0x49, 'DATA 90'); wizardSelection.ids.set(0x4a, 'DATA 90');
+  await elements.get('wizardScan').onclick();
+  assert.equal(elements.get('wizardNext').disabled, true);
+  elements.get('wizardDevice').value = String(0x4a);
+  elements.get('wizardDevice').onchange();
+  assert.equal(elements.get('wizardNext').disabled, false);
+  await elements.get('wizardNext').onclick();
+  assert.equal(wizardSelection.commands.filter(command => command[0] === 'W' && command[1] === 0x49).length, 0);
+  assert.equal(wizardSelection.commands.filter(command => command[0] === 'W' && command[1] === 0x4a).length, 1);
+  wizardSelection.optionReplies = [optionDump, summary, 'OK boot options already match; no write'];
+  await elements.get('wizardNext').onclick();
+  assert.equal(vm.runInContext('wizardStage', context), 'done');
+  assert.match(elements.get('wizardStatus').textContent, /no write was needed/);
+  await elements.get('wizardNext').onclick();
+
+  // Failed writes offer readback only; never retry the setter.
+  const wizardFailure = new WizardBridge([0x64]); installDiscovery(wizardFailure);
+  wizardFailure.optionReplies = ['ERR option write unconfirmed; do not retry'];
+  elements.get('enableBoot0').onclick();
+  await elements.get('wizardNext').onclick(); await elements.get('wizardNext').onclick();
+  assert.equal(vm.runInContext('wizardStage', context), 'error');
+  await elements.get('wizardNext').onclick();
+  assert.equal(vm.runInContext('wizardStage', context), 'recoverReset');
+  wizardFailure.optionReplies = [optionDump, summary]; // Lost snapshot is not verified.
+  await elements.get('wizardNext').onclick();
+  assert.equal(vm.runInContext('wizardStage', context), 'error');
+  assert.equal(vm.runInContext('optionPending', context), true);
+  assert.deepEqual(wizardFailure.optionCommands, [[0x64, 0, 1, 1], [0x64]]);
+  process.stdout.write('PASS: file/firmware; boot-option framing and safety; discovery and ROM entry; guided reset/write/verify; physical BOOT0 check; dialog close/resume; read-only failure recovery.\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });

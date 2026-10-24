@@ -192,7 +192,7 @@ def validate_image(image):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--port", required=True, help="Nano/Uno/Metro USB port")
+    parser.add_argument("--port", required=True, help="USB serial port of the Arduino bridge")
     parser.add_argument("--address", type=lambda value: int(value, 0), default=0x49)
     parser.add_argument("--image", type=Path, help="Application-only .bin, at most 30 KiB")
     parser.add_argument("--backup", type=Path, help="New full-flash backup; required with --image")
