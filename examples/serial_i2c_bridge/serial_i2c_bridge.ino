@@ -46,9 +46,16 @@
 #endif
 #endif
 
-uint8_t romAddressI2C = 0x64;
+#define C011_ROM_ADDRESS 0x64
+#define C031_ROM_ADDRESS 0x63
+#define C011_SEESAW_ID 0x90
+#define C031_SEESAW_ID 0x91
+#define C011_ROM_PRODUCT_LOW 0x43
+#define C031_ROM_PRODUCT_LOW 0x53
+
+uint8_t romAddressI2C = C011_ROM_ADDRESS;
 uint8_t pendingROMAddress = 0;
-uint8_t romProductLow = 0x43;
+uint8_t romProductLow = C011_ROM_PRODUCT_LOW;
 uint8_t romGetLength = 20;
 const uint8_t ROM_ACK = 0x79;
 const uint8_t ROM_BUSY = 0x76;
@@ -309,8 +316,8 @@ bool romAddress(uint32_t address) {
 bool identifyROM(uint8_t address) {
   // O accepts either family's ROM address, or a running seesaw address.
   uint8_t family = 0;
-  if (address == 0x64) family = 0x90;
-  else if (address == 0x63) family = 0x91;
+  if (address == C011_ROM_ADDRESS) family = C011_SEESAW_ID;
+  else if (address == C031_ROM_ADDRESS) family = C031_SEESAW_ID;
   else {
     // Validate the running seesaw before requesting its ROM-entry reset.
     Wire.beginTransmission(address);
@@ -322,10 +329,10 @@ bool identifyROM(uint8_t address) {
     if (Wire.requestFrom(address, (uint8_t)1) != 1)
       return false;
     family = Wire.read();
-    if (family != 0x90 && family != 0x91)
+    if (family != C011_SEESAW_ID && family != C031_SEESAW_ID)
       return false;
     // Do not enter a different family while a saved write needs verification.
-    uint8_t destination = family == 0x91 ? 0x63 : 0x64;
+    uint8_t destination = family == C031_SEESAW_ID ? C031_ROM_ADDRESS : C011_ROM_ADDRESS;
     if (optionsPendingVerification && pendingROMAddress != destination)
       return false;
     const uint8_t enterROM[] = {0x00, 0x7E, 0xB0, 0x07, 0x10, 0xAD};
@@ -335,8 +342,8 @@ bool identifyROM(uint8_t address) {
       return false;
     delay(500);
   }
-  romAddressI2C = family == 0x91 ? 0x63 : 0x64;
-  romProductLow = family == 0x91 ? 0x53 : 0x43;
+  romAddressI2C = family == C031_SEESAW_ID ? C031_ROM_ADDRESS : C011_ROM_ADDRESS;
+  romProductLow = family == C031_SEESAW_ID ? C031_ROM_PRODUCT_LOW : C011_ROM_PRODUCT_LOW;
   // Both observed C011/C031 ROMs return 18 commands (20-byte frame).
   romGetLength = 20;
   if (optionsPendingVerification && pendingROMAddress != romAddressI2C)
