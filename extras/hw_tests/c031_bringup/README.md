@@ -11,14 +11,15 @@ Use the bundled page/bridge until the PR is merged; the public page updates
 only after that merge. After flashing the STM32, replace the Metro bridge
 sketch with the desired host test from `c031_bringup`.
 The default firmware source is also included under `examples/example_stm32c031`;
-rebuilding it requires this PR's peripheral-library changes for the D24 LED.
+rebuilding it requires this PR's peripheral-library changes for the D31 LED.
 
 ## Firmware and wiring
 
 - Build/upload `c031_gpio_handtest` to the **STM32C031G6** for unrestricted
   GPIO/ADC/PWM checks. It reports PID 6540, address 0x49, and supports ROM entry.
 - After pin checks, upload `examples/example_stm32c031` for the default
-  GPIO, ADC, PWM, NeoPixel, EEPROM and PA2/PA3 encoder configuration.
+  GPIO, ADC, PWM, NeoPixel, EEPROM and PA2/PA3 encoder configuration, with
+  PC14/D30 INT, PB8/D24 ADDR0 and PC6/D22 ADDR1 reserved.
 - Both images must fit below 0x08007800 (30 KiB); the last 2 KiB is EEPROM.
   Use the generic C031G6Ux STM32duino target and the supplied build_opt.h.
 - Upload all other sketches here to the **Metro 328 / Uno**, not the STM32.
@@ -27,22 +28,26 @@ rebuilding it requires this PR's peripheral-library changes for the D24 LED.
 - Never put 5 V on a C031 GPIO. Disconnect input jumpers before output/PWM tests.
   Only one target board should be attached during programming/option changes.
 
-The C031 keeps its existing dense numbering; it does **not** use the C011's
-label-matching numbers:
+The C031 now uses this label-based map. Earlier bring-up binaries used dense
+numbering and are not pin-compatible; update the peripheral and host sketches together:
 
 | Seesaw number | Physical pin |
 | --- | --- |
 | 0–8 | PA0–PA8 |
-| 9, 10 | PA11, PA12 |
-| 13 | PA15 |
-| 14, 15 | PB0, PB1 |
-| 16–18 | PB3–PB5 |
-| 21, 22, 23 | PB8, PC6, PC14 |
-| 24 | PC15 onboard LED |
+| 11, 12, 15 | PA11, PA12, PA15 |
+| 16, 17 | PB0, PB1 |
+| 19–21 | PB3–PB5 |
+| 22 | PC6 — ADDR1 by default |
+| 24 | PB8 — ADDR0 by default |
+| 30 | PC14 — INT by default |
+| 31 | PC15 onboard LED |
 
-SWD (11/12), I2C (19/20), reset (25), and remap aliases (26/27) remain reserved.
-ADC: 0–10 and 14/15. PWM: every listed pin except 10 (PA12).
-Shared PWM channels: 3/9, 5/13, 6/17/21/22, 7/18/23, and 8/14/24.
+SWD, I2C, reset, and unlisted numbers remain reserved. In the default image,
+INT is active-low/open-drain; floating address straps select 0x49. Ground
+ADDR0, ADDR1, or both for 0x4A, 0x4B, or 0x4C, then reset. The unrestricted
+hand-test image leaves all three role pins available as GPIO.
+ADC: 0–8, 11/12 and 16/17. PWM: every available pin except 12 (PA12).
+Shared PWM channels: 3/11, 5/15, 6/20/24/22, 7/21/30, and 8/16/31.
 Test one pin from each group at a time.
 
 ## Bench sequence
@@ -71,7 +76,33 @@ Test one pin from each group at a time.
     seesaw software reset. The guided BOOT0 option write/readback is a separate
     test: disconnect SWCLK, use B0 = 3.3 V during reset, and require VERIFIED.
 
+## Label-based map verification — 2026-10-25 UTC
+
+The remapped hand-test image passed all 20 header GPIO input/output/pull checks,
+all 13 ADC inputs at five voltages, and all 19 header PWM outputs at three
+settings. One initial PB4 duty capture failed; nine focused measurements passed
+without a firmware change, so that failure was not reproduced. After compacting
+the PWM lookup table to 16-bit core indices, all 57 PWM measurements passed again.
+
+All eight combinations of high-byte GPIO bits 24/30/31 passed at 100/400 kHz
+with delayed, immediate and repeated-start reads. On the default image, PC14
+interrupt assertion/flag-read/release and disable passed, including the D31
+interrupt flag `0x80000000`. PB8/PC6 selected all four addresses, 0x49–0x4C;
+reserved INT/ADDR pins rejected GPIO control and were masked from GPIO reads.
+LED D31 level readback and software reset also passed.
+
+The default BIN is 29,736 bytes (2,248 bytes static RAM); the unrestricted
+hand-test BIN is 26,984 bytes (2,240 bytes static RAM). Both were programmed
+and readback-verified. The final EEPROM and option areas match the pre-test
+backups byte-for-byte. The DUT is running the new default image, and the Nano
+bridge and original Jumperless connections were restored. Earlier downloadable
+bring-up bundles use the old map and must not be mixed with these host sketches.
+The SPI example now links, but its 32,768-byte BIN occupies the full flash with
+no spare space. It is a compile check, not a 30 KiB EEPROM-safe updater image.
+
 ## Hardware results — 2026-10-24
+
+The results below used the earlier dense pin map; D24 there means PC15.
 
 Tested STM32C031G6U6, 32 KiB flash, DBGMCU ID 0x10016453 (Rev Z), using
 STM32duino 3.0.0, a classic Nano on the level-shifted QT bus, and Jumperless.

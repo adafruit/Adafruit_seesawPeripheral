@@ -31,7 +31,7 @@ public:
 RecoverySeesaw ss;
 const uint8_t seesawAddress = 0x49;
 const uint16_t expectedProduct = 6540;
-const uint8_t ledPin = 24; // C031 PC15 onboard LED, NOT a Metro pin
+const uint8_t ledPin = 31; // C031 PC15 onboard LED, NOT a Metro pin
 bool online = false;
 bool ledState = false;
 uint32_t connectionCount = 0;
@@ -88,7 +88,7 @@ void loop() {
     return;
   }
 
-  // PC15 is GPIO bit 24, in the first reply byte. Check both HIGH and LOW
+  // PC15 is GPIO bit 31, in the first reply byte. Check both HIGH and LOW
   // readback; visual confirmation is still needed to prove the LED lights.
   if (ss.digitalRead(ledPin) != ledState || Wire.getWireTimeoutFlag()) {
     Serial.print(F("LED GPIO readback mismatch; stopping this blink.\n\r"));

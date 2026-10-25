@@ -6,7 +6,8 @@
 // Touch each listed C031 header pin to GND to simulate a button press.
 // A 1K series resistor in the ground jumper adds protection against mistakes.
 // Never apply 5V. Remove external LEDs or other loads from the tested pins.
-// PC15 (pin 24) is the onboard LED, not a header input, so it is omitted.
+// Run the unrestricted hand-test firmware: INT/ADDR pins are tested as GPIO.
+// PC15 (pin 31) is the onboard LED, not a header input, so it is omitted.
 
 #include <Adafruit_seesaw.h>
 
@@ -15,7 +16,7 @@
 #endif
 
 Adafruit_seesaw ss;
-const uint8_t inputPins[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 15, 16, 17, 18, 21, 22, 23};
+const uint8_t inputPins[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 15, 16, 17, 19, 20, 21, 24, 22, 30};
 const uint8_t inputCount = sizeof(inputPins) / sizeof(inputPins[0]);
 uint8_t tableRow = 0;
 

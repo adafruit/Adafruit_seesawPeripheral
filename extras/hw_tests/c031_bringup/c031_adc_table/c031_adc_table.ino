@@ -13,7 +13,7 @@
 #endif
 
 Adafruit_seesaw ss;
-const uint8_t adcPins[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 14, 15};
+const uint8_t adcPins[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12, 16, 17};
 const uint8_t adcCount = sizeof(adcPins) / sizeof(adcPins[0]);
 
 void setup() {

@@ -1,5 +1,5 @@
 // C031G6 PID 6540: dedicated GPIO/ADC/PWM test image, no encoders or IRQ.
-// Uses the C031 dense pin map; D24 is the PC15 LED. Flash the default image
+// Uses the C031 label-based pin map; D31 is the PC15 LED. Flash the default image
 // after basic pin tests to enable NeoPixel, EEPROM and encoder support.
 // Adafruit STM32C031G6 GPIO hand-test peripheral, I2C address 0x49.
 // All twenty header GPIOs and the LED remain available. No straps or IRQ pin.
