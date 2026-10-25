@@ -225,11 +225,20 @@ public:
 private:
   /*! Start the reply before doing nonessential interrupt bookkeeping. */
   __attribute__((always_inline)) inline void startTransmit() {
+#if !CONFIG_I2C_NO_STRETCH
+    // Let the address ACK proceed while we load the first byte. As in ST's
+    // HAL slave transmit path, TXDR-empty stretching still protects that byte
+    // if service is late; do not hold ADDR while calling its live getter.
+    I2C1->ICR = I2C_ICR_ADDRCF;
+#endif
     // Source selection was done at the preceding write. Read its LIVE value
     // now, while main-loop writers cannot run, then build the same snapshot.
     uint8_t first = firstByteCallback ? firstByteCallback() : *firstByteSource;
     I2C1->TXDR = first;
+#if CONFIG_I2C_NO_STRETCH
+    // The bench-only no-stretch mode must preload before releasing ADDR.
     I2C1->ICR = I2C_ICR_ADDRCF;
+#endif
     // A repeated START need not wait for queue bookkeeping: the two-byte
     // header already selected the source on RXNE. The first byte is in flight.
     if (receiving)
