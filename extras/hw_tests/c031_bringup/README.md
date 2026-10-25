@@ -97,8 +97,12 @@ and readback-verified. The final EEPROM and option areas match the pre-test
 backups byte-for-byte. The DUT is running the new default image, and the Nano
 bridge and original Jumperless connections were restored. Earlier downloadable
 bring-up bundles use the old map and must not be mixed with these host sketches.
-The SPI example now links, but its 32,768-byte BIN occupies the full flash with
-no spare space. It is a compile check, not a 30 KiB EEPROM-safe updater image.
+The SPI example uses the same unused-debug-UART and EXTI build exclusions as
+the default example. Its BIN is 29,472 bytes, down from 32,768, leaving 1,248
+bytes below the 30 KiB EEPROM boundary. The example also compiles for C011,
+C051, and G071. On C031, the smaller image passed all four SPI modes, both bit
+orders, two requested clock rates, independent byte decoding, a 4,736-byte
+held-CS transfer, host chunk boundaries, and error recovery.
 
 ## Hardware results — 2026-10-24
 
