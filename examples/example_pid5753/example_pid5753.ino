@@ -1,7 +1,7 @@
 #define PRODUCT_CODE            5753
 #define CONFIG_I2C_PERIPH_ADDR  0x49
 //#define CONFIG_UART_DEBUG          1
-#if defined(ARDUINO_GENERIC_C011F6UX)
+#if defined(ARDUINO_GENERIC_C011F6UX) || defined(ARDUINO_GENERIC_C031G6UX)
 #define CONFIG_INTERRUPT_PIN      12 // PA12
 #else
 #define CONFIG_INTERRUPT_PIN      10

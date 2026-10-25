@@ -179,36 +179,51 @@ this key prevents accidental entry, not unauthorized firmware updates.
 The STM32C031G6U6 Rev A breakout uses the 28-pin generic **STM32C031G6Ux**
 variant: 32 KiB flash, 12 KiB SRAM, and a 48 MHz peripheral clock.
 `examples/example_stm32c031` enables GPIO, ADC, PWM, NeoPixel, one encoder on
-PA2/PA3, and an interrupt output on PC14. The provisional hardware ID is `0x91`;
+PA2/PA3, EEPROM, and I2C ROM entry (product **6540**). PC14 is the active-low,
+open-drain interrupt output; PB8 and PC6 are address straps. The provisional hardware ID is `0x91`;
 host libraries must recognize that ID before using their normal `begin()`.
 The backend supplies the missing 48 MHz `SystemClock_Config()` startup hook
 for this generic variant, using the internal oscillator and HAL clock APIs.
 
-Protocol indices follow STM32duino's package-specific digital pin map:
+Protocol numbers use the board-label map below, independently of STM32duino's
+dense core indices. This replaces the earlier C031 bring-up numbering:
 
 | Protocol indices | Board pins |
 | --- | --- |
 | 0–8 | PA0–PA8 |
-| 9, 10 | PA11, PA12 |
-| 13 | PA15 |
-| 14, 15 | PB0, PB1 |
-| 16–18 | PB3–PB5 |
-| 21, 22, 23 | PB8, PC6, PC14 |
+| 11, 12, 15 | PA11, PA12, PA15 |
+| 16, 17 | PB0, PB1 |
+| 19–21 | PB3–PB5 |
+| 22 | PC6 — ADDR1 in the default firmware |
+| 24 | PB8 — ADDR0 in the default firmware |
+| 30 | PC14 — INT in the default firmware |
+| 31 | PC15 onboard LED |
 
-These are 20 usable GPIOs before optional UART, interrupt, address, or SPI
-reservations. SWD (11/12), I2C (19/20), the PC15 LED (24), reset (25),
-and duplicate remap aliases (26/27) are not ordinary GPIOs. PC14 is exposed on
-the saved Rev A design. ADC supports 0–10 and 14/15; PWM supports every usable
-GPIO except 10. These PWM groups share channels: **3/9**, **5/13**,
-**6/17/21/22**, **7/18/23**, and **8/14**. Use only one pin from each group
-at a time.
+These are 20 header GPIOs plus the LED before feature reservations. The default
+firmware reserves D22/D24/D30, leaving 17 header GPIOs plus the LED. SWD,
+I2C, reset, and all unlisted protocol numbers stay unavailable. ADC supports
+0–8, 11/12, and 16/17; PWM supports every available GPIO except 12 (PA12).
+These PWM groups share channels: **3/11**, **5/15**, **6/20/24/22**,
+**7/21/30**, and **8/16/31**. Use only one available pin from each group at a time.
+
+The address straps use internal pull-ups. Leave both floating for **0x49**;
+ground PB8/ADDR0 for **0x4A**, PC6/ADDR1 for **0x4B**, or both for **0x4C**.
+Straps are sampled at startup and software reset, and add to the base address
+(including an EEPROM-configured base). Remove the corresponding configuration
+defines in a custom build to reclaim INT or address pins as ordinary GPIOs.
 
 The C011 feature rules above also apply, including the optional SPI controller
 with header-configured pins. EEPROM reserves `0x08007800` and limits the
-application to 30 KiB.
+application to 30 KiB. The example's `build_opt.h` removes the unused core
+printf UART and EXTI callback table; seesaw GPIO/encoder polling and I2C are
+unchanged. The C031 keeps STM32duino's existing PWM implementation; its 12 KiB
+RAM accommodates EEPROM, NeoPixel storage, and timer allocations.
 The same BOOTLOAD key enters the C031 ROM, whose PB6/PB7 I2C address is
 **0x63**, not the C011's 0x64; see
 [ST AN2606](https://www.st.com/resource/en/application_note/cd00167594-stm32-microcontroller-system-memory-boot-mode-stmicroelectronics.pdf).
+Select C031 in the [shared I2C updater](extras/stm32_i2c_bootloader).
+Application-to-ROM entry, write/readback, and restart have passed on C031 hardware;
+physical BOOT0 recovery and option-byte writes remain separate checks.
 
 STM32duino 3.0.0 includes this variant's sources but not its board-menu entry
 or linker script. Add the following to `boards.local.txt` beside that core's
@@ -238,8 +253,22 @@ target-specific example is included in the C031 CI platform matrix.
 ## STM32C051 breakout support
 
 The STM32C051G8U6 Rev A breakout uses the 28-pin generic **STM32C051G8Ux**
-variant with 64 KiB flash, 12 KiB SRAM, and a 48 MHz internal clock. Its GPIO,
-ADC, and selected PWM channel map matches the C031 table above. The backend
+variant with 64 KiB flash, 12 KiB SRAM, and a 48 MHz internal clock. C051 keeps
+its existing dense map, independently of the C031 remap:
+
+| Protocol indices | Board pins |
+| --- | --- |
+| 0–8 | PA0–PA8 |
+| 9, 10 | PA11, PA12 |
+| 13 | PA15 |
+| 14, 15 | PB0, PB1 |
+| 16–18 | PB3–PB5 |
+| 21, 22, 23 | PB8, PC6, PC14 |
+
+SWD (11/12), I2C (19/20), PC15 LED (24), reset (25), and aliases (26/27)
+remain reserved. ADC supports 0–10 and 14/15; PWM supports all exposed pins
+except 10. Shared PWM groups are 3/9, 5/13, 6/17/21/22, 7/18/23, and 8/14.
+The backend
 uses C051-specific alternate-function indices to preserve those PWM channels,
 and supplies its missing startup clock hook through HAL. Its provisional
 hardware ID is **0x92**, which host libraries must recognize.
@@ -285,7 +314,7 @@ flash and 36 KiB SRAM. STM32duino supplies its 64 MHz clock initialization;
 the backend selects matching I2C timing and SPI clock limits. The provisional
 hardware ID is **0x93**, which host libraries must recognize.
 
-GPIO numbering and reserved pins match the C031/C051 table. G071 ADC is
+GPIO numbering and reserved pins match the C051 table (D24 LED remains reserved). G071 ADC is
 limited to indices **0–7 and 14/15**. PWM is available on the exposed GPIOs
 except **10/PA12 and 23/PC14**; shared channel groups are **0/5/13**,
 **6/17**, and **7/18**. Use one pin from each group at a time. PA4/PA5 use

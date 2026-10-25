@@ -4,6 +4,8 @@
 
 #if defined(ARDUINO_GENERIC_C011F6UX)
 #define CONFIG_INTERRUPT_PIN      14 // PC14
+#elif defined(ARDUINO_GENERIC_C031G6UX)
+#define CONFIG_INTERRUPT_PIN      30 // PC14
 #else
 #define CONFIG_INTERRUPT_PIN      15
 #endif
@@ -14,6 +16,9 @@
 // STM32 PA6/PA7, or the 20-pin tinyAVR board's D6/D7.
 #define CONFIG_ADDR_0_PIN          6
 #define CONFIG_ADDR_1_PIN          7
+#elif defined(ARDUINO_GENERIC_C031G6UX)
+#define CONFIG_ADDR_0_PIN          24 // PB8
+#define CONFIG_ADDR_1_PIN          22 // PC6
 #else
 #define CONFIG_ADDR_0_PIN          16
 #define CONFIG_ADDR_1_PIN          17
