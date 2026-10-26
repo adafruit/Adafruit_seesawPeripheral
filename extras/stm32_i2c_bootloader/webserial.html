@@ -52,6 +52,11 @@ dialog{width:min(560px,calc(100% - 32px));max-height:90vh;overflow:auto;backgrou
 // ST AN4221 packet encodings; kept in step with i2c_bootloader.py.
 const FLASH_BASE = 0x08000000, FLASH_SIZE = 32768, PAGE_SIZE = 2048;
 const APP_SIZE = FLASH_SIZE - PAGE_SIZE, OPTIONS = 0x1fff7800, OPTION_SIZE = 128;
+const PROFILES = {
+  c011: {name: 'C011', rom: 0x64, id: 0x0443, hwid: 0x90, ramEnd: 0x20001800, getLength: 20},
+  c031: {name: 'C031', rom: 0x63, id: 0x0453, hwid: 0x91, ramEnd: 0x20003000, getLength: 20}
+};
+let target = PROFILES.c011;
 const ROM_ADDRESS = 0x64, ACK = 0x79, BUSY = 0x76;
 const GET = 0x00, GET_ID = 0x02, READ = 0x11, GO = 0x21, WRITE = 0x32, ERASE = 0x45;
 const $ = id => document.getElementById(id);
@@ -62,12 +67,12 @@ const equal = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 // XOR and complement below are required by the bootloader's wire protocol.
 const checksum = bytes => [...bytes, bytes.reduce((a, b) => a ^ b, 0)];
 const be32 = n => [Math.floor(n / 0x1000000) % 256, Math.floor(n / 65536) % 256, Math.floor(n / 256) % 256, n % 256];
-function validateImage(image) {
+function validateImage(image, profile = target) {
   check(image.length >= 8 && image.length <= APP_SIZE, 'Application must be 8–30720 bytes (EEPROM is reserved).');
   const view = new DataView(image.buffer, image.byteOffset, image.byteLength);
   const stack = view.getUint32(0, true), entry = view.getUint32(4, true);
-  check(stack > 0x20000000 && stack <= 0x20001800 && stack % 8 === 0, 'Invalid C011 stack pointer; is this STM32C011 firmware?');
-  check(entry % 2 === 1 && entry >= FLASH_BASE && entry < FLASH_BASE + image.length, 'Invalid C011 reset vector.');
+  check(stack > 0x20000000 && stack <= profile.ramEnd && stack % 8 === 0, `Invalid ${profile.name} stack pointer; select the matching target and firmware.`);
+  check(entry % 2 === 1 && entry >= FLASH_BASE && entry < FLASH_BASE + image.length, 'Invalid selected-target reset vector.');
   return image;
 }
 function parseHex(text) {
@@ -84,7 +89,7 @@ function parseHex(text) {
     if (type === 0) {
       check(address + count <= 65536, 'HEX record crosses a 64 KiB boundary.');
       const offset = base + address - FLASH_BASE;
-      check(offset >= 0 && offset + count <= APP_SIZE, 'HEX contains data outside the C011 application area (or in reserved EEPROM).');
+      check(offset >= 0 && offset + count <= APP_SIZE, 'HEX contains data outside the selected-target application area (or in reserved EEPROM).');
       payload.forEach((value, i) => {
         check(!used[offset + i], 'Overlapping HEX data records.');
         used[offset + i] = 1; data[offset + i] = value;
@@ -172,14 +177,14 @@ class SerialBridge {
   }
 }
 class Bootloader {
-  constructor(bridge) { this.bridge = bridge; }
+  constructor(bridge, profile = target) { this.bridge = bridge; this.profile = profile; }
   async write(bytes) {
     check(bytes.length >= 2 && bytes.length <= 32, 'Packet exceeds AVR Wire buffer.');
-    check(await this.bridge.command('W', [ROM_ADDRESS, ...bytes]) === 'OK', 'ROM write failed.');
+    check(await this.bridge.command('W', [this.profile.rom, ...bytes]) === 'OK', 'ROM write failed.');
   }
   async read(count) {
     check(count >= 1 && count <= 32, 'Read exceeds AVR Wire buffer.');
-    const answer = await this.bridge.command('U', [ROM_ADDRESS, count]);
+    const answer = await this.bridge.command('U', [this.profile.rom, count]);
     check(/^DATA( [0-9A-F]{2})+$/i.test(answer), `Invalid bridge response: ${answer}`);
     const data = Uint8Array.from(answer.slice(5).split(' ').map(v => parseInt(v, 16)));
     check(data.length === count, 'Short ROM response.'); return data;
@@ -198,10 +203,17 @@ class Bootloader {
   async address(address) { await this.write(checksum(be32(address))); await this.ack(); }
   async identify() {
     await this.command(GET_ID); const id = await this.read(3); await this.ack();
-    check(equal(id, [1, 4, 0x43]), 'Not an STM32C011 (expected product ID 0x0443).');
-    await this.command(GET); const info = await this.read(20); await this.ack();
-    check(info[0] === 18 && info[1] === 0x11 && [READ, GO, WRITE, ERASE].every(v => info.slice(2).includes(v)), 'Unsupported C011 ROM version/layout/commands.');
-    log(`C011 ROM identified: 0x0443, protocol 0x${hex(info[1])}.`);
+    check(equal(id, [1, Math.floor(this.profile.id / 256), this.profile.id % 256]), 'Wrong STM32 device ID for the selected target.');
+    await this.command(GET); const info = await this.read(this.profile.getLength);
+    log(`${this.profile.name} GET: count ${info[0]}, protocol 0x${hex(info[1])}; expected count ${this.profile.getLength - 2}.`);
+    await this.ack();
+    check(info[0] === this.profile.getLength - 2 && info[1] === 0x11 && [READ, GO, WRITE, ERASE].every(v => info.slice(2).includes(v)), 'Unsupported ROM version/layout/commands; no write attempted.');
+    if (this.profile.id === PROFILES.c031.id) {
+      // ST stm32c031xx.h: the factory halfword is flash capacity in KiB.
+      const size = await this.readMemory(0x1fff75a0, 2);
+      check(size[0] + size[1] * 256 === 32, 'C031 target is not the required 32 KiB part; no write attempted.');
+    }
+    log(`${this.profile.name} ROM identified: 0x${this.profile.id.toString(16)}, protocol 0x${hex(info[1])}.`);
   }
   async readMemory(address, length, progress = () => {}) {
     const result = new Uint8Array(length);
@@ -221,7 +233,7 @@ class Bootloader {
     await this.write(checksum(list)); await this.ack();
   }
   async program(image, progress = () => {}) {
-    validateImage(image);
+    validateImage(image, this.profile);
     const padded = new Uint8Array(Math.ceil(image.length / 8) * 8).fill(255); padded.set(image);
     // 24 data bytes + length/checksum fit the AVR's 32-byte Wire buffer.
     for (let offset = 0; offset < padded.length; offset += 24) {
