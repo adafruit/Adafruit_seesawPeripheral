@@ -1,16 +1,36 @@
-# STM32C011 I2C bootloading demo
+# STM32C011 / STM32C031 I2C bootloading demo
 
-This demo updates a **STM32C011F6 seesaw** over its existing I2C connection.
+This demo updates a **STM32C011F6 or STM32C031G6 seesaw** over its existing I2C connection.
 An Arduino-compatible host bridges USB serial to I2C (classic AVR,
 Arduino-Pico RP2040/RP2350, ESP32, or ESP8266);
 Python or the standalone Web Serial page handles ST's factory-ROM protocol.
 No BOOT0 wire is needed.
 
-This is **C011-specific**, including its Rev Z ROM command-frame layout.
-Do not use it for C031, C051, G071, or other STM32 parts: their ROM addresses,
-flash sizes, and command behavior differ. The Python updater requires seesaw
-firmware with `CONFIG_BOOTLOADER` enabled and the `B0 07 10 AD` entry key.
-The browser uploader also supports factory-blank chips already in ROM.
+Select the matching target before connecting. C011 Rev Z and C031 Rev Z
+(device 0x10016453) have passed ROM application programming/readback/Go on hardware.
+C031 option writes and physical BOOT0 recovery remain unverified:
+
+| Target | Seesaw ID | ROM address / device ID | SRAM | GET data frame |
+| --- | --- | --- | --- | --- |
+| C011F6 | 0x90 | 0x64 / 0x0443 | 6 KiB | 20 bytes, 18 commands (observed Rev Z) |
+| C031G6 | 0x91 | 0x63 / 0x0453 | 12 KiB | 20 bytes, 18 commands (observed device 0x10016453) |
+
+Both use 32 KiB flash, 2 KiB pages, a 30 KiB application limit and the
+128-byte option area at 0x1FFF7800. Device ID and command-layout checks fail
+closed before erase/write if the connected ROM differs. C031's exact GET
+frame was confirmed on device 0x10016453; option-write behavior still needs verification.
+[AN2606 section 6](https://www.st.com/resource/en/application_note/cd00167594-stm32-microcontroller-system-memory-boot-mode-stmicroelectronics.pdf)
+lists C031 ROM V5.2 (distinct from its I2C protocol version), address 0x63,
+and external pull-ups on PB6/PB7.
+[AN4221](https://www.st.com/resource/en/application_note/an4221-i2c-protocol-used-in-the-stm32-bootloader-stmicroelectronics.pdf)
+defines the V1.1 command frame. ST's stm32c031xx.h confirms device ID 0x0453
+and the same implemented option-register masks used for C011.
+Before C031 firmware operations, its factory flash-size halfword at 0x1FFF75A0
+must report 32 KiB; a 16 KiB C031x4 is rejected.
+
+C051, G071 and other STM32 parts are not supported by this uploader.
+Running seesaw firmware needs CONFIG_BOOTLOADER and the B0 07 10 AD entry key.
+Both frontends also accept targets already in ROM (CLI: --rom).
 
 ## Arduino bridge + Web Serial (HEX or BIN)
 
@@ -25,13 +45,14 @@ Use the wiring below. Open [the uploader](https://adafruit.github.io/Adafruit_se
 in desktop Chrome or Edge. Alternatively, download `webserial.html` and open
 that standalone file locally. Ordinary HTTP LAN hosting cannot use Web Serial.
 
-1. Upload the latest bridge sketch, then connect its USB serial port on
+1. Upload the latest bridge sketch, choose **STM32C011F6** or **STM32C031G6**,
+   then connect its USB serial port on
    the page. Connecting automatically scans the I2C bus.
-2. In **Find your C011 and enter ROM**, select the detected C011 seesaw and click
-   **Boot selected C011 into ROM**. If a factory-blank or manually booted C011 is
-   already in ROM at `0x64`, the page identifies it directly and reports ready.
-   With multiple C011 seesaws, choose which one to boot; only one may be in ROM.
-3. Drop a C011 application HEX or BIN file onto the page. BIN starts at
+2. In **Find your STM32 and enter ROM**, select the detected STM32 seesaw and click
+   **Boot selected STM32 into ROM**. If a factory-blank or manually booted STM32 is
+   already in ROM at its target address, the page identifies it directly and reports ready.
+   Keep one target connected during programming or option changes.
+3. Drop the selected target's application HEX or BIN file onto the page. BIN starts at
    `0x08000000`; HEX uses absolute flash addresses and checked record checksums.
    Click **Write** once step 2 reports that ROM is ready.
    **Verify after flash** is checked by default. No backup-file dialog is shown.
@@ -39,7 +60,7 @@ that standalone file locally. Ordinary HTTP LAN hosting cannot use Web Serial.
    required application pages, compares every programmed byte when verification
    is enabled, checks EEPROM/options unchanged, then sends Go. Unchecking
    **Verify after flash** skips application readback, not EEPROM/option checks.
-5. Power-cycle the C011 to confirm the application starts normally.
+5. Power-cycle the STM32 to confirm the application starts normally.
 
 Files stay on your computer. No Python installation is needed. The page rejects
 images over 30720 bytes, bad vectors, overlapping HEX records, and data outside
@@ -58,7 +79,7 @@ backup automatically; use Read first if you want one. The Python updater below
 retains its separate backup workflow.
 
 For subsequent updates, scan and select the running seesaw, then use **Boot
-selected C011 into ROM**. The installed firmware must retain the
+selected STM32 into ROM**. The installed firmware must retain the
 seesaw boot-entry command, or another existing ROM-entry method is needed.
 Factory-blank auto-entry is not a persistent bootloader-entry mechanism after
 the chip is programmed. Write reports whether application readback was verified
@@ -67,15 +88,15 @@ The Python updater's seesaw restart checks below remain separate.
 
 The bridge's `S` command scans addresses `0x08`–`0x77` using address-only probes
 and returns `SCAN` followed by responding hexadecimal addresses. The page queries
-the seesaw hardware ID at each responding address except `0x64`; only ID `0x90`
-is selectable as C011 seesaw. At `0x64` it instead checks the C011 ROM product ID
-and supported command layout, never sending seesaw register bytes to ROM.
-Unknown devices are listed but disabled. Scanning does not send a boot-entry key,
-erase flash, or write options. Boot entry is a separate explicit action and
-rechecks the selected seesaw and occupancy of `0x64` before sending the key.
+the selected target's seesaw hardware ID at responding addresses except 0x63/0x64.
+The selected ROM address is checked using its device ID and supported command
+layout; the other ROM address is left alone. Never send seesaw register bytes
+to either ROM parser. Unknown/wrong-family devices are listed but disabled.
+Scanning does not send a boot-entry key, erase flash, or write options. Boot
+entry rechecks the seesaw ID and destination-address occupancy before the key.
 If an older bridge sketch rejects `S`, the page asks you to upload the new sketch.
 As with any shared I2C bus, duplicate addresses cannot be distinguished; keep
-only one device in ROM. A seesaw configured at `0x64` must be moved to another
+only one device in ROM. A seesaw configured at `0x63` or `0x64` must be moved to another
 address before this guided workflow can use it.
 
 ### Browser boot-option controls
@@ -83,7 +104,7 @@ address before this guided workflow can use it.
 Use the latest bridge sketch (with the `S` and `O` commands). No firmware
 file is needed. Complete device discovery/ROM entry in step 2, then **Read boot
 options / Verify pending write** displays nBOOT_SEL, nBOOT1, nBOOT0, BOOT_LOCK,
-and RDP. A query leaves the C011 in ROM.
+and RDP. A query leaves the STM32 in ROM.
 
 Choose **Enable BOOT0 recovery** for `0 1 1`, or **Use normal flash boot** for
 `1 1 1`. Both open a guided dialog; you do not need to return to the discovery
@@ -91,7 +112,7 @@ section. The guide keeps the reset instructions, device selection, option write,
 and readback in one place:
 
 1. Briefly touch **STM32 RST to GND**, then release it. Click **I've reset it —
-   continue**. The guide scans and, if needed, lets you select a C011 and boot it
+   continue**. The guide scans and, if needed, lets you select a STM32 and boot it
    into ROM. Nothing has been written yet.
 2. Click **Enable BOOT0** (or **Set normal flash boot**) to make the change.
 3. Follow the dialog's wiring/reset instructions and continue to verify.
@@ -113,7 +134,7 @@ require the **Verified** result. This BOOT0 check does not substitute software
 boot entry if the physical strap fails. For normal flash boot, the dialog can
 boot the detected seesaw into ROM before readback if that firmware is installed.
 The bridge stays connected throughout so its pending snapshot is preserved.
-The page cannot drive the C011 reset pin or B0 for you. Closing a pending guide
+The page cannot drive the STM32 reset pin or B0 for you. Closing a pending guide
 warns without disconnecting; **Continue boot-option guide** reopens it.
 
 Errors stop further writes until rediscovery and successful option readback (and
@@ -126,6 +147,21 @@ section below for recovery precautions and the exact preservation checks.
 
 The GitHub Pages workflow publishes this page at `/bootloader/` after merging
 to `main`; repository Pages settings must use **GitHub Actions** as the source.
+
+For a C031, use `O 63` where the C011 examples below use `O 64`.
+The bridge detects a running C031 by ID 0x91 at the supplied seesaw address,
+and then uses ROM 0x63. It refuses to switch families while verification of a
+saved option write is pending. Connect only one target: identical devices
+sharing an address cannot be distinguished.
+
+CLI examples for C031 (use a new backup filename):
+```sh
+python extras/stm32_i2c_bootloader/i2c_bootloader.py --port COM65 --target c031 --rom
+python extras/stm32_i2c_bootloader/i2c_bootloader.py --port COM65 --target c031 --rom --image seesaw-c031-6540-default.bin --backup c031-before.bin --go
+```
+Omit `--rom` when starting from bootloader-enabled seesaw at 0x49. Without
+`--target`, the CLI remains C011-compatible. Neither frontend infers the family
+from a BIN/HEX file; vectors alone cannot prove which MCU an application targets.
 
 ## Connections and prerequisites
 
@@ -142,9 +178,9 @@ to `main`; repository Pages settings must use **GitHub Actions** as the source.
   level shifter instead. Never connect 5 V pull-ups to a 3.3 V host.
 - Keep power stable, close other programs using the host's serial port, and
   keep an ST-Link/SWD recovery connection available.
-- Connect only one update target; its factory-ROM I2C address is fixed at `0x64`.
+- Connect only one update target; its ROM address is fixed at 0x64 (C011) or 0x63 (C031).
 - For the CLI workflow, install Python 3, Arduino CLI, the host's board core,
-  and STM32duino 3.0.0 for compiling C011 applications.
+  and STM32duino 3.0.0 for compiling these STM32 applications.
   Install this library and its dependencies as described in the main README.
 
 Run the following commands from the repository root. Replace `COM65` with
