@@ -22,7 +22,7 @@
 // Reserve the final 2 KiB flash page: application maximum 63488 bytes.
 // EEPROM byte 255 holds the persistent I2C address; erased bytes are 0xFF.
 // I2C is PB7/SDA and PB6/SCL. SWD, PC15 LED, and reset stay reserved.
-// The GPIO/ADC map and shared PWM groups match the C031 breakout.
+// This target keeps the dense GPIO/ADC map documented in the README.
 // UART pins are reserved at startup; SPI pins are reserved when configured.
 // Choose another free GPIO for NeoPixels, display D/C, reset, or BUSY.
 #include "Adafruit_seesawPeripheral.h"
