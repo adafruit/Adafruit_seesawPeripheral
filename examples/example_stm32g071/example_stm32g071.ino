@@ -22,7 +22,7 @@
 // Reserve the final 2 KiB flash page: application maximum 129024 bytes.
 // EEPROM byte 255 holds the persistent I2C address; erased bytes are 0xFF.
 // I2C is PB7/SDA and PB6/SCL. SWD, PC15 LED, and reset stay reserved.
-// GPIO numbering matches C031/C051, but ADC is D0..7 and D14/15 only.
+// GPIO numbering matches C051, but ADC is D0..7 and D14/15 only.
 // PWM is available on exposed GPIOs except D10/PA12 and D23/PC14.
 // Shared PWM groups: D0/5/13, D6/17, and D7/18; use one pin per group.
 // PA4/PA5 provide PWM here, not DAC. The DAC has no seesaw protocol yet.
