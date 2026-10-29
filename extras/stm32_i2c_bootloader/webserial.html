@@ -2,23 +2,25 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Adafruit C011 firmware uploader</title>
+<title>Adafruit C011 / C031 firmware uploader</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#11171c;color:#edf3f5}*{box-sizing:border-box}body{max-width:850px;margin:48px auto;padding:0 22px}h1{font-size:2.2rem;margin-bottom:10px}h2{font-size:1.2rem}p,li{line-height:1.6;color:#bacbd4}a{color:#68dccc}.badge{color:#68dccc;letter-spacing:.12em;font-size:.8rem;font-weight:700}.card{background:#1b252d;border:1px solid #384954;border-radius:14px;padding:22px;margin:20px 0}button,.download{font:inherit;border:0;border-radius:8px;padding:12px 18px;background:#68dccc;color:#112626;font-weight:650;cursor:pointer;display:inline-block;text-decoration:none}button:disabled{opacity:.4;cursor:not-allowed}button.secondary{background:#344651;color:white}select,input{font:inherit;padding:8px;border:1px solid #687b88;border-radius:6px;background:#11171c;color:white}label{display:block;margin:14px 0}#drop{border:2px dashed #64828e;padding:30px 18px;text-align:center;border-radius:12px}#drop.over{border-color:#68dccc;background:#203b3e}#file{max-width:100%}#filename{overflow-wrap:anywhere}#log{white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;font:13px/1.6 ui-monospace,monospace}progress{width:100%;accent-color:#68dccc;height:14px}.warning{color:#ffcc89}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}small{color:#bacbd4}.hidden{display:none!important}
 dialog{width:min(560px,calc(100% - 32px));max-height:90vh;overflow:auto;background:#1b252d;color:#edf3f5;border:1px solid #64828e;border-radius:16px;padding:28px}dialog::backdrop{background:#080d12cc}dialog h2{font-size:1.5rem;margin-top:10px}#wizardText{white-space:pre-line}#wizardStatus{overflow-wrap:anywhere}dialog .row{margin-top:22px}
 </style>
-<header><div class="badge">ADAFRUIT · SEESAW PERIPHERAL</div><h1>C011 firmware uploader</h1><p>USB → Arduino bridge → I²C → STM32C011F6. Write firmware, read a backup, or verify a file against flash. Files stay on your computer.</p></header>
+<header><div class="badge">ADAFRUIT · SEESAW PERIPHERAL</div><h1>C011 / C031 firmware uploader</h1><p>USB → Arduino bridge → I²C → STM32C011F6 / C031G6. Write firmware, read a backup, or verify a file against flash. Files stay on your computer.</p></header>
 <section class="card"><h2>1. Prepare your USB bridge and board</h2><ol>
-<li><a href="https://adafruit.github.io/Adafruit_seesawPeripheral/bootloader/serial_i2c_bridge/serial_i2c_bridge.ino" download>Download the latest bridge sketch</a> and upload it using your host board’s Arduino selection: Uno/Metro 328, Arduino-Pico RP2040/RP2350, ESP32, or ESP8266. On native-USB ESP32 boards, enable <strong>USB CDC On Boot</strong> when using that USB port. Close Serial Monitor.</li>
-<li>Connect the host’s default <strong>Wire SDA → SDA, SCL → SCL, and GND → GND</strong>. Uno/Metro 328 uses A4/A5; other boards use their own SDA/SCL pins (RP/ESP pin overrides are available in the sketch). Use the breakout’s level-shifted QT bus with a 5 V host. With a 3.3 V host, ensure SDA/SCL pull-ups are also at 3.3 V. <strong>Never expose a 3.3 V host or raw C011 bus to 5 V pull-ups.</strong> Power the breakout through VIN as usual.</li>
-<li>Only one C011 may be in ROM at a time (ROM always uses 0x64). Devices sharing an address cannot be distinguished. For a factory-blank chip, power-cycle it before starting; no BOOT0 wire or ST-Link is needed for initial programming.</li></ol>
-<p class="warning">C011F6 only: 32 KiB flash, 6 KiB RAM, tested Rev Z ROM layout. Application limit: 30 KiB; the last 2 KiB EEPROM page and boot options are preserved. Keep power stable and this tab visible. A failed flash may require ST-Link recovery.</p>
+<li><a href="serial_i2c_bridge/serial_i2c_bridge.ino" download>Download the matching bridge sketch</a> and upload it using your host board’s Arduino selection: Uno/Metro 328, Arduino-Pico RP2040/RP2350, ESP32, or ESP8266. On native-USB ESP32 boards, enable <strong>USB CDC On Boot</strong> when using that USB port. Close Serial Monitor.</li>
+<li>Connect the host’s default <strong>Wire SDA → SDA, SCL → SCL, and GND → GND</strong>. Uno/Metro 328 uses A4/A5; other boards use their own SDA/SCL pins (RP/ESP pin overrides are available in the sketch). Use the breakout’s level-shifted QT bus with a 5 V host. With a 3.3 V host, ensure SDA/SCL pull-ups are also at 3.3 V. <strong>Never expose a 3.3 V host or raw STM32 bus to 5 V pull-ups.</strong> Power the breakout through VIN as usual.</li>
+<li>Connect only one target board while programming or changing boot options (C011 ROM: 0x64; C031 ROM: 0x63). Devices sharing an address cannot be distinguished. For a factory-blank chip, power-cycle it before starting; no BOOT0 wire or ST-Link is needed for initial programming.</li></ol>
+<p class="warning">C011F6: 6 KiB RAM, bench-tested Rev Z ROM. C031G6: 12 KiB RAM; hardware verification pending. Both have 32 KiB flash. Application limit: 30 KiB; the last 2 KiB EEPROM page and boot options are preserved. Keep power stable and this tab visible. A failed flash may require ST-Link recovery.</p>
+<label>Target <select id="target"><option value="c011">STM32C011F6</option><option value="c031">STM32C031G6 — PID 6540</option></select></label>
+<p id="profileInfo">C011: ROM 0x64, device 0x0443, 6 KiB RAM.</p>
 <p id="compat" class="warning"></p><button id="connect">Connect bridge</button> <span id="connection">Not connected</span></section>
-<section class="card"><h2>2. Find your C011 and enter ROM</h2>
-<p>Connecting scans the I²C bus. The page checks responding devices for the C011 seesaw hardware ID, and checks 0x64 for the C011 ROM protocol. Unknown devices cannot be programmed.</p>
+<section class="card"><h2>2. Find your STM32 and enter ROM</h2>
+<p>Connecting scans the I²C bus. The page checks responding devices for the selected target’s seesaw hardware ID and ROM protocol. Unknown devices cannot be programmed.</p>
 <button id="scan" class="secondary" disabled>Scan</button>
 <label>Device <select id="device" disabled><option value="">Connect bridge to find devices</option></select></label>
-<button id="bootRom" disabled>Boot selected C011 into ROM</button>
+<button id="bootRom" disabled>Boot selected STM32 into ROM</button>
 <p id="deviceStatus" role="status" aria-live="polite">First connect your bridge. Use the latest bridge sketch with scan support.</p>
 </section>
 <section class="card"><h2>3. Firmware (optional)</h2><div id="drop"><p>Drop one STM32 application <strong>.hex</strong> or <strong>.bin</strong> here</p><input id="file" type="file" accept=".hex,.bin" aria-label="Choose firmware"></div><p id="filename">No file selected.</p>
@@ -52,7 +54,12 @@ dialog{width:min(560px,calc(100% - 32px));max-height:90vh;overflow:auto;backgrou
 // ST AN4221 packet encodings; kept in step with i2c_bootloader.py.
 const FLASH_BASE = 0x08000000, FLASH_SIZE = 32768, PAGE_SIZE = 2048;
 const APP_SIZE = FLASH_SIZE - PAGE_SIZE, OPTIONS = 0x1fff7800, OPTION_SIZE = 128;
-const ROM_ADDRESS = 0x64, ACK = 0x79, BUSY = 0x76;
+const PROFILES = {
+  c011: {name: 'C011', rom: 0x64, id: 0x0443, hwid: 0x90, ramEnd: 0x20001800, getLength: 20},
+  c031: {name: 'C031', rom: 0x63, id: 0x0453, hwid: 0x91, ramEnd: 0x20003000, getLength: 20}
+};
+let target = PROFILES.c011;
+const ACK = 0x79, BUSY = 0x76;
 const GET = 0x00, GET_ID = 0x02, READ = 0x11, GO = 0x21, WRITE = 0x32, ERASE = 0x45;
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -62,12 +69,12 @@ const equal = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 // XOR and complement below are required by the bootloader's wire protocol.
 const checksum = bytes => [...bytes, bytes.reduce((a, b) => a ^ b, 0)];
 const be32 = n => [Math.floor(n / 0x1000000) % 256, Math.floor(n / 65536) % 256, Math.floor(n / 256) % 256, n % 256];
-function validateImage(image) {
+function validateImage(image, profile = target) {
   check(image.length >= 8 && image.length <= APP_SIZE, 'Application must be 8–30720 bytes (EEPROM is reserved).');
   const view = new DataView(image.buffer, image.byteOffset, image.byteLength);
   const stack = view.getUint32(0, true), entry = view.getUint32(4, true);
-  check(stack > 0x20000000 && stack <= 0x20001800 && stack % 8 === 0, 'Invalid C011 stack pointer; is this STM32C011 firmware?');
-  check(entry % 2 === 1 && entry >= FLASH_BASE && entry < FLASH_BASE + image.length, 'Invalid C011 reset vector.');
+  check(stack > 0x20000000 && stack <= profile.ramEnd && stack % 8 === 0, `Invalid ${profile.name} stack pointer; select the matching target and firmware.`);
+  check(entry % 2 === 1 && entry >= FLASH_BASE && entry < FLASH_BASE + image.length, 'Invalid selected-target reset vector.');
   return image;
 }
 function parseHex(text) {
@@ -84,7 +91,7 @@ function parseHex(text) {
     if (type === 0) {
       check(address + count <= 65536, 'HEX record crosses a 64 KiB boundary.');
       const offset = base + address - FLASH_BASE;
-      check(offset >= 0 && offset + count <= APP_SIZE, 'HEX contains data outside the C011 application area (or in reserved EEPROM).');
+      check(offset >= 0 && offset + count <= APP_SIZE, 'HEX contains data outside the selected-target application area (or in reserved EEPROM).');
       payload.forEach((value, i) => {
         check(!used[offset + i], 'Overlapping HEX data records.');
         used[offset + i] = 1; data[offset + i] = value;
@@ -172,14 +179,14 @@ class SerialBridge {
   }
 }
 class Bootloader {
-  constructor(bridge) { this.bridge = bridge; }
+  constructor(bridge, profile = target) { this.bridge = bridge; this.profile = profile; }
   async write(bytes) {
     check(bytes.length >= 2 && bytes.length <= 32, 'Packet exceeds AVR Wire buffer.');
-    check(await this.bridge.command('W', [ROM_ADDRESS, ...bytes]) === 'OK', 'ROM write failed.');
+    check(await this.bridge.command('W', [this.profile.rom, ...bytes]) === 'OK', 'ROM write failed.');
   }
   async read(count) {
     check(count >= 1 && count <= 32, 'Read exceeds AVR Wire buffer.');
-    const answer = await this.bridge.command('U', [ROM_ADDRESS, count]);
+    const answer = await this.bridge.command('U', [this.profile.rom, count]);
     check(/^DATA( [0-9A-F]{2})+$/i.test(answer), `Invalid bridge response: ${answer}`);
     const data = Uint8Array.from(answer.slice(5).split(' ').map(v => parseInt(v, 16)));
     check(data.length === count, 'Short ROM response.'); return data;
@@ -198,10 +205,17 @@ class Bootloader {
   async address(address) { await this.write(checksum(be32(address))); await this.ack(); }
   async identify() {
     await this.command(GET_ID); const id = await this.read(3); await this.ack();
-    check(equal(id, [1, 4, 0x43]), 'Not an STM32C011 (expected product ID 0x0443).');
-    await this.command(GET); const info = await this.read(20); await this.ack();
-    check(info[0] === 18 && info[1] === 0x11 && [READ, GO, WRITE, ERASE].every(v => info.slice(2).includes(v)), 'Unsupported C011 ROM version/layout/commands.');
-    log(`C011 ROM identified: 0x0443, protocol 0x${hex(info[1])}.`);
+    check(equal(id, [1, Math.floor(this.profile.id / 256), this.profile.id % 256]), 'Wrong STM32 device ID for the selected target.');
+    await this.command(GET); const info = await this.read(this.profile.getLength);
+    log(`${this.profile.name} GET: count ${info[0]}, protocol 0x${hex(info[1])}; expected count ${this.profile.getLength - 2}.`);
+    await this.ack();
+    check(info[0] === this.profile.getLength - 2 && info[1] === 0x11 && [READ, GO, WRITE, ERASE].every(v => info.slice(2).includes(v)), 'Unsupported ROM version/layout/commands; no write attempted.');
+    if (this.profile.id === PROFILES.c031.id) {
+      // ST stm32c031xx.h: the factory halfword is flash capacity in KiB.
+      const size = await this.readMemory(0x1fff75a0, 2);
+      check(size[0] + size[1] * 256 === 32, 'C031 target is not the required 32 KiB part; no write attempted.');
+    }
+    log(`${this.profile.name} ROM identified: 0x${this.profile.id.toString(16)}, protocol 0x${hex(info[1])}.`);
   }
   async readMemory(address, length, progress = () => {}) {
     const result = new Uint8Array(length);
@@ -221,7 +235,7 @@ class Bootloader {
     await this.write(checksum(list)); await this.ack();
   }
   async program(image, progress = () => {}) {
-    validateImage(image);
+    validateImage(image, this.profile);
     const padded = new Uint8Array(Math.ceil(image.length / 8) * 8).fill(255); padded.set(image);
     // 24 data bytes + length/checksum fit the AVR's 32-byte Wire buffer.
     for (let offset = 0; offset < padded.length; offset += 24) {
@@ -247,11 +261,12 @@ function controls() {
   $('readOptions').disabled = busy || !romReady || !bridge;
   $('enableBoot0').disabled = $('flashBoot').disabled = busy || !bridge || optionPending || optionStopped;
   $('scan').disabled = busy || !bridge;
+  $('target').disabled = busy || Boolean(bridge) || optionPending || optionStopped;
   $('resumeOptions').classList.toggle('hidden', !optionPending && !optionStopped);
   $('resumeOptions').disabled = busy || !bridge;
   $('device').disabled = busy || !bridge || !devices.length;
   const selected = devices.find(device => String(device.address) === $('device').value);
-  $('bootRom').disabled = busy || !bridge || !selected || selected.kind !== 'seesaw' || devices.some(device => device.address === ROM_ADDRESS);
+  $('bootRom').disabled = busy || !bridge || !selected || selected.kind !== 'seesaw' || devices.some(device => device.address === target.rom);
   for (const id of ['connect', 'file', 'verifyAfterFlash']) $(id).disabled = busy;
   $('connect').disabled = busy || !supported;
   if ($('bootWizard').open) renderWizard();
@@ -260,17 +275,17 @@ function selectDevice() {
   const selected = devices.find(device => String(device.address) === $('device').value);
   romReady = Boolean(selected && selected.kind === 'rom');
   if (romReady) $('deviceStatus').textContent = optionPending
-    ? 'C011 ROM found at 0x64. Next: Read boot options / Verify pending write.'
-    : 'C011 ROM found at 0x64. Ready for firmware or boot options below.';
-  else if (selected && selected.kind === 'seesaw') $('deviceStatus').textContent = devices.some(device => device.address === ROM_ADDRESS)
-    ? 'Address 0x64 is occupied. Disconnect that device before booting another C011 into ROM, then scan again.'
-    : `C011 seesaw selected at 0x${hex(selected.address)}. Next: Boot selected C011 into ROM.`;
-  else $('deviceStatus').textContent = 'Select a detected C011. Unknown devices are not supported.';
+    ? 'Selected STM32 ROM found. Next: Read boot options / Verify pending write.'
+    : 'Selected STM32 ROM found. Ready for firmware or boot options below.';
+  else if (selected && selected.kind === 'seesaw') $('deviceStatus').textContent = devices.some(device => device.address === target.rom)
+    ? 'The target ROM address is occupied. Disconnect that device before booting another STM32 into ROM, then scan again.'
+    : `STM32 seesaw selected at 0x${hex(selected.address)}. Next: Boot selected STM32 into ROM.`;
+  else $('deviceStatus').textContent = 'Select a detected STM32 matching the chosen target. Unknown devices are not supported.';
   controls();
 }
 function showDevices() {
-  $('device').innerHTML = '<option value="">Select a C011 device…</option>' + devices.map(device =>
-    `<option value="${device.address}"${device.kind === 'unknown' ? ' disabled' : ''}>0x${hex(device.address)} — ${device.kind === 'rom' ? 'C011 ROM bootloader' : device.kind === 'seesaw' ? 'C011 seesaw (application)' : 'Unknown / unsupported device'}</option>`).join('');
+  $('device').innerHTML = '<option value="">Select a target device…</option>' + devices.map(device =>
+    `<option value="${device.address}"${device.kind === 'unknown' ? ' disabled' : ''}>0x${hex(device.address)} — ${device.kind === 'rom' ? target.name + ' ROM bootloader' : device.kind === 'seesaw' ? target.name + ' seesaw (application)' : 'Unknown / unsupported device'}</option>`).join('');
   const supportedDevices = devices.filter(device => device.kind !== 'unknown');
   $('device').value = supportedDevices.length === 1 ? String(supportedDevices[0].address) : '';
   selectDevice();
@@ -293,10 +308,10 @@ async function scanDevices(afterReset = false) {
     for (const address of addresses) {
       const device = {address, kind: 'unknown'};
       try {
-        if (address === ROM_ADDRESS) {
+        if (address === target.rom) {
           // Never send seesaw register bytes to the ROM command parser.
           await new Bootloader(bridge).identify(); device.kind = 'rom';
-        } else if (await bridge.command('R', [address, 0, 1, 1]) === 'DATA 90') device.kind = 'seesaw';
+        } else if (address !== 0x63 && address !== 0x64 && await bridge.command('R', [address, 0, 1, 1]) === `DATA ${hex(target.hwid)}`) device.kind = 'seesaw';
       } catch (error) {
         if (bridge.failure) throw error;
         log(`0x${hex(address)} identification: ${error.message}`);
@@ -305,32 +320,32 @@ async function scanDevices(afterReset = false) {
     }
     targetResetConfirmed = afterReset;
     showDevices();
-    if (!addresses.length) $('deviceStatus').textContent = 'No I²C devices found. Check C011 power, SDA/SCL and common ground, then scan again. A factory-blank C011 may need a power-cycle.';
-    else if (!devices.some(device => device.kind !== 'unknown')) $('deviceStatus').textContent = 'Devices responded, but no supported C011 was identified. Check the board/firmware. Address 0x64 is reserved here for ROM.';
+    if (!addresses.length) $('deviceStatus').textContent = 'No I²C devices found. Check STM32 power, SDA/SCL and common ground, then scan again. A factory-blank STM32 may need a power-cycle.';
+    else if (!devices.some(device => device.kind !== 'unknown')) $('deviceStatus').textContent = 'Devices responded, but no supported target was identified. Check the board/firmware. Addresses 0x63 and 0x64 are reserved here for ROM.';
   } catch (error) {
     devices = []; showDevices(); $('deviceStatus').textContent = error.message; log(error.message);
   } finally { busy = false; controls(); }
 }
 async function bootIntoROM() {
   const selected = devices.find(device => String(device.address) === $('device').value);
-  if (busy || !bridge || !selected || selected.kind !== 'seesaw' || devices.some(device => device.address === ROM_ADDRESS)) return;
+  if (busy || !bridge || !selected || selected.kind !== 'seesaw' || devices.some(device => device.address === target.rom)) return;
   busy = true; romReady = false; controls();
   try {
     $('deviceStatus').textContent = `Checking seesaw at 0x${hex(selected.address)}…`;
-    check(await bridge.command('R', [selected.address, 0, 1, 1]) === 'DATA 90', 'Selected C011 no longer responds. Scan again.');
+    check(await bridge.command('R', [selected.address, 0, 1, 1]) === `DATA ${hex(target.hwid)}`, 'Selected target no longer responds. Scan again.');
     // Check the reserved destination again in case the bus changed since scan.
     const scan = await bridge.command('S', []);
     check(/^SCAN(?: [0-9A-F]{2})*$/i.test(scan), 'Invalid scan response from bridge.');
-    check(!scan.split(' ').slice(1).some(value => parseInt(value, 16) === ROM_ADDRESS), 'Address 0x64 is now occupied. Scan again before booting another C011.');
+    check(!scan.split(' ').slice(1).some(value => parseInt(value, 16) === target.rom), 'The target ROM address is now occupied. Scan again before booting another STM32.');
     $('deviceStatus').textContent = 'Asking the selected seesaw to boot into ROM…';
     check(await bridge.command('W', [selected.address, 0, 0x7e, 0xb0, 7, 0x10, 0xad]) === 'OK', 'Seesaw boot-entry request failed.');
     await sleep(500);
     try { await new Bootloader(bridge).identify(); }
-    catch (error) { throw new Error('Boot request sent, but C011 ROM did not identify. The application may lack boot-entry support. Reset the C011 and scan again; use configured BOOT0 or ST-Link if needed. ' + error.message); }
+    catch (error) { throw new Error('Boot request sent, but Selected STM32 ROM did not identify. The application may lack boot-entry support. Reset the STM32 and scan again; use configured BOOT0 or ST-Link if needed. ' + error.message); }
     devices = devices.filter(device => device !== selected);
-    devices.push({address: ROM_ADDRESS, kind: 'rom'});
-    showDevices(); $('device').value = String(ROM_ADDRESS); selectDevice();
-    log(`C011 at 0x${hex(selected.address)} entered ROM at 0x64. No flash/options written.`);
+    devices.push({address: target.rom, kind: 'rom'});
+    showDevices(); $('device').value = String(target.rom); selectDevice();
+    log(`${target.name} at 0x${hex(selected.address)} entered ROM at 0x${hex(target.rom)}. No flash/options written.`);
   } catch (error) {
     devices = []; showDevices(); targetResetConfirmed = false;
     $('deviceStatus').textContent = error.message; log(error.message);
@@ -340,7 +355,7 @@ async function chooseFile(file) {
   if (busy || !file) return;
   busy = true; firmware = null; controls();
   try {
-    check(file.size <= 200000, 'File is too large for C011 firmware.');
+    check(file.size <= 200000, 'File is too large for STM32 firmware.');
     const name = file.name.toLowerCase();
     check(name.endsWith('.hex') || name.endsWith('.bin'), 'Choose a .hex or .bin file.');
     const image = name.endsWith('.hex') ? parseHex(await file.text()) : validateImage(new Uint8Array(await file.arrayBuffer()));
@@ -358,7 +373,7 @@ async function connect() {
     if (bridge) {
       await bridge.close(); bridge = null; $('connection').textContent = 'Not connected'; $('connect').textContent = 'Connect bridge';
       devices = []; romReady = false; targetResetConfirmed = false; showDevices();
-      $('deviceStatus').textContent = 'bridge disconnected. Connect again to scan the C011’s current state.';
+      $('deviceStatus').textContent = 'bridge disconnected. Connect again to scan the STM32’s current state.';
       if (optionPending) $('optionStatus').textContent = 'Disconnected without verification. A later read verifies the earlier write only if the bridge retained its snapshot and reports VERIFIED.';
       return;
     }
@@ -388,7 +403,7 @@ async function runOperation(operation) {
       if (readoutURL) URL.revokeObjectURL(readoutURL);
       readoutURL = URL.createObjectURL(new Blob([data], {type: 'application/octet-stream'}));
       $('readout').href = readoutURL;
-      $('readout').download = `c011-read-${new Date().toISOString().replace(/[:.]/g, '-')}.bin`;
+      $('readout').download = `${target.name.toLowerCase()}-read-${new Date().toISOString().replace(/[:.]/g, '-')}.bin`;
       $('readout').classList.remove('hidden'); $('readout').click();
       log('Read all 32768 flash bytes, including EEPROM. Download requested; no flash writes or Go sent.');
       status('Read complete. If the download did not start, click Save readout. Power-cycle to return to the application.', 1);
@@ -420,7 +435,7 @@ async function runOperation(operation) {
     log('EEPROM and option bytes verified unchanged.');
     await rom.go();
     log('ROM Go acknowledged. Firmware execution was requested; application behavior is not checked.');
-    status(verifyAfterFlash ? 'Write verified. Power-cycle the C011 to confirm normal startup.' : 'Write complete (not verified). Power-cycle the C011 to confirm normal startup.', 1);
+    status(verifyAfterFlash ? 'Write verified. Power-cycle the STM32 to confirm normal startup.' : 'Write complete (not verified). Power-cycle the STM32 to confirm normal startup.', 1);
   } catch (error) {
     const suffix = changed ? ' STOP: no automatic retry or Go. The chip may reset into partial firmware; use SWD recovery.' : ' No flash erase/write was attempted.';
     log(error.message + suffix); status('Stopped. See activity log.');
@@ -428,7 +443,7 @@ async function runOperation(operation) {
     // A fresh connection is required after every run, including failures.
     if (bridge) await bridge.close(); bridge = null;
     devices = []; romReady = false; targetResetConfirmed = false; showDevices();
-    $('deviceStatus').textContent = 'bridge disconnected. Connect again to scan the C011’s current state.';
+    $('deviceStatus').textContent = 'bridge disconnected. Connect again to scan the STM32’s current state.';
     $('connection').textContent = 'Not connected'; $('connect').textContent = 'Connect bridge';
     busy = false; controls();
   }
@@ -440,7 +455,7 @@ async function runBootOptions(mode = 'read') {
   busy = true; controls();
   let sent = false;
   try {
-    const values = [ROM_ADDRESS];
+    const values = [target.rom];
     if (writing) {
       values.push(mode === 'boot0' ? 0 : 1, 1, 1);
       optionPending = true; targetResetConfirmed = false;
@@ -453,6 +468,7 @@ async function runBootOptions(mode = 'read') {
     // These bridge errors return before any option data is sent. Do not invent
     // a pending snapshot that the bridge never saved; other failures are uncertain.
     const beforeWriteErrors = ['ERR command', 'ERR C011 ROM entry/identification failed',
+      'ERR C0 ROM entry/identification failed',
       'ERR option read failed', 'ERR option/complement mismatch; refusing write',
       'ERR requires RDP level 0 and BOOT_LOCK=0; refusing write',
       'ERR option write setup failed; no data sent',
@@ -475,7 +491,7 @@ async function runBootOptions(mode = 'read') {
       optionPending = false;
       optionStopped = false;
       $('optionStatus').textContent = verified
-        ? 'Verified: boot options and all other defined settings match; complements valid. Reset the C011 before another option write.'
+        ? 'Verified: boot options and all other defined settings match; complements valid. Reset the STM32 before another option write.'
         : unchanged ? 'Boot options already match; no write was needed.'
         : 'Options read; no option write. Choose a boot-option guide to change these settings.';
     }
@@ -492,13 +508,13 @@ function renderWizard() {
   let step = 1, title = 'Reset the STM32', text = 'Briefly touch the STM32 RST pin to GND, then remove the connection. Do not leave RST grounded.\n\nThen continue to find the chip. Nothing will be written yet.', action = "I've reset it — continue";
   if (selecting) {
     step = wizardReading ? 3 : 1; title = 'Find your STM32';
-    text = 'Select the C011 below. Boot into ROM puts it in programming mode; it does not write firmware or boot options.';
+    text = 'Select the STM32 below. Boot into ROM puts it in programming mode; it does not write firmware or boot options.';
     action = romReady ? 'Continue' : 'Boot into ROM';
   } else if (wizardStage === 'write') {
     step = 2; title = wizardMode === 'boot0' ? 'Enable BOOT0 recovery' : 'Use normal flash boot';
     text = wizardMode === 'boot0'
-      ? 'The C011 is ready in ROM. Enable BOOT0 so B0 low starts the application and B0 high enters ROM.\n\nThe next button changes only the three boot-selection bits. Keep power stable.'
-      : 'The C011 is ready in ROM. Select normal flash boot so the application starts regardless of B0.\n\nThe next button changes only the three boot-selection bits. Keep power stable.';
+      ? 'The STM32 is ready in ROM. Enable BOOT0 so B0 low starts the application and B0 high enters ROM.\n\nThe next button changes only the three boot-selection bits. Keep power stable.'
+      : 'The STM32 is ready in ROM. Select normal flash boot so the application starts regardless of B0.\n\nThe next button changes only the three boot-selection bits. Keep power stable.';
     action = wizardMode === 'boot0' ? 'Enable BOOT0' : 'Set normal flash boot';
   } else if (wizardStage === 'verifyReset') {
     step = 3; title = wizardMode === 'boot0' ? 'Connect B0, then reset' : 'Reset to verify';
@@ -521,7 +537,7 @@ function renderWizard() {
   $('wizardTitle').textContent = title; $('wizardText').textContent = text;
   $('wizardStatus').textContent = busy ? 'Working… Keep the bridge connected.' : wizardMessage;
   $('wizardNext').textContent = action;
-  $('wizardNext').disabled = busy || (selecting && (!selected || selected.kind === 'unknown' || (selected.kind === 'seesaw' && devices.some(device => device.address === ROM_ADDRESS))));
+  $('wizardNext').disabled = busy || (selecting && (!selected || selected.kind === 'unknown' || (selected.kind === 'seesaw' && devices.some(device => device.address === target.rom))));
   $('wizardDeviceLabel').classList.toggle('hidden', !selecting);
   $('wizardScan').classList.toggle('hidden', !selecting);
   $('wizardDevice').innerHTML = $('device').innerHTML;
@@ -558,7 +574,7 @@ async function wizardFindDevice() {
   // disguise a failed strap test by booting the application into ROM in software.
   if (wizardStage === 'verifyReset' && wizardMode === 'boot0') {
     if (devices.some(device => device.kind === 'rom')) {
-      $('device').value = String(ROM_ADDRESS); selectDevice();
+      $('device').value = String(target.rom); selectDevice();
     }
     if (romReady) await wizardReadOptions();
     else wizardMessage += ' Check the B0 jumper and reset the STM32 again, then continue.';
@@ -593,6 +609,15 @@ async function wizardNext() {
   }
   renderWizard();
 }
+$('target').onchange = () => {
+  if (busy || bridge || optionPending || optionStopped) return;
+  target = PROFILES[$('target').value];
+  firmware = null; $('file').value = '';
+  $('filename').textContent = 'No file selected. Choose firmware for the selected target.';
+  $('profileInfo').textContent = target.name + ': ROM 0x' + hex(target.rom) +
+    ', device 0x' + target.id.toString(16) + ', ' + (target.ramEnd - 0x20000000) / 1024 + ' KiB RAM.';
+  controls();
+};
 $('connect').onclick = connect;
 $('scan').onclick = () => scanDevices();
 $('device').onchange = selectDevice;
