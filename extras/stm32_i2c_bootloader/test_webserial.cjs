@@ -335,7 +335,7 @@ class ROM {
   const impostor = new DiscoveryBridge([0x64]); impostor.romValid = false; installDiscovery(impostor);
   await vm.runInContext('scanDevices()', context);
   assert.equal(vm.runInContext('romReady', context), false);
-  assert.match(elements.get('deviceStatus').textContent, /no supported C011/);
+  assert.match(elements.get('deviceStatus').textContent, /no supported target/);
 
   const multiple = new DiscoveryBridge([0x49, 0x4a]); multiple.ids.set(0x49, 'DATA 90'); multiple.ids.set(0x4a, 'DATA 90'); installDiscovery(multiple);
   await vm.runInContext('scanDevices()', context);
