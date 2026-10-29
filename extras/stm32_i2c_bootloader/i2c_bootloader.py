@@ -1,8 +1,8 @@
-"""Update an STM32C011/C031 seesaw through the bundled USB-to-I2C bridge.
+"""Update an STM32C011 seesaw through the bundled USB-to-I2C bridge.
 
 Without --image, identify the factory ROM and read the application vectors.
 With --image, back up flash, update application pages, and verify every byte.
-C011 Rev Z and C031 device 0x10016453 return the same 20-byte GET frame.
+Only C011 Rev Z's ROM command layout is supported. See the adjacent README.
 """
 
 import argparse
@@ -12,10 +12,7 @@ from pathlib import Path
 
 import serial
 
-PROFILES = {
-    "c011": {"rom": 0x64, "id": 0x0443, "hwid": 0x90, "ram_end": 0x20001800, "get_length": 20},
-    "c031": {"rom": 0x63, "id": 0x0453, "hwid": 0x91, "ram_end": 0x20003000, "get_length": 20},
-}
+ROM_ADDRESS = 0x64
 FLASH_BASE = 0x08000000
 FLASH_SIZE = 32768
 PAGE_SIZE = 2048
@@ -85,18 +82,17 @@ class SerialBridge:
 
 
 class Bootloader:
-    def __init__(self, bridge, target="c011"):
+    def __init__(self, bridge):
         self.bridge = bridge
-        self.profile = PROFILES[target]
 
     def write(self, data):
         check(2 <= len(data) <= 32, "Packet exceeds the AVR Wire buffer")
-        check(self.bridge.command("W", [self.profile["rom"], *data]) == "OK",
+        check(self.bridge.command("W", [ROM_ADDRESS, *data]) == "OK",
               "ROM I2C write failed")
 
     def read(self, length):
         check(1 <= length <= 32, "Read exceeds the AVR Wire buffer")
-        answer = self.bridge.command("U", [self.profile["rom"], length])
+        answer = self.bridge.command("U", [ROM_ADDRESS, length])
         check(answer.startswith("DATA "), answer)
         data = bytes.fromhex(answer[5:])
         check(len(data) == length, "Short ROM response")
@@ -120,26 +116,18 @@ class Bootloader:
         self.command(GET_ID)
         product = self.read(3)
         self.ack()
-        check(product == bytes([1]) + self.profile["id"].to_bytes(2, "big"),
-              f"Wrong STM32 product ID for selected target: {product.hex()}")
+        check(product == bytes([1, 0x04, 0x43]),
+              f"Not an STM32C011: {product.hex()}")
         self.command(GET)
-        # Both observed C011/C031 ROMs return 18 commands at protocol 0x11.
-        # Read the complete 20-byte frame in one transaction.
-        data = self.read(self.profile["get_length"])
-        report(f"GET count {data[0]}, protocol 0x{data[1]:02X}; "
-               f"expected count {self.profile['get_length'] - 2}")
+        # C011 Rev Z returns 18 commands even with protocol version 0x11.
+        # Read this complete frame together, not as separate one-byte reads.
+        data = self.read(20)
         self.ack()
-        check(data[0] == self.profile["get_length"] - 2 and data[1] == 0x11,
-              "Unsupported ROM version or command-frame length; no write attempted")
+        check(data[0] == 18, "Unsupported C011 ROM command-frame length")
         required = (READ_MEMORY, GO, WRITE_NO_STRETCH, ERASE_NO_STRETCH)
         check(all(code in data[2:] for code in required),
               "ROM is missing required read/go/no-stretch write/erase commands")
-        if self.profile == PROFILES["c031"]:
-            # ST stm32c031xx.h: factory flash capacity halfword, in KiB.
-            size = self.read_memory(0x1FFF75A0, 2)
-            check(int.from_bytes(size, "little") == 32,
-                  "C031 target is not the required 32 KiB part; no write attempted")
-        report(f"ROM ID 0x{self.profile['id']:04X}, protocol 0x{data[1]:02X}")
+        report(f"ROM ID 0x0443, protocol 0x{data[1]:02X}")
 
     def address(self, address):
         self.write(checksum(address.to_bytes(4, "big")))
@@ -192,21 +180,19 @@ class Bootloader:
         self.address(FLASH_BASE)
 
 
-def validate_image(image, target="c011"):
+def validate_image(image):
     check(8 <= len(image) <= APP_SIZE, "Image must fit below the EEPROM page")
     stack = int.from_bytes(image[:4], "little")
     entry = int.from_bytes(image[4:8], "little")
-    check(0x20000000 < stack <= PROFILES[target]["ram_end"] and stack % 8 == 0,
-          "Image has an invalid selected-target stack pointer")
+    check(0x20000000 < stack <= 0x20001800 and stack % 8 == 0,
+          "Image has an invalid C011 stack pointer")
     check(entry & 1 and FLASH_BASE <= entry < FLASH_BASE + len(image),
-          "Image has an invalid selected-target reset vector")
+          "Image has an invalid C011 reset vector")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", required=True, help="USB serial port of the Arduino bridge")
-    parser.add_argument("--target", choices=PROFILES, default="c011", help="MCU family, not inferred from the image")
-    parser.add_argument("--rom", action="store_true", help="Target is already in ROM (including factory-blank chips)")
     parser.add_argument("--address", type=lambda value: int(value, 0), default=0x49)
     parser.add_argument("--image", type=Path, help="Application-only .bin, at most 30 KiB")
     parser.add_argument("--backup", type=Path, help="New full-flash backup; required with --image")
@@ -216,18 +202,16 @@ def main():
     image = None
     if args.image:
         image = args.image.read_bytes()
-        validate_image(image, args.target)
+        validate_image(image)
         check(args.backup is not None and not args.backup.exists(),
               "Provide a new --backup filename before any erase")
-    report(f"Adafruit STM32 {args.target.upper()} I2C bootloader demo")
+    report("Adafruit STM32C011 I2C bootloader demo")
     bridge = SerialBridge(args.port, args.address)
     try:
-        expected_hwid = bytes([PROFILES[args.target]["hwid"]])
-        if not args.rom:
-            check(bridge.read(0, 1, 1) == expected_hwid, "Wrong seesaw hardware ID")
-            bridge.write(0, 0x7E, BOOTLOAD_KEY)
-            time.sleep(0.5)
-        rom = Bootloader(bridge, args.target)
+        check(bridge.read(0, 1, 1) == b"\x90", "Expected seesaw C011 hardware ID")
+        bridge.write(0, 0x7E, BOOTLOAD_KEY)
+        time.sleep(0.5)
+        rom = Bootloader(bridge)
         rom.identify()
         report(f"Application vectors: {rom.read_memory(FLASH_BASE, 8).hex()}")
         if image is not None:
@@ -251,9 +235,9 @@ def main():
         if args.go:
             rom.go()
             time.sleep(0.5)
-            check(bridge.read(0, 1, 1) == expected_hwid, "Seesaw did not restart after ROM Go")
+            check(bridge.read(0, 1, 1) == b"\x90", "Seesaw did not restart after ROM Go")
             bridge.reset()
-            check(bridge.read(0, 1, 1) == expected_hwid, "Seesaw software reset failed after Go")
+            check(bridge.read(0, 1, 1) == b"\x90", "Seesaw software reset failed after Go")
             report("Seesaw restarted and passed hardware-ID/software-reset checks")
     finally:
         bridge.serial.close()
