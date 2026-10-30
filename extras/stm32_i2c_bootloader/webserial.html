@@ -5,6 +5,7 @@
 <title>Adafruit C011 / C031 firmware uploader</title>
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#11171c;color:#edf3f5}*{box-sizing:border-box}body{max-width:850px;margin:48px auto;padding:0 22px}h1{font-size:2.2rem;margin-bottom:10px}h2{font-size:1.2rem}p,li{line-height:1.6;color:#bacbd4}a{color:#68dccc}.badge{color:#68dccc;letter-spacing:.12em;font-size:.8rem;font-weight:700}.card{background:#1b252d;border:1px solid #384954;border-radius:14px;padding:22px;margin:20px 0}button,.download{font:inherit;border:0;border-radius:8px;padding:12px 18px;background:#68dccc;color:#112626;font-weight:650;cursor:pointer;display:inline-block;text-decoration:none}button:disabled{opacity:.4;cursor:not-allowed}button.secondary{background:#344651;color:white}select,input{font:inherit;padding:8px;border:1px solid #687b88;border-radius:6px;background:#11171c;color:white}label{display:block;margin:14px 0}#drop{border:2px dashed #64828e;padding:30px 18px;text-align:center;border-radius:12px}#drop.over{border-color:#68dccc;background:#203b3e}#file{max-width:100%}#filename{overflow-wrap:anywhere}#log{white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;font:13px/1.6 ui-monospace,monospace}progress{width:100%;accent-color:#68dccc;height:14px}.warning{color:#ffcc89}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}small{color:#bacbd4}.hidden{display:none!important}
+button.action{border:3px solid #68dccc;padding:9px 15px;background:transparent;color:#68dccc}button.action.connected{background:#68dccc;color:#112626}button[hidden]{display:none}
 dialog{width:min(560px,calc(100% - 32px));max-height:90vh;overflow:auto;background:#1b252d;color:#edf3f5;border:1px solid #64828e;border-radius:16px;padding:28px}dialog::backdrop{background:#080d12cc}dialog h2{font-size:1.5rem;margin-top:10px}#wizardText{white-space:pre-line}#wizardStatus{overflow-wrap:anywhere}dialog .row{margin-top:22px}
 </style>
 <header><div class="badge">ADAFRUIT · SEESAW PERIPHERAL</div><h1>C011 / C031 firmware uploader</h1><p>Update or back up your STM32 through an Arduino USB-to-I²C bridge.</p></header>
@@ -13,11 +14,11 @@ dialog{width:min(560px,calc(100% - 32px));max-height:90vh;overflow:auto;backgrou
 <li>Connect the host’s default I²C bus using STEMMA QT. For direct wiring, use a level shifter.</li>
 <li>Connect only one STM32. Power-cycle a factory-blank chip before starting.</li></ol>
 <p class="warning">Use firmware up to 30 KiB; EEPROM and boot options are preserved. Keep power stable and this tab visible. Failed writes may require ST-Link recovery.</p>
-<p id="compat" class="warning"></p><button id="connect">Connect bridge</button> <span id="connection">Not connected</span></section>
+<p id="compat" class="warning"></p><button id="connect" class="action">Connect bridge</button> <span id="connection">Not connected</span></section>
 <section id="deviceStep" class="card" hidden><h2>2. Enter the bootloader</h2>
 <p id="profileInfo"></p>
 <p>Select your STM32 and click <strong>Enter bootloader</strong>. If it is already in ROM, continue to step 3.</p>
-<button id="scan" class="secondary" disabled>Scan</button>
+<button id="scan" class="action" disabled>Scan</button>
 <label>Device <select id="device" disabled><option value="">Connect bridge to find devices</option></select></label>
 <button id="bootRom" disabled>Enter bootloader</button>
 <p id="deviceStatus" role="status" aria-live="polite">Connect the bridge first.</p>
@@ -46,7 +47,7 @@ dialog{width:min(560px,calc(100% - 32px));max-height:90vh;overflow:auto;backgrou
 <label id="wizardDeviceLabel" class="hidden">Device <select id="wizardDevice"></select></label>
 <p id="wizardStatus" role="status" aria-live="polite"></p>
 <p><small>Keep the bridge powered and connected. Reset only the STM32.</small></p>
-<div class="row"><button id="wizardNext" autofocus>Continue</button><button id="wizardScan" class="secondary hidden">Scan</button><button id="wizardClose" class="secondary">Close</button></div>
+<div class="row"><button id="wizardNext" autofocus>Continue</button><button id="wizardScan" class="action hidden">Scan</button><button id="wizardClose" class="secondary">Close</button></div>
 </dialog>
 <script>
 'use strict';
@@ -272,9 +273,11 @@ function controls() {
   $('firmwareStep').hidden = !detected && !firmwareResult;
   $('bootOptionsStep').hidden = !detected && !optionPending && !optionStopped;
   $('bootRom').disabled = busy || !bridge || !target || !selected || selected.profile !== target || selected.kind !== 'seesaw' || devices.some(device => device.address === target.rom);
+  $('bootRom').hidden = Boolean(selected && selected.kind === 'rom');
   $('file').disabled = busy || !selected || !selected.profile || selected.profile !== target;
   $('verifyAfterFlash').disabled = busy;
   $('connect').disabled = busy || !supported;
+  $('connect').classList.toggle('connected', Boolean(bridge));
   if ($('bootWizard').open) renderWizard();
 }
 function selectDevice() {
