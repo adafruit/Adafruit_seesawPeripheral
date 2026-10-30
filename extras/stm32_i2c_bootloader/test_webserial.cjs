@@ -463,14 +463,10 @@ class ROM {
   assert.equal(elements.get('bootWizard').open, true);
   assert.match(elements.get('wizardText').textContent, /RST pin to GND/);
   assert.equal(wizard.commands.length, 0, 'Opening the guide does not talk to hardware');
+  assert.equal(wizard.optionCommands.length, 0, 'No option write before reset confirmation');
   assert.equal(vm.runInContext('targetResetConfirmed', context), false);
   await elements.get('wizardNext').onclick();
-  assert.equal(vm.runInContext('wizardStage', context), 'select');
-  assert.equal(elements.get('wizardDevice').value, String(0x49));
-  await elements.get('wizardNext').onclick();
-  assert.equal(vm.runInContext('wizardStage', context), 'write');
-  assert.equal(wizard.optionCommands.length, 0);
-  await elements.get('wizardNext').onclick();
+  assert.equal(wizard.commands.filter(command => command[0] === 'W' && command[1] === 0x49).length, 1);
   assert.deepEqual(wizard.optionCommands, [[0x64, 0, 1, 1]]);
   assert.equal(vm.runInContext('wizardStage', context), 'verifyReset');
   assert.match(elements.get('wizardText').textContent, /3.3 V — never 5 V/);
@@ -502,27 +498,30 @@ class ROM {
   assert.equal(vm.runInContext('wizardStage', context), 'done');
   assert.match(elements.get('wizardStatus').textContent, /^Verified:/);
   assert.deepEqual(wizard.optionCommands, [[0x64, 0, 1, 1], [0x64]]);
+  const scansBeforeDone = wizard.commands.filter(command => command[0] === 'S').length;
   await elements.get('wizardNext').onclick();
   assert.equal(elements.get('bootWizard').open, false);
-  assert.equal(vm.runInContext('romReady', context), false);
+  assert.equal(wizard.commands.filter(command => command[0] === 'S').length, scansBeforeDone + 1, 'Done automatically scans');
+  assert.equal(vm.runInContext('devices.length', context), 2);
+  assert.equal(vm.runInContext('romReady', context), false, 'Multiple targets still require a choice');
   assert.equal(wizard.closed, undefined);
 
   // Normal flash boot keeps software ROM entry inside the same dialog.
   const normal = new WizardBridge([0x64]); installDiscovery(normal);
   elements.get('flashBoot').onclick();
-  await elements.get('wizardNext').onclick();
-  assert.equal(vm.runInContext('wizardStage', context), 'write');
   assert.match(elements.get('wizardText').textContent, /not recommended/);
   await elements.get('wizardNext').onclick();
+  assert.equal(vm.runInContext('wizardStage', context), 'verifyReset');
   assert.deepEqual(normal.optionCommands, [[0x64, 1, 1, 1]]);
   normal.addresses = [0x49]; normal.ids.set(0x49, 'DATA 90'); normal.romActive = false;
-  await elements.get('wizardNext').onclick();
-  assert.equal(vm.runInContext('wizardStage', context), 'select');
   normal.optionReplies = [optionDump, summary, verified];
   await elements.get('wizardNext').onclick();
   assert.equal(vm.runInContext('wizardStage', context), 'done');
   assert.deepEqual(normal.optionCommands, [[0x64, 1, 1, 1], [0x64]]);
+  normal.addresses = [0x49]; normal.romActive = false;
   await elements.get('wizardNext').onclick();
+  assert.equal(elements.get('device').value, String(0x49), 'Done rediscovers the reset application');
+  assert.deepEqual(normal.optionCommands, [[0x64, 1, 1, 1], [0x64]], 'Done never repeats the option write');
 
   // Empty discovery stays in the dialog; multiple devices require a choice.
   const wizardSelection = new WizardBridge([]); installDiscovery(wizardSelection);
@@ -537,11 +536,10 @@ class ROM {
   elements.get('wizardDevice').value = String(0x4a);
   elements.get('wizardDevice').onchange();
   assert.equal(elements.get('wizardNext').disabled, false);
+  wizardSelection.optionReplies = [optionDump, summary, 'OK boot options already match; no write'];
   await elements.get('wizardNext').onclick();
   assert.equal(wizardSelection.commands.filter(command => command[0] === 'W' && command[1] === 0x49).length, 0);
   assert.equal(wizardSelection.commands.filter(command => command[0] === 'W' && command[1] === 0x4a).length, 1);
-  wizardSelection.optionReplies = [optionDump, summary, 'OK boot options already match; no write'];
-  await elements.get('wizardNext').onclick();
   assert.equal(vm.runInContext('wizardStage', context), 'done');
   assert.match(elements.get('wizardStatus').textContent, /no write was needed/);
   await elements.get('wizardNext').onclick();
@@ -550,7 +548,7 @@ class ROM {
   const wizardFailure = new WizardBridge([0x64]); installDiscovery(wizardFailure);
   wizardFailure.optionReplies = ['ERR option write unconfirmed; do not retry'];
   elements.get('enableBoot0').onclick();
-  await elements.get('wizardNext').onclick(); await elements.get('wizardNext').onclick();
+  await elements.get('wizardNext').onclick();
   assert.equal(vm.runInContext('wizardStage', context), 'error');
   await elements.get('wizardNext').onclick();
   assert.equal(vm.runInContext('wizardStage', context), 'recoverReset');
@@ -643,9 +641,8 @@ class ROM {
   const wizard31 = new WizardBridge([0x49], PROFILES.c031);
   wizard31.ids.set(0x49, 'DATA 91'); installDiscovery(wizard31);
   elements.get('enableBoot0').onclick();
-  await elements.get('wizardNext').onclick(); await elements.get('wizardNext').onclick();
-  assert.equal(vm.runInContext('wizardStage', context), 'write');
   await elements.get('wizardNext').onclick();
+  assert.equal(vm.runInContext('wizardStage', context), 'verifyReset');
   assert.deepEqual(wizard31.optionCommands, [[0x63, 0, 1, 1]]);
   wizard31.addresses = [0x63]; wizard31.romActive = true;
   wizard31.optionReplies = [optionDump, summary, verified];

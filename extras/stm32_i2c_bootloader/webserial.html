@@ -554,35 +554,30 @@ async function readDetectedBootOptions() {
 function renderWizard() {
   const selecting = wizardStage === 'select';
   const selected = devices.find(device => String(device.address) === $('device').value);
-  let step = 1, title = 'Reset the STM32', text = 'Keep the bridge powered and connected; briefly connect the STM32 RST pin to GND, then release it and continue.', action = "I've reset it — continue";
+  let step = 1, title = wizardMode === 'boot0' ? 'Reset to enable BOOT0' : 'Reset to disable BOOT0', text = 'Keep the bridge powered and connected; briefly connect the STM32 RST pin to GND, then release it and continue.', action = "I've reset it — continue";
+  if (wizardStage === 'reset' && wizardMode === 'flash') text += '\n\nDisabling BOOT0 recovery is not recommended.';
   if (selecting) {
-    step = wizardReading ? 3 : 1; title = 'Find your STM32';
-    text = 'Select your STM32 and enter the bootloader. This does not write firmware or options.';
-    action = romReady ? 'Continue' : 'Enter bootloader';
-  } else if (wizardStage === 'write') {
-    step = 2; title = wizardMode === 'boot0' ? 'Enable BOOT0 recovery' : 'Disable BOOT0 recovery';
-    text = wizardMode === 'boot0'
-      ? 'Click Enable BOOT0: B0 low boots your firmware; high enters ROM. Keep power stable.'
-      : 'Disabling BOOT0 recovery is not recommended: failed firmware may require ST-Link recovery. Keep power stable.';
-    action = wizardMode === 'boot0' ? 'Enable BOOT0' : 'Disable BOOT0';
+    step = wizardReading ? 2 : 1; title = 'Find your STM32';
+    text = 'Select your STM32 and continue.';
+    action = 'Continue';
   } else if (wizardStage === 'verifyReset') {
-    step = 3; title = wizardMode === 'boot0' ? 'Connect B0, then reset' : 'Reset to verify';
+    step = 2; title = wizardMode === 'boot0' ? 'Connect B0, then reset' : 'Reset to verify';
     text = wizardMode === 'boot0'
       ? '1. Disconnect ST-Link SWCLK.\n2. Connect B0 to 3.3 V — never 5 V. Leave it connected.\n3. Briefly connect STM32 RST to GND, then release it.\n\nContinue to verify the write.'
       : 'Briefly connect STM32 RST to GND, then release it. Continue to verify the write.';
   } else if (wizardStage === 'recoverReset') {
-    step = 3; title = 'Reset for readback';
+    step = 2; title = 'Reset for readback';
     text += '\n\nReadback only; no write retry. Use your configured BOOT0 jumper if needed.';
   } else if (wizardStage === 'error') {
-    step = 3; title = 'Stopped — check the result';
+    step = 2; title = 'Stopped — check the result';
     text = 'Keep the bridge connected. Reset the STM32 and read back the options; the write will not be repeated.';
     action = 'Reset and check options';
   } else if (wizardStage === 'done') {
-    step = 4; title = 'Boot-option check complete';
-    text = 'Remove the B0 jumper. Briefly connect STM32 RST to GND, then release it. Click Done, then Scan to continue.';
+    step = 3; title = 'Boot-option check complete';
+    text = 'Remove the B0 jumper. Briefly connect STM32 RST to GND, then release it and click Done.';
     action = 'Done';
   }
-  $('wizardStep').textContent = `STEP ${step} OF 4`;
+  $('wizardStep').textContent = `STEP ${step} OF 3`;
   $('wizardTitle').textContent = title; $('wizardText').textContent = text;
   $('wizardStatus').textContent = busy ? 'Working… Keep the bridge connected.' : wizardMessage;
   $('wizardNext').textContent = action;
@@ -615,6 +610,22 @@ async function wizardReadOptions() {
   wizardMessage = $('optionStatus').textContent;
   wizardStage = result && !result.pending ? 'done' : 'error';
 }
+async function wizardContinue() {
+  const selected = devices.find(device => String(device.address) === $('device').value);
+  if (!selected || selected.kind === 'unknown' || selected.profile !== target) {
+    wizardStage = 'select'; return;
+  }
+  if (!romReady) await bootIntoROM();
+  wizardMessage = $('deviceStatus').textContent;
+  if (!romReady) { wizardStage = 'select'; return; }
+  if (wizardReading) {
+    await wizardReadOptions();
+  } else {
+    const result = await runBootOptions(wizardMode);
+    wizardMessage = $('optionStatus').textContent;
+    wizardStage = !result ? 'error' : result.pending ? 'verifyReset' : 'done';
+  }
+}
 async function wizardFindDevice() {
   if (busy || !bridge) return;
   await scanDevices(true);
@@ -627,10 +638,7 @@ async function wizardFindDevice() {
     }
     if (romReady) await wizardReadOptions();
     else wizardMessage += ' Check the B0 jumper and reset the STM32 again, then continue.';
-  } else if (romReady) {
-    if (wizardReading) await wizardReadOptions();
-    else { wizardStage = 'write'; wizardMessage = ''; }
-  } else wizardStage = 'select';
+  } else await wizardContinue();
   renderWizard();
 }
 async function wizardNext() {
@@ -639,21 +647,12 @@ async function wizardNext() {
     wizardReading = wizardStage !== 'reset';
     await wizardFindDevice();
   } else if (wizardStage === 'select') {
-    if (!romReady) await bootIntoROM();
-    wizardMessage = $('deviceStatus').textContent;
-    if (romReady) {
-      if (wizardReading) await wizardReadOptions();
-      else { wizardStage = 'write'; wizardMessage = ''; }
-    }
-  } else if (wizardStage === 'write') {
-    const result = await runBootOptions(wizardMode);
-    wizardMessage = $('optionStatus').textContent;
-    wizardStage = !result ? 'error' : result.pending ? 'verifyReset' : 'done';
+    await wizardContinue();
   } else if (wizardStage === 'error') {
     wizardStage = 'recoverReset'; wizardReading = true;
   } else if (wizardStage === 'done') {
     closeWizard();
-    $('deviceStatus').textContent = 'Click Scan when you need to use the STM32 again.';
+    await scanDevices();
     return;
   }
   renderWizard();

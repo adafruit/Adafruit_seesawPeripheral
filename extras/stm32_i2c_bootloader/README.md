@@ -123,12 +123,11 @@ section. The guide keeps the reset instructions, device selection, option write,
 and readback in one place:
 
 1. Briefly touch **STM32 RST to GND**, then release it. Click **I've reset it —
-   continue**. The guide scans and, if needed, lets you select a STM32 and boot it
-   into ROM. Nothing has been written yet.
-2. Click **Enable BOOT0** (or **Disable BOOT0**) to make the change.
-3. Follow the dialog's wiring/reset instructions and continue to verify.
-4. After the check passes, remove any B0 jumper and reset the STM32. Click
-   **Done**, then **Scan** to continue with the installed firmware or a blank chip.
+   continue**. The guide finds the STM32, enters ROM, and applies your chosen
+   setting automatically. Select a device only if more than one is found.
+2. Follow the dialog's wiring/reset instructions and continue to verify.
+3. After the check passes, remove any B0 jumper and reset the STM32. Click
+   **Done** to close the guide and scan automatically.
 
 Before **every** option write, the guide requires this target-reset
 acknowledgement. An ordinary **Scan**, or resetting only the bridge, does not
