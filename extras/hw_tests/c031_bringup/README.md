@@ -13,7 +13,7 @@ To update a C031 over I2C, upload the
 [serial bridge](../../../examples/serial_i2c_bridge/serial_i2c_bridge.ino)
 to the Metro/Uno and follow the
 [Python/Web Serial updater instructions](../../stm32_i2c_bootloader/README.md).
-Select **STM32C031G6** and use a matching application BIN or HEX built from the
+Confirm the uploader detects **C031** and use a matching application BIN or HEX built from the
 sources below. Check its size against the EEPROM boundary before programming.
 After flashing the STM32, replace the Metro bridge sketch with the desired host test.
 
@@ -84,7 +84,7 @@ Test one pin from each group at a time.
 9. [c031_recovery_test](c031_recovery_test/c031_recovery_test.ino):
    check that LED blinking resumes after target reset/power-cycle, Metro reset,
    and a cold start of both. Avoid back-powering during power-off.
-10. With the USB bridge sketch, select **STM32C031G6** in the uploader.
+10. With the USB bridge sketch, confirm the uploader detects **C031**.
     Confirm ROM ID 0x0453 at 0x63, then test application Write/Verify/Go and
     seesaw software reset. The guided BOOT0 option write/readback is a separate,
     physically unverified test: disconnect SWCLK, use B0 = 3.3 V during reset,

@@ -13,8 +13,7 @@ dialog{width:min(560px,calc(100% - 32px));max-height:90vh;overflow:auto;backgrou
 <li>Connect the host’s default I²C bus using STEMMA QT. For direct wiring, use a level shifter.</li>
 <li>Connect only one STM32. Power-cycle a factory-blank chip before starting.</li></ol>
 <p class="warning">Use firmware up to 30 KiB; EEPROM and boot options are preserved. Keep power stable and this tab visible. Failed writes may require ST-Link recovery.</p>
-<label>Target <select id="target"><option value="c011">STM32C011F6</option><option value="c031">STM32C031G6 — PID 6540</option></select></label>
-<p id="profileInfo">C011: ROM 0x64, device 0x0443, 6 KiB RAM.</p>
+<p id="profileInfo">Connect to detect your C011 or C031.</p>
 <p id="compat" class="warning"></p><button id="connect">Connect bridge</button> <span id="connection">Not connected</span></section>
 <section class="card"><h2>2. Enter the bootloader</h2>
 <p>Select your STM32 and click <strong>Enter bootloader</strong>. If it is already in ROM, continue to step 3.</p>
@@ -23,7 +22,7 @@ dialog{width:min(560px,calc(100% - 32px));max-height:90vh;overflow:auto;backgrou
 <button id="bootRom" disabled>Enter bootloader</button>
 <p id="deviceStatus" role="status" aria-live="polite">Connect the bridge first.</p>
 </section>
-<section class="card"><h2>3. Firmware</h2><div id="drop"><p>Drop a STM32 <strong>.hex</strong> or <strong>.bin</strong> file here</p><input id="file" type="file" accept=".hex,.bin" aria-label="Choose firmware"></div><p id="filename">No file selected.</p>
+<section class="card"><h2>3. Firmware</h2><div id="drop"><p>Drop a STM32 <strong>.hex</strong> or <strong>.bin</strong> file here</p><input id="file" type="file" accept=".hex,.bin" aria-label="Choose firmware" disabled></div><p id="filename">No file selected.</p>
 <small>Use an application file, not a full-flash backup or bridge firmware.</small>
 <p class="warning">For future I²C updates, use firmware with bootloader entry or enable BOOT0 recovery below.</p>
 <label><input type="checkbox" id="verifyAfterFlash" checked> Verify after flash</label>
@@ -58,7 +57,7 @@ const PROFILES = {
   c011: {name: 'C011', rom: 0x64, id: 0x0443, hwid: 0x90, ramEnd: 0x20001800, getLength: 20},
   c031: {name: 'C031', rom: 0x63, id: 0x0453, hwid: 0x91, ramEnd: 0x20003000, getLength: 20}
 };
-let target = PROFILES.c011;
+let target = null;
 const ACK = 0x79, BUSY = 0x76;
 const GET = 0x00, GET_ID = 0x02, READ = 0x11, GO = 0x21, WRITE = 0x32, ERASE = 0x45;
 const $ = id => document.getElementById(id);
@@ -70,10 +69,11 @@ const equal = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 const checksum = bytes => [...bytes, bytes.reduce((a, b) => a ^ b, 0)];
 const be32 = n => [Math.floor(n / 0x1000000) % 256, Math.floor(n / 65536) % 256, Math.floor(n / 256) % 256, n % 256];
 function validateImage(image, profile = target) {
+  check(profile, 'Connect and detect your STM32 before choosing firmware.');
   check(image.length >= 8 && image.length <= APP_SIZE, 'Application must be 8–30720 bytes (EEPROM is reserved).');
   const view = new DataView(image.buffer, image.byteOffset, image.byteLength);
   const stack = view.getUint32(0, true), entry = view.getUint32(4, true);
-  check(stack > 0x20000000 && stack <= profile.ramEnd && stack % 8 === 0, `Invalid ${profile.name} stack pointer; select the matching target and firmware.`);
+  check(stack > 0x20000000 && stack <= profile.ramEnd && stack % 8 === 0, `Invalid ${profile.name} stack pointer; choose firmware for the detected chip.`);
   check(entry % 2 === 1 && entry >= FLASH_BASE && entry < FLASH_BASE + image.length, 'Invalid selected-target reset vector.');
   return image;
 }
@@ -261,19 +261,32 @@ function controls() {
   $('readOptions').disabled = busy || !romReady || !bridge;
   $('enableBoot0').disabled = $('flashBoot').disabled = busy || !bridge || optionPending || optionStopped;
   $('scan').disabled = busy || !bridge;
-  $('target').disabled = busy || Boolean(bridge) || optionPending || optionStopped;
   $('resumeOptions').classList.toggle('hidden', !optionPending && !optionStopped);
   $('resumeOptions').disabled = busy || !bridge;
   $('device').disabled = busy || !bridge || !devices.length;
   const selected = devices.find(device => String(device.address) === $('device').value);
-  $('bootRom').disabled = busy || !bridge || !selected || selected.kind !== 'seesaw' || devices.some(device => device.address === target.rom);
-  for (const id of ['connect', 'file', 'verifyAfterFlash']) $(id).disabled = busy;
+  $('bootRom').disabled = busy || !bridge || !target || !selected || selected.profile !== target || selected.kind !== 'seesaw' || devices.some(device => device.address === target.rom);
+  $('file').disabled = busy || !selected || !selected.profile || selected.profile !== target;
+  $('verifyAfterFlash').disabled = busy;
   $('connect').disabled = busy || !supported;
   if ($('bootWizard').open) renderWizard();
 }
 function selectDevice() {
   const selected = devices.find(device => String(device.address) === $('device').value);
-  romReady = Boolean(selected && selected.kind === 'rom');
+  romReady = false;
+  if (selected && selected.profile) {
+    if (selected.profile !== target && (optionPending || optionStopped)) {
+      $('deviceStatus').textContent = 'Finish the pending boot-option check before changing chips.';
+      controls(); return;
+    }
+    if (selected.profile !== target) {
+      target = selected.profile;
+      firmware = null; $('file').value = '';
+      $('filename').textContent = `Choose firmware for the detected ${target.name}.`;
+    }
+    $('profileInfo').textContent = `${target.name} detected — ROM 0x${hex(target.rom)}.`;
+    romReady = selected.kind === 'rom';
+  } else $('profileInfo').textContent = 'Select a detected C011 or C031.';
   if (romReady) $('deviceStatus').textContent = optionPending
     ? 'ROM found. Click Read / verify boot options.'
     : 'ROM found. Continue to firmware or boot options.';
@@ -285,8 +298,8 @@ function selectDevice() {
 }
 function showDevices() {
   $('device').innerHTML = '<option value="">Select a target device…</option>' + devices.map(device =>
-    `<option value="${device.address}"${device.kind === 'unknown' ? ' disabled' : ''}>0x${hex(device.address)} — ${device.kind === 'rom' ? target.name + ' ROM bootloader' : device.kind === 'seesaw' ? target.name + ' seesaw (application)' : 'Unknown / unsupported device'}</option>`).join('');
-  const supportedDevices = devices.filter(device => device.kind !== 'unknown');
+    `<option value="${device.address}"${device.kind === 'unknown' || ((optionPending || optionStopped) && device.profile !== target) ? ' disabled' : ''}>0x${hex(device.address)} — ${device.kind === 'rom' ? device.profile.name + ' ROM bootloader' : device.kind === 'seesaw' ? device.profile.name + ' seesaw (application)' : 'Unknown / unsupported device'}</option>`).join('');
+  const supportedDevices = devices.filter(device => device.kind !== 'unknown' && (!(optionPending || optionStopped) || device.profile === target));
   $('device').value = supportedDevices.length === 1 ? String(supportedDevices[0].address) : '';
   selectDevice();
 }
@@ -306,12 +319,18 @@ async function scanDevices(afterReset = false) {
     check(new Set(addresses).size === addresses.length && addresses.every(address => address >= 8 && address <= 0x77), 'Invalid I²C address list.');
     log(addresses.length ? 'I²C scan: ' + addresses.map(address => '0x' + hex(address)).join(', ') : 'I²C scan: no devices found.');
     for (const address of addresses) {
-      const device = {address, kind: 'unknown'};
+      const device = {address, kind: 'unknown', profile: null};
       try {
-        if (address === target.rom) {
-          // Never send seesaw register bytes to the ROM command parser.
-          await new Bootloader(bridge).identify(); device.kind = 'rom';
-        } else if (address !== 0x63 && address !== 0x64 && await bridge.command('R', [address, 0, 1, 1]) === `DATA ${hex(target.hwid)}`) device.kind = 'seesaw';
+        const romProfile = Object.values(PROFILES).find(profile => profile.rom === address);
+        if (romProfile) {
+          // Both ROM addresses use ROM commands, never seesaw register queries.
+          await new Bootloader(bridge, romProfile).identify();
+          device.kind = 'rom'; device.profile = romProfile;
+        } else {
+          const id = await bridge.command('R', [address, 0, 1, 1]);
+          const profile = Object.values(PROFILES).find(profile => id === `DATA ${hex(profile.hwid)}`);
+          if (profile) { device.kind = 'seesaw'; device.profile = profile; }
+        }
       } catch (error) {
         if (bridge.failure) throw error;
         log(`0x${hex(address)} identification: ${error.message}`);
@@ -328,7 +347,7 @@ async function scanDevices(afterReset = false) {
 }
 async function bootIntoROM() {
   const selected = devices.find(device => String(device.address) === $('device').value);
-  if (busy || !bridge || !selected || selected.kind !== 'seesaw' || devices.some(device => device.address === target.rom)) return;
+  if (busy || !bridge || !target || !selected || selected.profile !== target || selected.kind !== 'seesaw' || devices.some(device => device.address === target.rom)) return;
   busy = true; romReady = false; controls();
   try {
     $('deviceStatus').textContent = `Checking seesaw at 0x${hex(selected.address)}…`;
@@ -343,7 +362,7 @@ async function bootIntoROM() {
     try { await new Bootloader(bridge).identify(); }
     catch (error) { throw new Error('Boot request sent, but Selected STM32 ROM did not identify. The application may lack boot-entry support. Reset the STM32 and scan again; use configured BOOT0 or ST-Link if needed. ' + error.message); }
     devices = devices.filter(device => device !== selected);
-    devices.push({address: target.rom, kind: 'rom'});
+    devices.push({address: target.rom, kind: 'rom', profile: target});
     showDevices(); $('device').value = String(target.rom); selectDevice();
     log(`${target.name} at 0x${hex(selected.address)} entered ROM at 0x${hex(target.rom)}. No flash/options written.`);
   } catch (error) {
@@ -353,6 +372,9 @@ async function bootIntoROM() {
 }
 async function chooseFile(file) {
   if (busy || !file) return;
+  if (!devices.some(device => String(device.address) === $('device').value && device.profile && device.profile === target)) {
+    status('Connect and detect your STM32 before choosing firmware.'); return;
+  }
   busy = true; firmware = null; controls();
   try {
     check(file.size <= 200000, 'File is too large for STM32 firmware.');
@@ -537,7 +559,7 @@ function renderWizard() {
   $('wizardTitle').textContent = title; $('wizardText').textContent = text;
   $('wizardStatus').textContent = busy ? 'Working… Keep the bridge connected.' : wizardMessage;
   $('wizardNext').textContent = action;
-  $('wizardNext').disabled = busy || (selecting && (!selected || selected.kind === 'unknown' || (selected.kind === 'seesaw' && devices.some(device => device.address === target.rom))));
+  $('wizardNext').disabled = busy || (selecting && (!selected || selected.profile !== target || selected.kind === 'unknown' || (selected.kind === 'seesaw' && devices.some(device => device.address === target.rom))));
   $('wizardDeviceLabel').classList.toggle('hidden', !selecting);
   $('wizardScan').classList.toggle('hidden', !selecting);
   $('wizardDevice').innerHTML = $('device').innerHTML;
@@ -609,15 +631,6 @@ async function wizardNext() {
   }
   renderWizard();
 }
-$('target').onchange = () => {
-  if (busy || bridge || optionPending || optionStopped) return;
-  target = PROFILES[$('target').value];
-  firmware = null; $('file').value = '';
-  $('filename').textContent = 'No file selected. Choose firmware for the selected target.';
-  $('profileInfo').textContent = target.name + ': ROM 0x' + hex(target.rom) +
-    ', device 0x' + target.id.toString(16) + ', ' + (target.ramEnd - 0x20000000) / 1024 + ' KiB RAM.';
-  controls();
-};
 $('connect').onclick = connect;
 $('scan').onclick = () => scanDevices();
 $('device').onchange = selectDevice;
