@@ -46,7 +46,6 @@ dialog{width:min(560px,calc(100% - 32px));max-height:90vh;overflow:auto;backgrou
 <p id="wizardText"></p>
 <label id="wizardDeviceLabel" class="hidden">Device <select id="wizardDevice"></select></label>
 <p id="wizardStatus" role="status" aria-live="polite"></p>
-<p><small>Keep the bridge powered and connected. Reset only the STM32.</small></p>
 <div class="row"><button id="wizardNext" autofocus>Continue</button><button id="wizardScan" class="action hidden">Scan</button><button id="wizardClose" class="secondary">Close</button></div>
 </dialog>
 <script>
@@ -555,7 +554,7 @@ async function readDetectedBootOptions() {
 function renderWizard() {
   const selecting = wizardStage === 'select';
   const selected = devices.find(device => String(device.address) === $('device').value);
-  let step = 1, title = 'Reset the STM32', text = 'Briefly connect the STM32 RST pin to GND, then release it and continue. Nothing is written yet.', action = "I've reset it — continue";
+  let step = 1, title = 'Reset the STM32', text = 'Keep the bridge powered and connected; briefly connect the STM32 RST pin to GND, then release it and continue.', action = "I've reset it — continue";
   if (selecting) {
     step = wizardReading ? 3 : 1; title = 'Find your STM32';
     text = 'Select your STM32 and enter the bootloader. This does not write firmware or options.';
