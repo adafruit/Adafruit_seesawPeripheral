@@ -22,6 +22,8 @@ assert.match(html, /id="connect" class="action"/);
 assert.match(html, /id="scan" class="action"/);
 assert.match(html, /id="wizardScan" class="action hidden"/);
 assert.match(html, /button\[hidden\]\{display:none\}/);
+assert.ok(html.indexOf('3. BOOT0 recovery') < html.indexOf('4. Firmware'));
+assert.match(html, /Disabling recovery is not recommended/);
 const elements = new Map();
 const windowEvents = new Map();
 let downloadedBlob;
@@ -226,18 +228,28 @@ class ROM {
   }
   const installOptions = replies => {
     const device = new OptionBridge(replies); context.testDevice = device;
-    vm.runInContext('bridge = testDevice; romReady = true; firmware = null; optionPending = false; optionStopped = false; targetResetConfirmed = false;', context);
+    vm.runInContext('bridge = testDevice; romReady = true; firmware = null; bootRecovery = null; optionPending = false; optionStopped = false; targetResetConfirmed = false;', context);
     return device;
   };
   const query = installOptions([optionDump, summary]);
   vm.runInContext('controls()', context);
   assert.equal(elements.get('readOptions').disabled, false);
-  assert.equal(elements.get('enableBoot0').disabled, false, 'The guide can open before reset; it cannot write yet');
+  assert.equal(elements.get('enableBoot0').disabled, true, 'Read options before offering a boot-mode change');
   await vm.runInContext('runBootOptions()', context);
   assert.deepEqual(query.commands.map(command => Array.from(command)), [['O', 0x64]]);
   assert.equal(query.closed, undefined);
-  assert.equal(elements.get('bootOptions').textContent, summary);
+  assert.equal(elements.get('bootOptions').textContent, 'BOOT0 recovery is enabled.');
+  assert.equal(elements.get('enableBoot0').hidden, true);
+  assert.equal(elements.get('flashBoot').hidden, false);
+  assert.equal(elements.get('disableBoot0Warning').hidden, false);
   assert.match(elements.get('optionStatus').textContent, /no option write/);
+  const disabledSummary = summary.replace('nBOOT_SEL=0', 'nBOOT_SEL=1');
+  const disabledQuery = installOptions([optionDump, disabledSummary]);
+  await vm.runInContext('runBootOptions()', context);
+  assert.equal(elements.get('enableBoot0').hidden, false);
+  assert.equal(elements.get('flashBoot').hidden, true);
+  assert.equal(elements.get('disableBoot0Warning').hidden, true);
+  assert.deepEqual(disabledQuery.commands.map(command => Array.from(command)), [['O', 0x64]], 'Reading options never sends setter arguments');
 
   const enable = installOptions([optionDump, summary, ack, 'Keep bridge powered. Reset/power-cycle C011 before another option write', 'Re-enter ROM, then query O 64 (or O 49 from running seesaw) to verify']);
   await vm.runInContext('runBootOptions("boot0")', context);
@@ -256,6 +268,8 @@ class ROM {
   assert.equal(warnedBeforeClosing, true);
   await vm.runInContext('runBootOptions("flash"); runOperation("read");', context);
   assert.equal(enable.commands.length, 1, 'No write or unrelated operation during pending verification');
+  assert.equal(elements.get('enableBoot0').hidden, true);
+  assert.equal(elements.get('flashBoot').hidden, true, 'Do not infer the new state before readback');
   enable.replies = [optionDump, summary, verified];
   vm.runInContext('romReady = true;', context);
   await vm.runInContext('runBootOptions()', context);
@@ -312,7 +326,7 @@ class ROM {
   // Discovery exercises the real ROM protocol simulator, not an address-only
   // success stub. Scanning never sends the boot key or changes flash/options.
   class DiscoveryBridge extends ROM {
-    constructor(addresses = [], profile = PROFILES.c011) { super(profile); this.addresses = addresses; this.commands = []; this.ids = new Map(); this.bootWorks = true; this.romValid = true; this.romActive = addresses.includes(this.profile.rom); }
+    constructor(addresses = [], profile = PROFILES.c011) { super(profile); this.addresses = addresses; this.commands = []; this.ids = new Map(); this.bootWorks = true; this.romValid = true; this.romActive = addresses.includes(this.profile.rom); this.optionReplies = [optionDump, summary, verified]; }
     async command(operation, values) {
       this.commands.push([operation, ...values]);
       if (operation === 'S') return 'SCAN' + this.addresses.map(address => ' ' + address.toString(16).toUpperCase().padStart(2, '0')).join('');
@@ -327,7 +341,7 @@ class ROM {
         return 'OK';
       }
       if (!this.romActive || !this.romValid) throw new Error('ERR I2C 2');
-      if (operation === 'O') return [optionDump, summary, verified];
+      if (operation === 'O') return this.optionReplies;
       return super.command(operation, values);
     }
   }
@@ -366,6 +380,7 @@ class ROM {
   assert.equal(elements.get('enableBoot0').disabled, false);
   assert.equal(discovered.writes, 0); assert.equal(discovered.erases.length, 0);
   assert.equal(discovered.goRequested, false);
+  assert.deepEqual(discovered.commands.filter(command => command[0] === 'O'), [['O', 0x64]], 'ROM entry automatically reads options once');
   assert.equal(discovered.commands.filter(command => command[0] === 'W' && command[1] === 0x49).length, 1);
 
   const romOnly = new DiscoveryBridge([0x64]); installDiscovery(romOnly);
@@ -376,6 +391,17 @@ class ROM {
   assert.equal(elements.get('readOptions').disabled, false);
   assert.equal(elements.get('enableBoot0').disabled, false, 'Ordinary scan permits opening the guide');
   assert.equal(vm.runInContext('targetResetConfirmed', context), false, 'Ordinary scan is not reset confirmation');
+  assert.deepEqual(romOnly.commands.filter(command => command[0] === 'O'), [['O', 0x64]], 'Already-in-ROM detection automatically reads options');
+  assert.equal(elements.get('flashBoot').hidden, false);
+  assert.equal(elements.get('readOptions').hidden, true, 'Successful automatic reads need no manual read button');
+  const unreadableOptions = new DiscoveryBridge([0x64]); unreadableOptions.optionReplies = ['ERR option read failed']; installDiscovery(unreadableOptions);
+  await vm.runInContext('scanDevices()', context);
+  assert.equal(vm.runInContext('bootRecovery', context), null);
+  assert.equal(elements.get('enableBoot0').hidden, true);
+  assert.equal(elements.get('flashBoot').hidden, true);
+  assert.equal(vm.runInContext('optionStopped', context), true);
+  assert.equal(unreadableOptions.writes, 0);
+  assert.deepEqual(unreadableOptions.commands.filter(command => command[0] === 'O'), [['O', 0x64]]);
   const impostor = new DiscoveryBridge([0x64]); impostor.romValid = false; installDiscovery(impostor);
   await vm.runInContext('scanDevices()', context);
   assert.equal(vm.runInContext('romReady', context), false);
@@ -486,6 +512,7 @@ class ROM {
   elements.get('flashBoot').onclick();
   await elements.get('wizardNext').onclick();
   assert.equal(vm.runInContext('wizardStage', context), 'write');
+  assert.match(elements.get('wizardText').textContent, /not recommended/);
   await elements.get('wizardNext').onclick();
   assert.deepEqual(normal.optionCommands, [[0x64, 1, 1, 1]]);
   normal.addresses = [0x49]; normal.ids.set(0x49, 'DATA 90'); normal.romActive = false;
@@ -538,6 +565,8 @@ class ROM {
   assert.throws(() => validateImage(c031Image, PROFILES.c011), /stack/);
   assert.deepEqual(validateImage(c031Image, PROFILES.c031), c031Image);
   const blank31 = new DiscoveryBridge([0x63], PROFILES.c031); installDiscovery(blank31);
+  elements.get('bootWizard').close();
+  blank31.optionReplies = [optionDump, disabledSummary];
   vm.runInContext('target = null; firmware = {image: testImage};', context);
   await vm.runInContext('scanDevices()', context);
   assert.equal(vm.runInContext('target.name', context), 'C031');
@@ -548,6 +577,9 @@ class ROM {
   assert.equal(vm.runInContext('firmware', context), null, 'Detected family changes invalidate the selected image');
   assert.equal(blank31.writes, 0); assert.equal(blank31.erases.length, 0);
   assert.equal(blank31.goRequested, false);
+  assert.deepEqual(blank31.commands.filter(command => command[0] === 'O'), [['O', 0x63]], 'C031 uses its own ROM option query');
+  assert.equal(elements.get('enableBoot0').hidden, false);
+  assert.equal(elements.get('flashBoot').hidden, true);
   const c031 = new ROM(PROFILES.c031), c031Rom = new Bootloader(c031, PROFILES.c031);
   await c031Rom.identify(); await c031Rom.erase(c031Image.length);
   const c031Padded = await c031Rom.program(c031Image);
@@ -586,12 +618,14 @@ class ROM {
   assert.equal(elements.get('device').value, '');
   assert.match(elements.get('device').innerHTML, /C011 ROM/);
   assert.match(elements.get('device').innerHTML, /C031 ROM/);
-  elements.get('device').value = String(0x64); vm.runInContext('selectDevice()', context);
+  elements.get('device').value = String(0x64); await elements.get('device').onchange();
   assert.equal(vm.runInContext('target.name', context), 'C011');
   vm.runInContext('firmware = {image: testImage};', context);
-  elements.get('device').value = String(0x63); vm.runInContext('selectDevice()', context);
+  elements.get('device').value = String(0x63); await elements.get('device').onchange();
   assert.equal(vm.runInContext('target.name', context), 'C031');
   assert.equal(vm.runInContext('firmware', context), null);
+  assert.deepEqual(mixed11.commands.filter(command => command[0] === 'O'), [['O', 0x64]]);
+  assert.deepEqual(mixed31.commands.filter(command => command[0] === 'O'), [['O', 0x63]]);
   assert.equal(mixed11.writes + mixed31.writes, 0);
   assert.equal(mixed11.erases.length + mixed31.erases.length, 0);
 
