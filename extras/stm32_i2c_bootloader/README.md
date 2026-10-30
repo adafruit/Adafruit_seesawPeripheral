@@ -51,11 +51,14 @@ that standalone file locally. Ordinary HTTP LAN hosting cannot use Web Serial.
    **Enter bootloader**. If a factory-blank or manually booted STM32 is
    already in ROM at its target address, the page identifies it directly and reports ready.
    Keep one target connected during programming or option changes.
-3. After detection, drop the matching application HEX or BIN file onto the page. BIN starts at
+3. **BOOT0 recovery** reads the options automatically once ROM is ready.
+   Enable recovery if it is off, or leave it enabled. Disabling it is not recommended.
+   Changes still require the reset/write/verify guide; the automatic read never writes options.
+4. In **Firmware**, drop the matching application HEX or BIN file onto the page. BIN starts at
    `0x08000000`; HEX uses absolute flash addresses and checked record checksums.
    Click **Write** once step 2 reports that ROM is ready.
    **Verify after flash** is checked by default. No backup-file dialog is shown.
-4. The page identifies ROM, reads EEPROM/options for comparison, programs only
+   The page identifies ROM, reads EEPROM/options for comparison, programs only
    required application pages, compares every programmed byte when verification
    is enabled, checks EEPROM/options unchanged, then sends Go. Unchecking
    **Verify after flash** skips application readback, not EEPROM/option checks.
@@ -106,22 +109,26 @@ address before this guided workflow can use it.
 ### Browser boot-option controls
 
 Use the latest bridge sketch (with the `S` and `O` commands). No firmware
-file is needed. Complete device discovery/ROM entry in step 2, then **Read boot
-options / Verify pending write** displays nBOOT_SEL, nBOOT1, nBOOT0, BOOT_LOCK,
-and RDP. A query leaves the STM32 in ROM.
+file is needed. Entering or detecting ROM in step 2 automatically reads the
+options and shows the recovery state in step 3. The Activity log includes
+nBOOT_SEL, nBOOT1, nBOOT0, BOOT_LOCK, and RDP. A query leaves the STM32 in ROM.
+Failed reads never assume recovery is disabled. The read/verify control remains
+available for recovery and pending-write checks.
 
-Choose **Enable BOOT0 recovery** for `0 1 1`, or **Use normal flash boot** for
-`1 1 1`. Both open a guided dialog; you do not need to return to the discovery
+When recovery is disabled, **Enable BOOT0 recovery** sets `0 1 1`.
+When enabled, **Disable BOOT0 recovery** sets `1 1 1`; this is not recommended
+because failed firmware may then require ST-Link recovery.
+The available button opens a guided dialog; you do not need to return to the discovery
 section. The guide keeps the reset instructions, device selection, option write,
 and readback in one place:
 
 1. Briefly touch **STM32 RST to GND**, then release it. Click **I've reset it —
    continue**. The guide scans and, if needed, lets you select a STM32 and boot it
    into ROM. Nothing has been written yet.
-2. Click **Enable BOOT0** (or **Set normal flash boot**) to make the change.
+2. Click **Enable BOOT0** (or **Disable BOOT0**) to make the change.
 3. Follow the dialog's wiring/reset instructions and continue to verify.
-4. After the check passes, remove any B0 jumper and reset the STM32 to return to
-   the application. Click **Done**.
+4. After the check passes, remove any B0 jumper and reset the STM32. Click
+   **Done**, then **Scan** to continue with the installed firmware or a blank chip.
 
 Before **every** option write, the guide requires this target-reset
 acknowledgement. An ordinary **Scan**, or resetting only the bridge, does not
