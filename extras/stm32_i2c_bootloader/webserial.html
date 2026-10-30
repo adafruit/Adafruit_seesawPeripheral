@@ -7,38 +7,38 @@
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#11171c;color:#edf3f5}*{box-sizing:border-box}body{max-width:850px;margin:48px auto;padding:0 22px}h1{font-size:2.2rem;margin-bottom:10px}h2{font-size:1.2rem}p,li{line-height:1.6;color:#bacbd4}a{color:#68dccc}.badge{color:#68dccc;letter-spacing:.12em;font-size:.8rem;font-weight:700}.card{background:#1b252d;border:1px solid #384954;border-radius:14px;padding:22px;margin:20px 0}button,.download{font:inherit;border:0;border-radius:8px;padding:12px 18px;background:#68dccc;color:#112626;font-weight:650;cursor:pointer;display:inline-block;text-decoration:none}button:disabled{opacity:.4;cursor:not-allowed}button.secondary{background:#344651;color:white}select,input{font:inherit;padding:8px;border:1px solid #687b88;border-radius:6px;background:#11171c;color:white}label{display:block;margin:14px 0}#drop{border:2px dashed #64828e;padding:30px 18px;text-align:center;border-radius:12px}#drop.over{border-color:#68dccc;background:#203b3e}#file{max-width:100%}#filename{overflow-wrap:anywhere}#log{white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;font:13px/1.6 ui-monospace,monospace}progress{width:100%;accent-color:#68dccc;height:14px}.warning{color:#ffcc89}.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}small{color:#bacbd4}.hidden{display:none!important}
 dialog{width:min(560px,calc(100% - 32px));max-height:90vh;overflow:auto;background:#1b252d;color:#edf3f5;border:1px solid #64828e;border-radius:16px;padding:28px}dialog::backdrop{background:#080d12cc}dialog h2{font-size:1.5rem;margin-top:10px}#wizardText{white-space:pre-line}#wizardStatus{overflow-wrap:anywhere}dialog .row{margin-top:22px}
 </style>
-<header><div class="badge">ADAFRUIT · SEESAW PERIPHERAL</div><h1>C011 / C031 firmware uploader</h1><p>USB → Arduino bridge → I²C → STM32C011F6 / C031G6. Write firmware, read a backup, or verify a file against flash. Files stay on your computer.</p></header>
-<section class="card"><h2>1. Prepare your USB bridge and board</h2><ol>
-<li><a href="serial_i2c_bridge/serial_i2c_bridge.ino" download>Download the matching bridge sketch</a> and upload it using your host board’s Arduino selection: Uno/Metro 328, Arduino-Pico RP2040/RP2350, ESP32, or ESP8266. On native-USB ESP32 boards, enable <strong>USB CDC On Boot</strong> when using that USB port. Close Serial Monitor.</li>
+<header><div class="badge">ADAFRUIT · SEESAW PERIPHERAL</div><h1>C011 / C031 firmware uploader</h1><p>Update or back up your STM32 through an Arduino USB-to-I²C bridge.</p></header>
+<section class="card"><h2>1. Connect the bridge</h2><ol>
+<li><a href="serial_i2c_bridge/serial_i2c_bridge.ino" download>Download the bridge sketch</a> and upload it to your host board. On native-USB ESP32, enable <strong>USB CDC On Boot</strong>. Close Serial Monitor.</li>
 <li>Connect the host’s default I²C bus using STEMMA QT. For direct wiring, use a level shifter.</li>
-<li>Connect only one target board while programming or changing boot options (C011 ROM: 0x64; C031 ROM: 0x63). Devices sharing an address cannot be distinguished. For a factory-blank chip, power-cycle it before starting; no BOOT0 wire or ST-Link is needed for initial programming.</li></ol>
-<p class="warning">C011F6: 6 KiB RAM, bench-tested Rev Z ROM. C031G6: 12 KiB RAM; hardware verification pending. Both have 32 KiB flash. Application limit: 30 KiB; the last 2 KiB EEPROM page and boot options are preserved. Keep power stable and this tab visible. A failed flash may require ST-Link recovery.</p>
+<li>Connect only one STM32. Power-cycle a factory-blank chip before starting.</li></ol>
+<p class="warning">Use firmware up to 30 KiB; EEPROM and boot options are preserved. Keep power stable and this tab visible. Failed writes may require ST-Link recovery.</p>
 <label>Target <select id="target"><option value="c011">STM32C011F6</option><option value="c031">STM32C031G6 — PID 6540</option></select></label>
 <p id="profileInfo">C011: ROM 0x64, device 0x0443, 6 KiB RAM.</p>
 <p id="compat" class="warning"></p><button id="connect">Connect bridge</button> <span id="connection">Not connected</span></section>
-<section class="card"><h2>2. Find your STM32 and enter ROM</h2>
-<p>Connecting scans the I²C bus. The page checks responding devices for the selected target’s seesaw hardware ID and ROM protocol. Unknown devices cannot be programmed.</p>
+<section class="card"><h2>2. Enter the bootloader</h2>
+<p>Select your STM32 and click <strong>Enter bootloader</strong>. If it is already in ROM, continue to step 3.</p>
 <button id="scan" class="secondary" disabled>Scan</button>
 <label>Device <select id="device" disabled><option value="">Connect bridge to find devices</option></select></label>
-<button id="bootRom" disabled>Boot selected STM32 into ROM</button>
-<p id="deviceStatus" role="status" aria-live="polite">First connect your bridge. Use the latest bridge sketch with scan support.</p>
+<button id="bootRom" disabled>Enter bootloader</button>
+<p id="deviceStatus" role="status" aria-live="polite">Connect the bridge first.</p>
 </section>
-<section class="card"><h2>3. Firmware (optional)</h2><div id="drop"><p>Drop one STM32 application <strong>.hex</strong> or <strong>.bin</strong> here</p><input id="file" type="file" accept=".hex,.bin" aria-label="Choose firmware"></div><p id="filename">No file selected.</p>
-<small>BIN starts at 0x08000000. HEX must use absolute STM32 flash addresses. AVR/bridge HEX files, full-flash dumps, and option-byte records are rejected.</small>
-<p class="warning">For later I²C updates, the new firmware must support bootloader entry (seesaw CONFIG_BOOTLOADER), or enable BOOT0 recovery below. Firmware Write preserves boot options.</p>
+<section class="card"><h2>3. Firmware</h2><div id="drop"><p>Drop a STM32 <strong>.hex</strong> or <strong>.bin</strong> file here</p><input id="file" type="file" accept=".hex,.bin" aria-label="Choose firmware"></div><p id="filename">No file selected.</p>
+<small>Use an application file, not a full-flash backup or bridge firmware.</small>
+<p class="warning">For future I²C updates, use firmware with bootloader entry or enable BOOT0 recovery below.</p>
 <label><input type="checkbox" id="verifyAfterFlash" checked> Verify after flash</label>
 <div class="row"><button id="write" disabled>Write</button><button id="read" class="secondary" disabled>Read</button><button id="verify" class="secondary" disabled>Verify</button><a id="readout" class="download hidden" download>Save readout</a></div>
-<p><small>Write programs the selected file. Read downloads all 32 KiB, including EEPROM; no input file is needed. Verify compares the selected file without programming.</small></p>
+<p><small>Write: upload. Read: save a full 32 KiB backup, including EEPROM. Verify: compare without writing.</small></p>
 <p id="status" role="status" aria-live="polite">Ready when you are.</p><progress id="progress" value="0" max="1" aria-label="Upload progress"></progress></section>
 <section class="card"><h2>4. Boot options (optional)</h2>
-<p>Enable BOOT0 recovery opens a step-by-step guide, including reset, device selection, and verification. No firmware file or trips back to step 2 are needed.</p>
-<p id="bootOptions" role="status" aria-live="polite">Boot options have not been read.</p>
-<button id="readOptions" class="secondary" disabled>Read boot options / Verify pending write</button>
-<p class="warning">Keep power stable; an interrupted option write may require ST-Link recovery. Protection and other defined settings are preserved.</p>
+<p>Choose a boot mode and follow the reset and verification steps. No firmware file needed.</p>
+<p id="bootOptions" role="status" aria-live="polite">Not read yet.</p>
+<button id="readOptions" class="secondary" disabled>Read / verify boot options</button>
+<p class="warning">Keep power stable. Interrupted writes may need ST-Link recovery. C031 BOOT0 recovery is not yet bench-verified.</p>
 <div class="row"><button id="enableBoot0" disabled>Enable BOOT0 recovery</button><button id="flashBoot" class="secondary" disabled>Use normal flash boot</button></div>
 <button id="resumeOptions" class="secondary hidden">Continue boot-option guide</button>
-<p><small>Enable BOOT0: nBOOT_SEL=0, nBOOT1=1, nBOOT0=1 (B0 low = application, high = ROM). Normal flash: all three bits = 1 (B0 ignored). RDP must be AA and BOOT_LOCK must be 0; neither is changed.</small></p>
-<p id="optionStatus">After a write, keep this tab connected and the bridge powered until readback verification passes. Disconnect ST-Link from PA14/SWCLK before connecting B0 to 3.3 V. Never use 5 V on B0.</p>
+<p><small>BOOT0 recovery: B0 low boots your firmware; high enters ROM. Normal flash boot ignores B0.</small></p>
+<p id="optionStatus">Keep the bridge powered and connected until verification passes. Disconnect ST-Link SWCLK before wiring B0 to 3.3 V. Never use 5 V.</p>
 </section>
 <section class="card"><h2>Activity</h2><pre id="log" aria-label="Activity log"></pre></section>
 <dialog id="bootWizard" aria-labelledby="wizardTitle" aria-describedby="wizardText">
@@ -46,7 +46,7 @@ dialog{width:min(560px,calc(100% - 32px));max-height:90vh;overflow:auto;backgrou
 <p id="wizardText"></p>
 <label id="wizardDeviceLabel" class="hidden">Device <select id="wizardDevice"></select></label>
 <p id="wizardStatus" role="status" aria-live="polite"></p>
-<p><small>Keep the USB bridge plugged in and this tab connected. Reset only the STM32, not the bridge.</small></p>
+<p><small>Keep the bridge powered and connected. Reset only the STM32.</small></p>
 <div class="row"><button id="wizardNext" autofocus>Continue</button><button id="wizardScan" class="secondary hidden">Scan</button><button id="wizardClose" class="secondary">Close</button></div>
 </dialog>
 <script>
@@ -275,12 +275,12 @@ function selectDevice() {
   const selected = devices.find(device => String(device.address) === $('device').value);
   romReady = Boolean(selected && selected.kind === 'rom');
   if (romReady) $('deviceStatus').textContent = optionPending
-    ? 'Selected STM32 ROM found. Next: Read boot options / Verify pending write.'
-    : 'Selected STM32 ROM found. Ready for firmware or boot options below.';
+    ? 'ROM found. Click Read / verify boot options.'
+    : 'ROM found. Continue to firmware or boot options.';
   else if (selected && selected.kind === 'seesaw') $('deviceStatus').textContent = devices.some(device => device.address === target.rom)
     ? 'The target ROM address is occupied. Disconnect that device before booting another STM32 into ROM, then scan again.'
-    : `STM32 seesaw selected at 0x${hex(selected.address)}. Next: Boot selected STM32 into ROM.`;
-  else $('deviceStatus').textContent = 'Select a detected STM32 matching the chosen target. Unknown devices are not supported.';
+    : `STM32 at 0x${hex(selected.address)}. Click Enter bootloader.`;
+  else $('deviceStatus').textContent = 'Select your STM32 from the list.';
   controls();
 }
 function showDevices() {
@@ -361,7 +361,7 @@ async function chooseFile(file) {
     const image = name.endsWith('.hex') ? parseHex(await file.text()) : validateImage(new Uint8Array(await file.arrayBuffer()));
     firmware = {name: file.name, image};
     $('filename').textContent = `${file.name} — ${image.length.toLocaleString()} bytes at 0x08000000. Vectors checked.`;
-    status('Firmware ready. Complete device discovery in step 2, then choose Write or Verify.');
+    status('File ready. Complete step 2, then click Write or Verify.');
   } catch (error) { $('filename').textContent = error.message; status('Firmware rejected. No device changes.'); }
   busy = false; controls();
 }
@@ -373,7 +373,7 @@ async function connect() {
     if (bridge) {
       await bridge.close(); bridge = null; $('connection').textContent = 'Not connected'; $('connect').textContent = 'Connect bridge';
       devices = []; romReady = false; targetResetConfirmed = false; showDevices();
-      $('deviceStatus').textContent = 'bridge disconnected. Connect again to scan the STM32’s current state.';
+      $('deviceStatus').textContent = 'Bridge disconnected. Reconnect to scan again.';
       if (optionPending) $('optionStatus').textContent = 'Disconnected without verification. A later read verifies the earlier write only if the bridge retained its snapshot and reports VERIFIED.';
       return;
     }
@@ -385,7 +385,7 @@ async function connect() {
       ? 'Previous option write was not verified. Reconnecting may reset the bridge and lose its snapshot. Read options before proceeding; require VERIFIED for the earlier write.'
       : 'Read the current boot options, or open a boot-option guide.';
     optionPending = false; optionStopped = false; targetResetConfirmed = false;
-    $('bootOptions').textContent = 'Boot options have not been read in this connection.';
+    $('bootOptions').textContent = 'Not read yet.';
     log('Serial connected at 115200 baud. No target writes yet.');
   } catch (error) { status(error.message); }
   finally { busy = false; controls(); }
@@ -406,7 +406,7 @@ async function runOperation(operation) {
       $('readout').download = `${target.name.toLowerCase()}-read-${new Date().toISOString().replace(/[:.]/g, '-')}.bin`;
       $('readout').classList.remove('hidden'); $('readout').click();
       log('Read all 32768 flash bytes, including EEPROM. Download requested; no flash writes or Go sent.');
-      status('Read complete. If the download did not start, click Save readout. Power-cycle to return to the application.', 1);
+      status('Backup downloaded; use Save readout if needed. Power-cycle to run your firmware.', 1);
       return;
     }
     if (operation === 'verify') {
@@ -443,7 +443,7 @@ async function runOperation(operation) {
     // A fresh connection is required after every run, including failures.
     if (bridge) await bridge.close(); bridge = null;
     devices = []; romReady = false; targetResetConfirmed = false; showDevices();
-    $('deviceStatus').textContent = 'bridge disconnected. Connect again to scan the STM32’s current state.';
+    $('deviceStatus').textContent = 'Bridge disconnected. Reconnect to scan again.';
     $('connection').textContent = 'Not connected'; $('connect').textContent = 'Connect bridge';
     busy = false; controls();
   }
@@ -483,7 +483,7 @@ async function runBootOptions(mode = 'read') {
     const unchanged = replies.includes('OK boot options already match; no write');
     if (writing && !unchanged) {
       check(replies.includes('ACK option write; readback still required'), 'Option write was not acknowledged. Do not retry.');
-      $('optionStatus').textContent = 'Write acknowledged, NOT verified. Keep bridge connected and continue the boot-option guide to reset the STM32 and verify.';
+      $('optionStatus').textContent = 'NOT verified. Stay connected and continue the guide.';
       devices = []; romReady = false; showDevices();
       $('deviceStatus').textContent = 'Option write awaiting verification. Continue the boot-option guide.';
     } else {
@@ -491,46 +491,46 @@ async function runBootOptions(mode = 'read') {
       optionPending = false;
       optionStopped = false;
       $('optionStatus').textContent = verified
-        ? 'Verified: boot options and all other defined settings match; complements valid. Reset the STM32 before another option write.'
+        ? 'Verified: boot options and other settings match. Reset the STM32 before another option write.'
         : unchanged ? 'Boot options already match; no write was needed.'
-        : 'Options read; no option write. Choose a boot-option guide to change these settings.';
+        : 'Options read; no option write. Choose a boot mode to change them.';
     }
     return {pending: optionPending, verified, unchanged};
   } catch (error) {
     if (sent) { optionStopped = true; romReady = false; devices = []; showDevices(); }
-    $('optionStatus').textContent = error.message + ' Stopped; no automatic retry. Keep bridge connected and continue the boot-option guide for readback.';
+    $('optionStatus').textContent = error.message + ' Stopped; no automatic retry. Stay connected and continue the guide to check options.';
     log($('optionStatus').textContent);
   } finally { busy = false; controls(); }
 }
 function renderWizard() {
   const selecting = wizardStage === 'select';
   const selected = devices.find(device => String(device.address) === $('device').value);
-  let step = 1, title = 'Reset the STM32', text = 'Briefly touch the STM32 RST pin to GND, then remove the connection. Do not leave RST grounded.\n\nThen continue to find the chip. Nothing will be written yet.', action = "I've reset it — continue";
+  let step = 1, title = 'Reset the STM32', text = 'Briefly connect the STM32 RST pin to GND, then release it and continue. Nothing is written yet.', action = "I've reset it — continue";
   if (selecting) {
     step = wizardReading ? 3 : 1; title = 'Find your STM32';
-    text = 'Select the STM32 below. Boot into ROM puts it in programming mode; it does not write firmware or boot options.';
-    action = romReady ? 'Continue' : 'Boot into ROM';
+    text = 'Select your STM32 and enter the bootloader. This does not write firmware or options.';
+    action = romReady ? 'Continue' : 'Enter bootloader';
   } else if (wizardStage === 'write') {
     step = 2; title = wizardMode === 'boot0' ? 'Enable BOOT0 recovery' : 'Use normal flash boot';
     text = wizardMode === 'boot0'
-      ? 'The STM32 is ready in ROM. Enable BOOT0 so B0 low starts the application and B0 high enters ROM.\n\nThe next button changes only the three boot-selection bits. Keep power stable.'
-      : 'The STM32 is ready in ROM. Select normal flash boot so the application starts regardless of B0.\n\nThe next button changes only the three boot-selection bits. Keep power stable.';
+      ? 'Click Enable BOOT0: B0 low boots your firmware; high enters ROM. Keep power stable.'
+      : 'Click Set normal flash boot to boot your firmware regardless of B0. Keep power stable.';
     action = wizardMode === 'boot0' ? 'Enable BOOT0' : 'Set normal flash boot';
   } else if (wizardStage === 'verifyReset') {
     step = 3; title = wizardMode === 'boot0' ? 'Connect B0, then reset' : 'Reset to verify';
     text = wizardMode === 'boot0'
-      ? '1. Disconnect ST-Link from PA14/SWCLK (shared with B0).\n2. Connect B0 to 3.3 V — never 5 V. Leave that jumper connected.\n3. Briefly touch STM32 RST to GND, then release it.\n\nContinue to find ROM and read back the saved settings. The write is not verified yet.'
-      : 'Briefly touch STM32 RST to GND, then release it.\n\nContinue to find the chip and verify the saved settings. If seesaw starts, the guide will help you enter ROM again.';
+      ? '1. Disconnect ST-Link SWCLK.\n2. Connect B0 to 3.3 V — never 5 V. Leave it connected.\n3. Briefly connect STM32 RST to GND, then release it.\n\nContinue to verify the write.'
+      : 'Briefly connect STM32 RST to GND, then release it. Continue to verify the write.';
   } else if (wizardStage === 'recoverReset') {
     step = 3; title = 'Reset for readback';
-    text += '\n\nThis is a read-only recovery check; it will not repeat the option write. If needed, use your existing BOOT0 wiring to enter ROM.';
+    text += '\n\nReadback only; no write retry. Use your configured BOOT0 jumper if needed.';
   } else if (wizardStage === 'error') {
     step = 3; title = 'Stopped — check the result';
-    text = 'No automatic write retry was made. Keep the bridge connected so its saved comparison is retained. You can reset the STM32 and check the options without writing again.';
+    text = 'Keep the bridge connected. Reset the STM32 and read back the options; the write will not be repeated.';
     action = 'Reset and check options';
   } else if (wizardStage === 'done') {
     step = 4; title = 'Boot-option check complete';
-    text = 'Remove any B0-to-3.3 V jumper, then briefly touch STM32 RST to GND and release it to return to the application.\n\nClick Done when you have finished. Application startup is not checked by this guide.';
+    text = 'Remove the B0 jumper. Briefly connect STM32 RST to GND, then release it. Check that your firmware starts, then click Done.';
     action = 'Done';
   }
   $('wizardStep').textContent = `STEP ${step} OF 4`;
@@ -646,7 +646,7 @@ window.addEventListener('dragover', event => event.preventDefault());
 window.addEventListener('drop', event => event.preventDefault());
 window.addEventListener('beforeunload', event => { if (busy || optionPending) { event.preventDefault(); event.returnValue = ''; } });
 if (!supported) {
-  $('compat').textContent = 'Open this page in desktop Chrome or Edge over HTTPS, or download the HTML and open it locally. Web Serial is required.';
+  $('compat').textContent = 'Use desktop Chrome or Edge. Open this page over HTTPS or save the HTML and open it locally.';
   $('connect').disabled = true;
 }
 </script>
