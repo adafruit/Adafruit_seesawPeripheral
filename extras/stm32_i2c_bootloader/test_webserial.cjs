@@ -13,6 +13,10 @@ assert.ok(!html.includes('<footer>'));
 assert.ok(!html.includes('id="entry"') && !html.includes('id="address"'));
 assert.ok(!html.includes('id="resetScan"'));
 assert.ok(!html.includes('id="target"'));
+assert.ok(!html.includes('Connect to detect your C011 or C031.'));
+for (const id of ['deviceStep', 'firmwareStep', 'bootOptionsStep']) {
+  assert.match(html, new RegExp(`<section id="${id}"[^>]* hidden>`));
+}
 assert.match(html, /id="scan"[^>]*>Scan<\/button>/);
 const elements = new Map();
 const windowEvents = new Map();
@@ -28,6 +32,8 @@ const context = vm.createContext({
   }}
 });
 vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], context);
+vm.runInContext('controls()', context);
+for (const id of ['deviceStep', 'firmwareStep', 'bootOptionsStep']) assert.equal(elements.get(id).hidden, true);
 const {parseHex, validateImage, Bootloader, SerialBridge, PROFILES} = vm.runInContext('({parseHex, validateImage, Bootloader, SerialBridge, PROFILES})', context);
 assert.equal(PROFILES.c011.getLength, 20);
 assert.equal(PROFILES.c031.getLength, 20);
@@ -137,6 +143,8 @@ class ROM {
   await vm.runInContext('runOperation("write")', context);
   assert.equal(direct.goRequested, true); assert.equal(direct.closed, true);
   assert.ok(elements.get('status').textContent.startsWith('Write verified.'));
+  assert.equal(elements.get('deviceStep').hidden, true);
+  assert.equal(elements.get('firmwareStep').hidden, false, 'Keep upload results after automatic disconnect');
   assert.ok(!direct.reads.some(r => r.beforeErase && r.address >= base && r.address < base + 30720), 'No application backup reads before erase');
   assert.ok(direct.memory.slice(30720).every(v => v === 0x5A));
   assert.ok(direct.options.every(v => v === 0xAA));
@@ -177,6 +185,7 @@ class ROM {
   assert.equal(elements.get('readout').clicked, true);
   assert.equal(readDevice.writes, 0); assert.equal(readDevice.erases.length, 0);
   assert.equal(readDevice.goRequested, false); assert.equal(readDevice.closed, true);
+  assert.equal(elements.get('firmwareStep').hidden, false, 'Keep Save readout accessible after disconnect');
   // O replies are framed by a serial-only END command, including optional lines.
   const optionDump = 'OPTIONS' + ' AA'.repeat(128);
   const summary = 'nBOOT_SEL=0 nBOOT1=1 nBOOT0=1 BOOT_LOCK=0 RDP=0xAA';
@@ -292,6 +301,7 @@ class ROM {
   await vm.runInContext('connect()', context);
   assert.equal(lostSnapshot.closed, true);
   assert.match(elements.get('optionStatus').textContent, /without verification/);
+  assert.equal(elements.get('bootOptionsStep').hidden, false, 'Keep pending verification visible');
   // Discovery exercises the real ROM protocol simulator, not an address-only
   // success stub. Scanning never sends the boot key or changes flash/options.
   class DiscoveryBridge extends ROM {
@@ -319,18 +329,23 @@ class ROM {
     vm.runInContext('bridge = testDevice; optionPending = false; optionStopped = false; romReady = false; targetResetConfirmed = false; devices = []; controls();', context);
   };
   const emptyBus = new DiscoveryBridge(); installDiscovery(emptyBus);
-  vm.runInContext('target = null;', context);
+  vm.runInContext('target = null; firmwareResult = false;', context);
   await vm.runInContext('scanDevices()', context);
   assert.match(elements.get('deviceStatus').textContent, /No I²C devices/);
   assert.equal(elements.get('readOptions').disabled, true);
   assert.equal(emptyBus.commands.length, 1);
   assert.equal(elements.get('file').disabled, true);
+  assert.equal(elements.get('deviceStep').hidden, false);
+  assert.equal(elements.get('firmwareStep').hidden, true);
+  assert.equal(elements.get('bootOptionsStep').hidden, true);
   await vm.runInContext('chooseFile({name: "early.bin"})', context);
   assert.match(elements.get('status').textContent, /detect your STM32/);
 
   const discovered = new DiscoveryBridge([0x49, 0x50]); discovered.ids.set(0x49, 'DATA 90'); installDiscovery(discovered);
   await vm.runInContext('scanDevices()', context);
   assert.equal(vm.runInContext('target.name', context), 'C011');
+  assert.equal(elements.get('firmwareStep').hidden, false);
+  assert.equal(elements.get('bootOptionsStep').hidden, false);
   assert.equal(elements.get('device').value, String(0x49));
   assert.equal(elements.get('bootRom').disabled, false);
   assert.equal(elements.get('readOptions').disabled, true);
@@ -355,6 +370,8 @@ class ROM {
   await vm.runInContext('scanDevices()', context);
   assert.equal(vm.runInContext('romReady', context), false);
   assert.match(elements.get('deviceStatus').textContent, /no supported target/);
+  assert.equal(elements.get('firmwareStep').hidden, true);
+  assert.equal(elements.get('bootOptionsStep').hidden, true);
 
   const multiple = new DiscoveryBridge([0x49, 0x4a]); multiple.ids.set(0x49, 'DATA 90'); multiple.ids.set(0x4a, 'DATA 90'); installDiscovery(multiple);
   await vm.runInContext('scanDevices()', context);
@@ -515,6 +532,8 @@ class ROM {
   await vm.runInContext('scanDevices()', context);
   assert.equal(vm.runInContext('target.name', context), 'C031');
   assert.equal(vm.runInContext('romReady', context), true);
+  assert.equal(elements.get('firmwareStep').hidden, false);
+  assert.equal(elements.get('bootOptionsStep').hidden, false);
   assert.equal(vm.runInContext('firmware', context), null, 'Detected family changes invalidate the selected image');
   assert.equal(blank31.writes, 0); assert.equal(blank31.erases.length, 0);
   assert.equal(blank31.goRequested, false);

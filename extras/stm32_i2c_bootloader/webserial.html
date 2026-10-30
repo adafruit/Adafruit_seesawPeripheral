@@ -13,23 +13,23 @@ dialog{width:min(560px,calc(100% - 32px));max-height:90vh;overflow:auto;backgrou
 <li>Connect the host’s default I²C bus using STEMMA QT. For direct wiring, use a level shifter.</li>
 <li>Connect only one STM32. Power-cycle a factory-blank chip before starting.</li></ol>
 <p class="warning">Use firmware up to 30 KiB; EEPROM and boot options are preserved. Keep power stable and this tab visible. Failed writes may require ST-Link recovery.</p>
-<p id="profileInfo">Connect to detect your C011 or C031.</p>
 <p id="compat" class="warning"></p><button id="connect">Connect bridge</button> <span id="connection">Not connected</span></section>
-<section class="card"><h2>2. Enter the bootloader</h2>
+<section id="deviceStep" class="card" hidden><h2>2. Enter the bootloader</h2>
+<p id="profileInfo"></p>
 <p>Select your STM32 and click <strong>Enter bootloader</strong>. If it is already in ROM, continue to step 3.</p>
 <button id="scan" class="secondary" disabled>Scan</button>
 <label>Device <select id="device" disabled><option value="">Connect bridge to find devices</option></select></label>
 <button id="bootRom" disabled>Enter bootloader</button>
 <p id="deviceStatus" role="status" aria-live="polite">Connect the bridge first.</p>
 </section>
-<section class="card"><h2>3. Firmware</h2><div id="drop"><p>Drop a STM32 <strong>.hex</strong> or <strong>.bin</strong> file here</p><input id="file" type="file" accept=".hex,.bin" aria-label="Choose firmware" disabled></div><p id="filename">No file selected.</p>
+<section id="firmwareStep" class="card" hidden><h2>3. Firmware</h2><div id="drop"><p>Drop a STM32 <strong>.hex</strong> or <strong>.bin</strong> file here</p><input id="file" type="file" accept=".hex,.bin" aria-label="Choose firmware" disabled></div><p id="filename">No file selected.</p>
 <small>Use an application file, not a full-flash backup or bridge firmware.</small>
 <p class="warning">For future I²C updates, use firmware with bootloader entry or enable BOOT0 recovery below.</p>
 <label><input type="checkbox" id="verifyAfterFlash" checked> Verify after flash</label>
 <div class="row"><button id="write" disabled>Write</button><button id="read" class="secondary" disabled>Read</button><button id="verify" class="secondary" disabled>Verify</button><a id="readout" class="download hidden" download>Save readout</a></div>
 <p><small>Write: upload. Read: save a full 32 KiB backup, including EEPROM. Verify: compare without writing.</small></p>
 <p id="status" role="status" aria-live="polite">Ready when you are.</p><progress id="progress" value="0" max="1" aria-label="Upload progress"></progress></section>
-<section class="card"><h2>4. Boot options (optional)</h2>
+<section id="bootOptionsStep" class="card" hidden><h2>4. Boot options (optional)</h2>
 <p>Choose a boot mode and follow the reset and verification steps. No firmware file needed.</p>
 <p id="bootOptions" role="status" aria-live="polite">Not read yet.</p>
 <button id="readOptions" class="secondary" disabled>Read / verify boot options</button>
@@ -249,6 +249,7 @@ class Bootloader {
   async go() { await this.command(GO); await this.address(FLASH_BASE); }
 }
 let bridge = null, firmware = null, busy = false, readoutURL = null;
+let firmwareResult = false;
 let optionPending = false, optionStopped = false;
 let devices = [], romReady = false, targetResetConfirmed = false;
 let wizardMode = 'boot0', wizardStage = 'reset', wizardMessage = '', wizardReading = false;
@@ -265,6 +266,11 @@ function controls() {
   $('resumeOptions').disabled = busy || !bridge;
   $('device').disabled = busy || !bridge || !devices.length;
   const selected = devices.find(device => String(device.address) === $('device').value);
+  const detected = Boolean(bridge && selected && selected.profile && selected.profile === target);
+  $('deviceStep').hidden = !bridge;
+  // Keep operation results/downloads and pending option recovery accessible.
+  $('firmwareStep').hidden = !detected && !firmwareResult;
+  $('bootOptionsStep').hidden = !detected && !optionPending && !optionStopped;
   $('bootRom').disabled = busy || !bridge || !target || !selected || selected.profile !== target || selected.kind !== 'seesaw' || devices.some(device => device.address === target.rom);
   $('file').disabled = busy || !selected || !selected.profile || selected.profile !== target;
   $('verifyAfterFlash').disabled = busy;
@@ -403,6 +409,7 @@ async function connect() {
     const candidate = new SerialBridge(port);
     try { await candidate.open(); } catch (error) { await candidate.close(); throw error; }
     bridge = candidate; $('connection').textContent = 'bridge serial port open'; $('connect').textContent = 'Disconnect';
+    firmwareResult = false;
     $('optionStatus').textContent = optionPending
       ? 'Previous option write was not verified. Reconnecting may reset the bridge and lose its snapshot. Read options before proceeding; require VERIFIED for the earlier write.'
       : 'Read the current boot options, or open a boot-option guide.';
@@ -415,6 +422,7 @@ async function connect() {
 }
 async function runOperation(operation) {
   if (busy || !romReady || optionPending || optionStopped || !bridge || !['write', 'read', 'verify'].includes(operation) || (operation !== 'read' && !firmware)) return;
+  firmwareResult = true;
   busy = true; controls(); let changed = false;
   const verifyAfterFlash = $('verifyAfterFlash').checked;
   try {
