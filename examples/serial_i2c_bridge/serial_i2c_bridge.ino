@@ -6,7 +6,7 @@
 // Web uploader: https://adafruit.github.io/Adafruit_seesawPeripheral/bootloader/
 // A factory-blank C011/C031 enters ROM at power-on; no BOOT0 wire is needed.
 // ASCII commands use hexadecimal bytes:
-// S scans 7-bit I2C addresses (address-only probes, no register writes).
+// S scans I2C addresses; ROM addresses use a complete read-only GET_ID command.
 // W address data... ; U address count ; R address module register count.
 // O address queries C011/C031 options (64/63 = ROM, else seesaw address).
 // O address nBOOT_SEL nBOOT1 nBOOT0 sets only those three bits (each 00 or 01).
@@ -241,9 +241,29 @@ void scanBus() {
   uint8_t found[112];
   uint8_t count = 0;
   for (uint8_t address = 0x08; address <= 0x77; address++) {
+    bool romProbe = address == C011_ROM_ADDRESS || address == C031_ROM_ADDRESS;
     Wire.beginTransmission(address);
+    if (romProbe) {
+      // Empty write probes caused C031 ROM timeouts on the Metro Mini.
+      // Complete a read-only GET_ID transaction instead.
+      Wire.write(ROM_GET_ID);
+      Wire.write((uint8_t)(ROM_GET_ID ^ 0xFF)); // AN4221 command complement.
+    }
     uint8_t error = Wire.endTransmission();
     if (error == 0) {
+      if (romProbe) {
+        uint8_t previousROMAddress = romAddressI2C;
+        romAddressI2C = address;
+        uint8_t id[3]; // GET_ID: byte count followed by the two-byte chip ID.
+        bool complete = romAck() && romRead(id, sizeof(id)) && romAck();
+        romAddressI2C = previousROMAddress;
+        if (!complete) {
+          Serial.print(F("ERR ROM scan failed at 0x"));
+          Serial.print(address, HEX);
+          Serial.print(F("\n\r"));
+          return;
+        }
+      }
       found[count++] = address;
     } else if (error != 2) { // Address NACK means no device; other errors stop.
       Serial.print(F("ERR I2C scan failed at 0x"));

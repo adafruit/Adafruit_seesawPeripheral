@@ -85,8 +85,11 @@ the chip is programmed. Write reports whether application readback was verified
 and whether Go was acknowledged, not a functional test of the application.
 The Python updater's seesaw restart checks below remain separate.
 
-The bridge's `S` command scans addresses `0x08`–`0x77` using address-only probes
-and returns `SCAN` followed by responding hexadecimal addresses. The page queries
+The bridge's `S` command scans addresses `0x08`–`0x77` and returns `SCAN`
+followed by responding hexadecimal addresses. It uses a complete read-only
+GET_ID transaction at ROM addresses `0x63`/`0x64`; empty write probes there
+can make subsequent C031 ROM commands time out. Other addresses use address-only
+probes. The page queries
 the seesaw hardware ID at responding addresses except 0x63/0x64.
 Both ROM addresses are checked using their device ID and supported command
 layout. Never send seesaw register bytes to either ROM parser. Unknown devices
