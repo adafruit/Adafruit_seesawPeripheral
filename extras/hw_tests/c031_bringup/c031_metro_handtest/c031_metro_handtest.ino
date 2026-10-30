@@ -1,4 +1,4 @@
-// Adafruit STM32C031 seesaw GPIO hand test on a Metro 328 / Uno.
+// Adafruit STM32C031 seesaw GPIO / ADC hand test on a Metro 328 / Uno.
 // Upload to the Metro, not the C031. Open Serial Monitor at 115200 baud.
 // Requires Adafruit_seesaw with STM32 support and the unrestricted C031
 // GPIO/ADC/PWM hand-test firmware at address 0x49, not the default image.
@@ -8,6 +8,8 @@
 // PC15 is the onboard LED: use 0/1, not an input jumper, to test it.
 // Remove external jumpers before enabling an output or selecting another pin.
 // Commands 0/1 should produce 0/3.3V; check the selected pad with a meter.
+// a reads ADC on PA0..8, PA11/12 or PB0/1. A pot can test intermediate values.
+// ADC readings are 0-1023; displayed voltage assumes a 3.3V supply.
 
 #include <Adafruit_seesaw.h>
 
@@ -27,7 +29,7 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  Serial.print(F("Adafruit STM32C031 seesaw GPIO hand test\n\r"));
+  Serial.print(F("Adafruit STM32C031 seesaw GPIO / ADC hand test\n\r"));
 
   if (!ss.begin(0x49)) {
     Serial.print(F("Begin failed. Check power, wiring, firmware, and library version.\n\r"));
@@ -82,6 +84,14 @@ void loop() {
       ss.pinMode(pin, INPUT);
       readingMode = 'r';
       Serial.print(F("Reading input; the previous pull setting is retained.\n\r"));
+    } else if (command == 'a') {
+      if (pin <= 8 || pin == 11 || pin == 12 || pin == 16 || pin == 17) {
+        ss.pinMode(pin, INPUT);
+        readingMode = 'a';
+        Serial.print(F("Reading ADC (0-1023); voltage assumes a 3.3V supply.\n\r"));
+      } else {
+        Serial.print(F("This pin has no ADC. Select PA0..8, PA11/12 or PB0/1.\n\r"));
+      }
     } else if (command == 'x') {
       releaseOutputs();
     } else if (command == '?') {
@@ -94,7 +104,18 @@ void loop() {
     lastReading = millis();
     Serial.print(pinLabels[selected]);
     Serial.print(F(": "));
-    if (ss.digitalRead(testPins[selected])) {
+    if (readingMode == 'a') {
+      uint16_t raw = ss.analogRead(testPins[selected]);
+      if (raw > 1023) {
+        Serial.print(F("ADC read failed\n\r"));
+      } else {
+        float volts = map(raw, 0, 1023, 0, 3300) / 1000.0;
+        Serial.print(raw);
+        Serial.print(F(" / 1023, about "));
+        Serial.print(volts, 3);
+        Serial.print(F(" V\n\r"));
+      }
+    } else if (ss.digitalRead(testPins[selected])) {
       Serial.print(F("HIGH\n\r"));
     } else {
       Serial.print(F("LOW\n\r"));
@@ -116,7 +137,11 @@ void printSelectedPin() {
   Serial.print(pinLabels[selected]);
   Serial.print(F(" (seesaw pin "));
   Serial.print(testPins[selected]);
-  Serial.print(F("). GPIO\n\r"));
+  Serial.print(F("). GPIO"));
+  if (testPins[selected] <= 8 || testPins[selected] == 11 || testPins[selected] == 12 || testPins[selected] == 16 || testPins[selected] == 17) {
+    Serial.print(F(" + ADC"));
+  }
+  Serial.print(F("\n\r"));
 }
 
 void printHelp() {
@@ -124,6 +149,7 @@ void printHelp() {
   Serial.print(F("0 / 1 : output LOW / HIGH\n\r"));
   Serial.print(F("u / d : input pull-up / pull-down, with continuous readings\n\r"));
   Serial.print(F("r     : read input continuously (retains previous pull)\n\r"));
+  Serial.print(F("a     : read ADC continuously\n\r"));
   Serial.print(F("x     : stop readings and release all outputs\n\r"));
   Serial.print(F("?     : show this help\n\r"));
   Serial.print(F("Use only GND or the C031 board's 3V for input tests.\n\r"));
