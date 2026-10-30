@@ -6,7 +6,7 @@ Arduino-Pico RP2040/RP2350, ESP32, or ESP8266);
 Python or the standalone Web Serial page handles ST's factory-ROM protocol.
 No BOOT0 wire is needed.
 
-Select the matching target before connecting. C011 Rev Z and C031 Rev Z
+The browser detects C011/C031 automatically; the CLI uses `--target`. C011 Rev Z and C031 Rev Z
 (device 0x10016453) have passed ROM application programming/readback/Go on hardware.
 C031 option writes and physical BOOT0 recovery remain unverified:
 
@@ -45,14 +45,13 @@ Use the wiring below. Open [the uploader](https://adafruit.github.io/Adafruit_se
 in desktop Chrome or Edge. Alternatively, download `webserial.html` and open
 that standalone file locally. Ordinary HTTP LAN hosting cannot use Web Serial.
 
-1. Upload the latest bridge sketch, choose **STM32C011F6** or **STM32C031G6**,
-   then connect its USB serial port on
-   the page. Connecting automatically scans the I2C bus.
-2. In **Find your STM32 and enter ROM**, select the detected STM32 seesaw and click
-   **Boot selected STM32 into ROM**. If a factory-blank or manually booted STM32 is
+1. Upload the latest bridge sketch and connect its USB serial port on the page.
+   The page scans the I2C bus and detects C011 or C031 from its chip ID.
+2. In **Enter the bootloader**, select the detected STM32 seesaw and click
+   **Enter bootloader**. If a factory-blank or manually booted STM32 is
    already in ROM at its target address, the page identifies it directly and reports ready.
    Keep one target connected during programming or option changes.
-3. Drop the selected target's application HEX or BIN file onto the page. BIN starts at
+3. After detection, drop the matching application HEX or BIN file onto the page. BIN starts at
    `0x08000000`; HEX uses absolute flash addresses and checked record checksums.
    Click **Write** once step 2 reports that ROM is ready.
    **Verify after flash** is checked by default. No backup-file dialog is shown.
@@ -78,8 +77,8 @@ application. Reconnect the bridge before each operation. Write never creates a
 backup automatically; use Read first if you want one. The Python updater below
 retains its separate backup workflow.
 
-For subsequent updates, scan and select the running seesaw, then use **Boot
-selected STM32 into ROM**. The installed firmware must retain the
+For subsequent updates, scan and select the running seesaw, then use **Enter
+bootloader**. The installed firmware must retain the
 seesaw boot-entry command, or another existing ROM-entry method is needed.
 Factory-blank auto-entry is not a persistent bootloader-entry mechanism after
 the chip is programmed. Write reports whether application readback was verified
@@ -88,10 +87,12 @@ The Python updater's seesaw restart checks below remain separate.
 
 The bridge's `S` command scans addresses `0x08`–`0x77` using address-only probes
 and returns `SCAN` followed by responding hexadecimal addresses. The page queries
-the selected target's seesaw hardware ID at responding addresses except 0x63/0x64.
-The selected ROM address is checked using its device ID and supported command
-layout; the other ROM address is left alone. Never send seesaw register bytes
-to either ROM parser. Unknown/wrong-family devices are listed but disabled.
+the seesaw hardware ID at responding addresses except 0x63/0x64.
+Both ROM addresses are checked using their device ID and supported command
+layout. Never send seesaw register bytes to either ROM parser. Unknown devices
+are listed but disabled. Multiple supported devices require a selection.
+Changing families clears the firmware file; a pending boot-option check locks
+the family until verification or recovery completes.
 Scanning does not send a boot-entry key, erase flash, or write options. Boot
 entry rechecks the seesaw ID and destination-address occupancy before the key.
 If an older bridge sketch rejects `S`, the page asks you to upload the new sketch.

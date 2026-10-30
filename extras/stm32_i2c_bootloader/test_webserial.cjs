@@ -12,6 +12,7 @@ assert.ok(!html.includes('id="backup"'));
 assert.ok(!html.includes('<footer>'));
 assert.ok(!html.includes('id="entry"') && !html.includes('id="address"'));
 assert.ok(!html.includes('id="resetScan"'));
+assert.ok(!html.includes('id="target"'));
 assert.match(html, /id="scan"[^>]*>Scan<\/button>/);
 const elements = new Map();
 const windowEvents = new Map();
@@ -21,6 +22,7 @@ const context = vm.createContext({
   URL: {createObjectURL(blob) { downloadedBlob = blob; return 'blob:readout'; }, revokeObjectURL() {}},
   navigator: {serial: {}}, window: {isSecureContext: true, addEventListener(name, handler) { windowEvents.set(name, handler); }},
   document: {getElementById(id) {
+    assert.notEqual(id, 'target', 'No target dropdown remains');
     if (!elements.has(id)) elements.set(id, {textContent: '', value: '', open: false, events: {}, classList: {add() {}, remove() {}, toggle() {}}, addEventListener(name, handler) { this.events[name] = handler; }, click() { this.clicked = true; }, showModal() { this.open = true; }, close() { this.open = false; }});
     return elements.get(id);
   }}
@@ -43,6 +45,9 @@ function record(type, address, payload = []) {
 }
 const header = record(4, 0, [8, 0]), data = record(0, 0, [...image]), eof = record(1, 0);
 const validHex = [header, data, eof].join('\n');
+assert.equal(vm.runInContext('target', context), null);
+assert.throws(() => validateImage(image), /detect your STM32/);
+vm.runInContext('target = PROFILES.c011;', context);
 assert.deepEqual(validateImage(image), image);
 assert.deepEqual(parseHex(validHex), image);
 assert.deepEqual(parseHex([record(2, 0, [0, 0]), header, data, record(5, 0, [8, 0, 0, 9]), eof].join('\r\n')), image);
@@ -298,6 +303,7 @@ class ROM {
         assert.ok(values[0] !== 0x63 && values[0] !== 0x64, 'Never send seesaw register queries to ROM');
         return this.ids.get(values[0]) || 'DATA 55';
       }
+      if ([0x63, 0x64].includes(values[0]) && values[0] !== this.profile.rom) throw new Error('ERR I2C 2');
       if (operation === 'W' && values[0] !== this.profile.rom) {
         assert.deepEqual(Array.from(values.slice(1)), [0, 0x7e, 0xb0, 7, 0x10, 0xad]);
         if (this.bootWorks) { this.addresses = this.addresses.filter(address => address !== values[0]); this.addresses.push(this.profile.rom); this.romActive = true; }
@@ -313,13 +319,18 @@ class ROM {
     vm.runInContext('bridge = testDevice; optionPending = false; optionStopped = false; romReady = false; targetResetConfirmed = false; devices = []; controls();', context);
   };
   const emptyBus = new DiscoveryBridge(); installDiscovery(emptyBus);
+  vm.runInContext('target = null;', context);
   await vm.runInContext('scanDevices()', context);
   assert.match(elements.get('deviceStatus').textContent, /No I²C devices/);
   assert.equal(elements.get('readOptions').disabled, true);
   assert.equal(emptyBus.commands.length, 1);
+  assert.equal(elements.get('file').disabled, true);
+  await vm.runInContext('chooseFile({name: "early.bin"})', context);
+  assert.match(elements.get('status').textContent, /detect your STM32/);
 
   const discovered = new DiscoveryBridge([0x49, 0x50]); discovered.ids.set(0x49, 'DATA 90'); installDiscovery(discovered);
   await vm.runInContext('scanDevices()', context);
+  assert.equal(vm.runInContext('target.name', context), 'C011');
   assert.equal(elements.get('device').value, String(0x49));
   assert.equal(elements.get('bootRom').disabled, false);
   assert.equal(elements.get('readOptions').disabled, true);
@@ -499,10 +510,14 @@ class ROM {
   new DataView(c031Image.buffer).setUint32(0, 0x20003000, true);
   assert.throws(() => validateImage(c031Image, PROFILES.c011), /stack/);
   assert.deepEqual(validateImage(c031Image, PROFILES.c031), c031Image);
-  vm.runInContext('bridge = null; busy = false; optionPending = false; optionStopped = false; firmware = {image: testImage};', context);
-  elements.get('target').value = 'c031'; elements.get('target').onchange();
+  const blank31 = new DiscoveryBridge([0x63], PROFILES.c031); installDiscovery(blank31);
+  vm.runInContext('target = null; firmware = {image: testImage};', context);
+  await vm.runInContext('scanDevices()', context);
   assert.equal(vm.runInContext('target.name', context), 'C031');
-  assert.equal(vm.runInContext('firmware', context), null, 'Changing target invalidates the selected image');
+  assert.equal(vm.runInContext('romReady', context), true);
+  assert.equal(vm.runInContext('firmware', context), null, 'Detected family changes invalidate the selected image');
+  assert.equal(blank31.writes, 0); assert.equal(blank31.erases.length, 0);
+  assert.equal(blank31.goRequested, false);
   const c031 = new ROM(PROFILES.c031), c031Rom = new Bootloader(c031, PROFILES.c031);
   await c031Rom.identify(); await c031Rom.erase(c031Image.length);
   const c031Padded = await c031Rom.program(c031Image);
@@ -515,16 +530,54 @@ class ROM {
   const smallFlash = new ROM(PROFILES.c031); smallFlash.flashKiB = 16;
   await assert.rejects(() => new Bootloader(smallFlash, PROFILES.c031).identify(), /32 KiB/);
   assert.equal(smallFlash.writes, 0); assert.equal(smallFlash.erases.length, 0);
-  const otherFamily = new DiscoveryBridge([0x49, 0x64], PROFILES.c031);
-  otherFamily.ids.set(0x49, 'DATA 90'); installDiscovery(otherFamily);
+  const running31 = new DiscoveryBridge([0x49], PROFILES.c031);
+  running31.ids.set(0x49, 'DATA 91'); installDiscovery(running31);
+  vm.runInContext('target = null;', context);
+  await vm.runInContext('scanDevices()', context);
+  assert.equal(vm.runInContext('target.name', context), 'C031');
+  assert.equal(elements.get('bootRom').disabled, false);
+  await vm.runInContext('bootIntoROM()', context);
+  assert.equal(vm.runInContext('romReady', context), true);
+  assert.ok(running31.commands.every(command => command[0] !== 'R' || ![0x63, 0x64].includes(command[1])));
+  const wrongRom31 = new DiscoveryBridge([0x63], {...PROFILES.c031, id: 0x443}); installDiscovery(wrongRom31);
   await vm.runInContext('scanDevices()', context);
   assert.equal(vm.runInContext('romReady', context), false);
-  assert.ok(otherFamily.commands.every(command => command[1] !== 0x64), 'Do not issue register reads to the other ROM address');
+  assert.equal(wrongRom31.writes, 0);
+  const smallRom31 = new DiscoveryBridge([0x63], PROFILES.c031); smallRom31.flashKiB = 16; installDiscovery(smallRom31);
+  await vm.runInContext('scanDevices()', context);
+  assert.equal(vm.runInContext('romReady', context), false);
+
+  // Both ROM addresses are identified read-only; a mixed bus needs a choice.
+  const mixed11 = new DiscoveryBridge([0x64]), mixed31 = new DiscoveryBridge([0x63], PROFILES.c031);
+  const mixed = {command: async (operation, values) => operation === 'S' ? 'SCAN 63 64'
+    : (values[0] === 0x63 ? mixed31 : mixed11).command(operation, values)};
+  installDiscovery(mixed);
+  await vm.runInContext('scanDevices()', context);
+  assert.equal(elements.get('device').value, '');
+  assert.match(elements.get('device').innerHTML, /C011 ROM/);
+  assert.match(elements.get('device').innerHTML, /C031 ROM/);
+  elements.get('device').value = String(0x64); vm.runInContext('selectDevice()', context);
+  assert.equal(vm.runInContext('target.name', context), 'C011');
+  vm.runInContext('firmware = {image: testImage};', context);
+  elements.get('device').value = String(0x63); vm.runInContext('selectDevice()', context);
+  assert.equal(vm.runInContext('target.name', context), 'C031');
+  assert.equal(vm.runInContext('firmware', context), null);
+  assert.equal(mixed11.writes + mixed31.writes, 0);
+  assert.equal(mixed11.erases.length + mixed31.erases.length, 0);
+
+  // Never switch families while an option write needs verification/recovery.
+  installDiscovery(blank31);
+  vm.runInContext('target = PROFILES.c011; optionPending = true;', context);
+  await vm.runInContext('scanDevices()', context);
+  elements.get('device').value = String(0x63); vm.runInContext('selectDevice()', context);
+  assert.equal(vm.runInContext('target.name', context), 'C011');
+  assert.equal(vm.runInContext('romReady', context), false);
+  assert.equal(elements.get('readOptions').disabled, true);
+  vm.runInContext('optionPending = false; optionStopped = true; selectDevice();', context);
+  assert.equal(vm.runInContext('target.name', context), 'C011');
+  assert.equal(vm.runInContext('romReady', context), false);
   const wizard31 = new WizardBridge([0x49], PROFILES.c031);
   wizard31.ids.set(0x49, 'DATA 91'); installDiscovery(wizard31);
-  assert.equal(elements.get('target').disabled, true);
-  elements.get('target').value = 'c011'; elements.get('target').onchange();
-  assert.equal(vm.runInContext('target.name', context), 'C031', 'Target cannot change while connected');
   elements.get('enableBoot0').onclick();
   await elements.get('wizardNext').onclick(); await elements.get('wizardNext').onclick();
   assert.equal(vm.runInContext('wizardStage', context), 'write');
